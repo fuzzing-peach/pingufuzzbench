@@ -2,7 +2,6 @@ FROM rust:bullseye
 LABEL maintainer="Zou Dikai"
 
 ARG GITHUB_TOKEN
-ARG AUTHORIZED_KEY
 ARG proxy=http://172.17.0.1:7890
 # Import environment variable to pass as parameter to make (e.g., to make parallel builds with -j)
 ARG MAKE_OPT
@@ -10,11 +9,13 @@ ARG MAKE_OPT
 ENV http_proxy=$proxy
 ENV https_proxy=$proxy
 
-RUN sed -i 's/archive.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list && apt clean
+RUN apt install apt-transport-https ca-certificates
+
+RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list && apt clean
 
 # LLVM-11
 RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates gnupg2 && rm -rf /var/lib/apt/lists
-RUN echo deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main >> /etc/apt/sources.list
+RUN echo deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-11 main >> /etc/apt/sources.list
 RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - 
 
 # Install common dependencies
@@ -30,12 +31,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 #   user tools
 #   debugging tools
 RUN apt-get update && apt-get install -y \
-    git build-essential curl libssl-dev sudo libtool libtool-bin libglib2.0-dev bison flex automake python3 python3-dev python3-setuptools python-is-python3 libpixman-1-dev gcc-9-plugin-dev cgroup-tools \
+    git build-essential curl libgnutls28-dev libssl-dev sudo libtool libtool-bin libglib2.0-dev bison flex automake python3 python3-dev python3-setuptools python-is-python3 libpixman-1-dev gcc-9-plugin-dev cgroup-tools \
     clang-11 clang-tools-11 libc++1-11 libc++-11-dev libc++abi1-11 libc++abi-11-dev libclang1-11 libclang-11-dev libclang-common-11-dev libclang-cpp11 libclang-cpp11-dev liblld-11 liblld-11-dev liblldb-11 liblldb-11-dev libllvm11 libomp-11-dev libomp5-11 lld-11 lldb-11 python3-lldb-11 llvm-11 llvm-11-dev llvm-11-runtime llvm-11-tools \
     rsync autopoint bison gperf autoconf texinfo gettext \
     libtool pkg-config libz-dev python3-pip \
     awscli openssh-server ncat netcat openssl \
-    emacs vim nano screen htop man manpages-posix-dev wget httpie bash-completion ripgrep \
+    vim nano screen htop man wget httpie bash-completion ripgrep \
     gdb byobu \
     graphviz-dev libcap-dev libpcap-dev \
     iputils-ping telnet net-tools \
@@ -55,17 +56,15 @@ RUN pip3 install gcovr==4.2
 
 # Users & SSH
 ##############
-RUN useradd --create-home --shell /bin/bash zdk
-# See the README - the password is set by the entry script
-# passwordless sudo access for ASAN and installing extra tools:
-RUN echo "zdk ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    usermod -aG sudo zdk && \
-    mkdir /var/run/sshd
+# Add a new user ubuntu, pass: ubuntu
+RUN groupadd ubuntu && \
+    useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)" && \
+    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 RUN chmod 777 /tmp
 
-USER zdk
-WORKDIR /home/zdk
+USER ubuntu
+WORKDIR /home/ubuntu
 
 RUN git config --global http.proxy $proxy && \
     git config --global https.proxy $proxy
@@ -88,14 +87,15 @@ RUN git clone https://github.com/Kherrisan/aflnwe.git && \
 # libaflnet
 ##############
 RUN rustup default nightly
-RUN git clone https://Kherrisan:$GITHUB_TOKEN@github.com/Kherrisan/libaflnet.git & \
+RUN git clone https://Kherrisan:$GITHUB_TOKEN@github.com/Kherrisan/libaflnet.git && \
     cd libaflnet && \
     cargo build
 
 # Set up environment variables for AFLNet
-ENV WORKDIR="/home/zdk/experiments"
-ENV AFLNET="/home/zdk/aflnet"
-ENV PATH="${PATH}:${AFLNET}:/home/zdk/.local/bin:${WORKDIR}"
+ENV WORKDIR="/home/ubuntu/experiments"
+ENV AFLNET="/home/ubuntu/aflnet"
+ENV LIBAFLNET="/home/ubuntu/libaflnet"
+ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}:${LIBAFLNET}/target/debug"
 ENV AFL_PATH="${AFLNET}"
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1 \
@@ -103,8 +103,8 @@ ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
 
 RUN mkdir $WORKDIR
 
-COPY --chown=zdk:zdk fuzzing.patch ${WORKDIR}/fuzzing.patch
-COPY --chown=zdk:zdk gcov.patch ${WORKDIR}/gcov.patch
+COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
 
 # Set up environment variables for ASAN
 env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
@@ -122,8 +122,8 @@ RUN cd $WORKDIR && \
 RUN cd ${WORKDIR}/LightFTP/Source/Release && \
     cp ${AFLNET}/tutorials/lightftp/fftp.conf ./ && \
     cp ${AFLNET}/tutorials/lightftp/ftpclean.sh ./ && \
-    cp -r ${AFLNET}/tutorials/lightftp/certificate /home/zdk && \
-    mkdir /home/zdk/ftpshare
+    cp -r ${AFLNET}/tutorials/lightftp/certificate /home/ubuntu && \
+    mkdir /home/ubuntu/ftpshare
 
 # Download and compile LightFTP for coverage analysis
 RUN cd $WORKDIR && \
@@ -140,14 +140,10 @@ RUN cd ${WORKDIR}/LightFTP-gcov/Source/Release && \
     cp ${AFLNET}/tutorials/lightftp/ftpclean.sh ./
 
 
-COPY --chown=zdk:zdk in-ftp ${WORKDIR}/in-ftp
-COPY --chown=zdk:zdk ftp.dict ${WORKDIR}/ftp.dict
-COPY --chown=zdk:zdk cov_script.sh ${WORKDIR}/cov_script
-COPY --chown=zdk:zdk run.sh ${WORKDIR}/run
-COPY --chown=zdk:zdk clean.sh ${WORKDIR}/ftpclean
+COPY --chown=ubuntu:ubuntu in-ftp ${WORKDIR}/in-ftp
+COPY --chown=ubuntu:ubuntu ftp.dict ${WORKDIR}/ftp.dict
+COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
+COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
+COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/ftpclean
 
-
-# For debugging purposes
-USER root
-RUN apt-get -y install ftp
-USER zdk
+USER ubuntu
