@@ -89,7 +89,7 @@ RUN git clone https://github.com/Kherrisan/aflnwe.git && \
 RUN rustup default nightly
 RUN git clone https://Kherrisan:$GITHUB_TOKEN@github.com/Kherrisan/libaflnet.git && \
     cd libaflnet && \
-    cargo build
+    cargo build -Z unstable-options --release --out-dir /home/ubuntu/libaflnet
 
 # Set up environment variables for AFLNet
 ENV WORKDIR="/home/ubuntu/experiments"
