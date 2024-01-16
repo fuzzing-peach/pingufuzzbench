@@ -29,11 +29,17 @@ ftpclean
 #files stored in replayable-* folders are structured
 #in such a way that messages are separated
 if [ $fmode -eq "1" ]; then
+  # aflnet
   testdir="replayable-queue"
   replayer="aflnet-replay"
-else
+elif [ $fmode -eq "0" ]; then
+  # aflnwe
   testdir="queue"
   replayer="afl-replay"
+else
+  # libaflnet
+  testdir="replayable-queue"
+  replayer="/home/zdk/libaflnet/aflnet-replay"
 fi
 
 #process initial seed corpus first

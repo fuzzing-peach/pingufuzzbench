@@ -86,6 +86,7 @@ mkdir results-lightftp
 
 profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnet out-lightftp-aflnet "-P FTP -D 10000 -q 3 -s 3 -E -K" 3600 5 1
 profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnwe out-lightftp-aflnwe "-D 10000 -K" 3600 5 1
+profuzzbench_exec_common.sh lightftp 4 results-lightftp libaflnet out-lightftp-libaflnet "-P FTP" 3600 5 1
 ```
 
 If the script runs successfully, its output should look similar to the text below.
