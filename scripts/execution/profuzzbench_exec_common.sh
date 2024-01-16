@@ -13,66 +13,14 @@ DELETE=$9
 
 WORKDIR="/home/ubuntu/experiments"
 
-# CPU分配文件
-CPU_ALLOCATION_FILE="cpu_allocation"
-
-# 初始化CPU分配文件
-initialize_cpu_allocation() {
-    if [ ! -f $CPU_ALLOCATION_FILE ]; then
-        # 获取系统CPU数量
-        local cpu_count=$(nproc)
-        local cpus=$(seq 0 $((cpu_count - 1)) | paste -sd ',' -)
-        echo $cpus > $CPU_ALLOCATION_FILE
-    fi
-}
-
-# 获取一个未分配的CPU
-available_cpu() {
-    local available_cpus=$(cat $CPU_ALLOCATION_FILE)
-    IFS=',' read -ra cpus <<< "$available_cpus"
-    for cpu in "${cpus[@]}"; do
-        if [ ! -z "$cpu" ]; then
-            echo $cpu
-            return
-        fi
-    done
-}
-
-# 分配CPU
-allocate_cpu() {
-    local cpu=$1
-    local cpus=$(cat $CPU_ALLOCATION_FILE)
-    # 在CPU编号前后添加逗号，以确保精确匹配
-    cpus=",$cpus,"
-    cpus=${cpus//,$cpu,/}
-    
-    # 处理字符串两端的逗号
-    cpus=${cpus#,}
-    cpus=${cpus%,}
-    echo $cpus > $CPU_ALLOCATION_FILE
-}
-
-# 释放CPU
-release_cpu() {
-    local cpu_to_add=$1
-    local cpus=$(cat $CPU_ALLOCATION_FILE)
-    cpus="${cpus},${cpu_to_add}"
-    cpus=${cpus//,,/,}
-    cpus=${cpus#,}
-    echo $cpus > $CPU_ALLOCATION_FILE
-}
-
 #keep all container ids
 cids=()
 
-initialize_cpu_allocation
-
 #create one container for each run
 for i in $(seq 1 $RUNS); do
-  cpu=$(available_cpu)
-  allocate_cpu $cpu
-  container_name="$DOCIMAGE-$FUZZER-$i-$cpu"
-  id=$(docker run --name $container_name --cpuset-cpus="$cpu" -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
+  container_name="$DOCIMAGE-$FUZZER-$i"
+  # --cpuset-cpus="$cpu" will cause aflnwe to run abnormally
+  id=$(docker run --name $container_name -d -it $DOCIMAGE /bin/bash -c "cd ${WORKDIR} && run ${FUZZER} ${OUTDIR} '${OPTIONS}' ${TIMEOUT} ${SKIPCOUNT}")
   cids+=(${id::12}) #store only the first 12 characters of a container ID
 done
 
@@ -94,10 +42,7 @@ for id in ${cids[@]}; do
   printf "\n${FUZZER^^}: Collecting results from container ${id}"
   docker cp ${id}:/home/ubuntu/experiments/${OUTDIR}.tar.gz ${SAVETO}/${OUTDIR}_${index}.tar.gz > /dev/null
   if [ ! -z $DELETE ]; then
-    container_name=$(docker inspect --format '{{.Name}}' $id | sed 's/^\/\([^ ]*\).*$/\1/')
-    cpu="${container_name##*-}"
-    printf "\nDeleting ${id} and releasing cpu#${cpu}"
-    release_cpu $cpu
+    printf "\nDeleting container ${id}"
     docker rm ${id} # Remove container now that we don't need it
   fi
   index=$((index+1))
