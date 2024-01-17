@@ -24,24 +24,20 @@ INPUTS=${INPUTS:-"${WORKDIR}/in-ftp"}
 # Move to fuzzing folder
 cd $WORKDIR/${TARGET_DIR}/Source/Release
 echo "$WORKDIR/${TARGET_DIR}/Source/Release"
-echo timeout -k 0 --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/2200 $OPTIONS -m none -c ${WORKDIR}/ftpclean ./fftp fftp.conf 2200
-timeout -k 0 --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N tcp://127.0.0.1/2200 $OPTIONS -m none -c ${WORKDIR}/ftpclean ./fftp fftp.conf 2200
+# Different network address format for libaflnet and aflnet/nwe
+if [[ $FUZZER == "libaflnet" ]]; then
+  SERVER="127.0.0.1:2200"
+else 
+  SERVER="tcp://127.0.0.1/2200"
+fi
+echo timeout -k 0 --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N $SERVER $OPTIONS -m none -c ${WORKDIR}/ftpclean ./fftp fftp.conf 2200
+timeout -k 0 --preserve-status $TIMEOUT /home/ubuntu/${FUZZER}/afl-fuzz -d -i ${INPUTS} -o $OUTDIR -N $SERVER $OPTIONS -m none -c ${WORKDIR}/ftpclean ./fftp fftp.conf 2200
 STATUS=$?
 
 # Step-2. Collect code coverage over time
 # Move to gcov folder
 cd $WORKDIR/LightFTP-gcov/Source/Release
-
-# The last argument passed to cov_script should be 0 if the fuzzer is afl/nwe and it should be 1 if the fuzzer is based on aflnet
-# 0: the test case is a concatenated message sequence -- there is no message boundary
-# 1: the test case is a structured file keeping several request messages
-if [ $FUZZER = "aflnwe" ]; then
-  cov_script ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/ 2200 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/cov_over_time.csv 0
-elif [ $FUZZER = "aflnet" ]; then
-  cov_script ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/ 2200 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/cov_over_time.csv 1
-else
-  cov_script ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/ 2200 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/cov_over_time.csv 2
-fi
+cov_script $FUZZER ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/ 2200 ${SKIPCOUNT} ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/cov_over_time.csv
 
 gcovr -r .. --html --html-details -o index.html
 mkdir ${WORKDIR}/${TARGET_DIR}/Source/Release/${OUTDIR}/cov_html/

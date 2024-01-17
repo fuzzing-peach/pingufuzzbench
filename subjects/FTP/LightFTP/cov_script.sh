@@ -1,78 +1,55 @@
 #!/bin/bash
 
-folder=$1   #fuzzer result folder
-pno=$2      #port number
-step=$3     #step to skip running gcovr and outputting data to covfile
+fuzzer=$1   #fuzzer name
+folder=$2   #fuzzer result folder
+pno=$3      #port number
+step=$4     #step to skip running gcovr and outputting data to covfile
             #e.g., step=5 means we run gcovr after every 5 test cases
-covfile=$4  #path to coverage file
-fmode=$5    #file mode -- structured or not
-            #fmode = 0: the test case is a concatenated message sequence -- there is no message boundary
-            #fmode = 1: the test case is a structured file keeping several request messages
+covfile=$5  #path to coverage file
 
-#delete the existing coverage file
+# delete the existing coverage file
 rm $covfile; touch $covfile
 
-#clear gcov data
-#since the source files of LightFTP are stored in the parent folder of the current folder
-#we use '..' instead of '.' as usual. You may need to update this accordingly for your subject
+# clear gcov data
+# since the source files of LightFTP are stored in the parent folder of the current folder
+# we use '..' instead of '.' as usual. You may need to update this accordingly for your subject
 gcovr -r .. -s -d > /dev/null 2>&1
 
-#output the header of the coverage file which is in the CSV format
-#Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
+# output the header of the coverage file which is in the CSV format
+# Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
 echo "Time,l_per,l_abs,b_per,b_abs" >> $covfile
 
-#clear ftp data
-#this is a LightFTP-specific step
-#we need to clean the ftp shared folder to prevent underterministic behaviors.
+# clear ftp data
+# this is a LightFTP-specific step
+# we need to clean the ftp shared folder to prevent underterministic behaviors.
 ftpclean
 
-#files stored in replayable-* folders are structured
-#in such a way that messages are separated
-if [ $fmode -eq "1" ]; then
+# files stored in replayable-* folders are structured
+# in such a way that messages are separated
+if [ $fuzzer = "aflnet" ]; then
   # aflnet
-  testdir="replayable-queue"
   replayer="aflnet-replay"
-elif [ $fmode -eq "0" ]; then
+  testcases=$(echo $folder/replayable-queue/id*)
+elif [ $fuzzer = "aflnwe" ]; then
   # aflnwe
-  testdir="queue"
   replayer="afl-replay"
+  testcases=$(echo $folder/queue/id*)
 else
   # libaflnet
-  testdir="replayable-queue"
-  replayer="/home/zdk/libaflnet/aflnet-replay"
+  replayer="/home/ubuntu/libaflnet/aflnet-replay"
+  testcases=$(echo $folder/queue/*.trace)
 fi
 
-#process initial seed corpus first
-for f in $(echo $folder/$testdir/*.raw); do 
-  time=$(stat -c %Y $f)
-
-  #terminate running server(s)
-  pkill fftp
-
-  ftpclean  
-  $replayer $f FTP $pno 1 > /dev/null 2>&1 &
-  timeout -k 0 -s SIGUSR1 3s ./fftp fftp.conf $pno > /dev/null 2>&1
-  
-  wait
-  cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
-  l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
-  l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
-  b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
-  b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
-  
-  echo "$time,$l_per,$l_abs,$b_per,$b_abs" >> $covfile
-done
-
-#process fuzzer-generated testcases
+# process fuzzer-generated testcases
 count=0
-for f in $(echo $folder/$testdir/id*); do 
+for f in $testcases; do 
   time=$(stat -c %Y $f)
 
-  #terminate running server(s)
+  # terminate running server(s)
   pkill fftp
   
   ftpclean  
-  $replayer $f FTP $pno 1 > /dev/null 2>&1 &
+  $replayer $f ftp $pno > /dev/null 2>&1 &
   timeout -k 0 -s SIGUSR1 3s ./fftp fftp.conf $pno > /dev/null 2>&1
 
   wait
@@ -80,6 +57,7 @@ for f in $(echo $folder/$testdir/id*); do
   rem=$(expr $count % $step)
   if [ "$rem" != "0" ]; then continue; fi
   cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
+  echo $f $cov_data
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -88,7 +66,7 @@ for f in $(echo $folder/$testdir/id*); do
   echo "$time,$l_per,$l_abs,$b_per,$b_abs" >> $covfile
 done
 
-#ouput cov data for the last testcase(s) if step > 1
+# ouput cov data for the last testcase(s) if step > 1
 if [[ $step -gt 1 ]]
 then
   time=$(stat -c %Y $f)
