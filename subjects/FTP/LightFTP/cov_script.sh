@@ -37,19 +37,33 @@ elif [ $fuzzer = "aflnwe" ]; then
 else
   # libaflnet
   replayer="/home/ubuntu/libaflnet/aflnet-replay"
-  testcases=$(echo $folder/queue/*.trace)
+  testcases=$(find $folder/queue -type f -name '*trace' | while read -r file; do
+    number=$(echo "$file" | grep -oE 'ts:[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [[ -n $number ]]; then
+        echo "$number $file"
+    fi
+    done | sort -n | cut -d ' ' -f2-)
 fi
 
 # process fuzzer-generated testcases
 count=0
-for f in $testcases; do 
-  time=$(stat -c %Y $f)
+for f in $testcases; do
+  if [ $fuzzer = "libaflnet" ]; then
+    time=$(echo $f | grep -oE 'ts:[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+  else
+    time=$(stat -c %Y $f)
+  fi
 
   # terminate running server(s)
   pkill fftp
   
-  ftpclean  
-  $replayer $f ftp $pno > /dev/null 2>&1 &
+  ftpclean
+  if [ $fuzzer = "libaflnet" ]; then
+    p="ftp"
+  else
+    p="FTP"
+  fi  
+  $replayer $f $p $pno > /dev/null 2>&1 &
   timeout -k 0 -s SIGUSR1 3s ./fftp fftp.conf $pno > /dev/null 2>&1
 
   wait

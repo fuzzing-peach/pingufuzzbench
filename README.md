@@ -84,9 +84,9 @@ The following commands run 4 instances of AFLNet and 4 instances of AFLnwe to si
 cd $PFBENCH
 mkdir results-lightftp
 
-profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnet out-lightftp-aflnet "-P FTP -D 10000 -q 3 -s 3 -E -K" 3600 5 1
-profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnwe out-lightftp-aflnwe "-D 10000 -K" 3600 5 1
-profuzzbench_exec_common.sh lightftp 4 results-lightftp libaflnet out-lightftp-libaflnet "-P ftp" 3600 5 1
+profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnet out-lightftp-aflnet "-P FTP -D 10000 -q 3 -s 3 -E -K" 3600 5 1 &
+profuzzbench_exec_common.sh lightftp 4 results-lightftp aflnwe out-lightftp-aflnwe "-D 10000 -K" 3600 5 1 &
+profuzzbench_exec_common.sh lightftp 4 results-lightftp libaflnet out-lightftp-libaflnet "-P ftp" 3600 1 1 &
 ```
 
 If the script runs successfully, its output should look similar to the text below.
@@ -119,6 +119,7 @@ cd $PFBENCH/results-lightftp
 
 profuzzbench_generate_csv.sh lightftp 4 aflnet results_cov.csv results_exec.csv 0
 profuzzbench_generate_csv.sh lightftp 4 aflnwe results_cov.csv results_exec.csv 1
+profuzzbench_generate_csv.sh lightftp 4 libaflnet results_cov.csv results_exec.csv 1
 ```
 
 The results.csv file should look similar to text below. The file has six columns showing the timestamp, subject program, fuzzer name, run index, coverage type and its value. The file contains both line coverage and branch coverage over time information. Each coverage type comes with two values, in percentage (*_per) and in absolute number (*_abs).
@@ -136,7 +137,7 @@ time,subject,fuzzer,run,cov_type,cov
 ## Step-4. Analyze the results
 The results collected in step 3 (i.e., results.csv) can be used for plotting. For instance, we provide [a sample Python script](scripts/analysis/profuzzbench_plot.py) to plot code coverage over time. Use the following command to plot the results and save it to a file.
 
-```
+```python
 cd $PFBENCH/results-lightftp
 
 profuzzbench_plot.py -t cov -i results_cov.csv -p lightftp -r 4 -c 60 -s 1 -o cov_over_time.jpg

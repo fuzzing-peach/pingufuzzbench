@@ -95,7 +95,7 @@ RUN git clone https://Kherrisan:$GITHUB_TOKEN@github.com/Kherrisan/libaflnet.git
 ENV WORKDIR="/home/ubuntu/experiments"
 ENV AFLNET="/home/ubuntu/aflnet"
 ENV LIBAFLNET="/home/ubuntu/libaflnet"
-ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}:${LIBAFLNET}/target/debug"
+ENV PATH="${PATH}:${AFLNET}:/home/ubuntu/.local/bin:${WORKDIR}"
 ENV AFL_PATH="${AFLNET}"
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1
