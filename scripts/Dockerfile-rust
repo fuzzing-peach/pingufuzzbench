@@ -1,0 +1,23 @@
+FROM libaflnet-afl:1.0.0
+
+ARG GITHUB_TOKEN
+ARG proxy=http://172.17.0.1:7890
+ARG MAKE_OPT
+
+ENV http_proxy=$proxy
+ENV https_proxy=$proxy
+
+USER ubuntu
+
+# Setting up Rust Nightly
+ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static \
+    RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; 
+RUN . "$HOME/.cargo/env" && \
+    rustup --version; \
+    cargo --version; \
+    rustc --version; \
+    rustup default nightly
+
+RUN printf "[source.crates-io]\nreplace-with = \"ustc\"\n\n[source.ustc]\nregistry = \"sparse+https://mirrors.ustc.edu.cn/crates.io-index/\"" > /home/ubuntu/.cargo/config

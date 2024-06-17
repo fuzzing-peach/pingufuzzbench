@@ -1,0 +1,15 @@
+--2024-04-12 18:21:58--  http://www.baidu.com/
+Connecting to 127.0.0.1:7890... connected.
+Proxy request sent, awaiting response... No data received.
+Retrying.
+
+--2024-04-12 18:23:01--  (try: 2)  http://www.baidu.com/
+Connecting to 127.0.0.1:7890... connected.
+Proxy request sent, awaiting response... 200 OK
+Length: 2381 (2.3K) [text/html]
+Saving to: ‘index.html’
+
+     0K ..                                                    100%  776K=0.003s
+
+2024-04-12 18:23:11 (776 KB/s) - ‘index.html’ saved [2381/2381]
+

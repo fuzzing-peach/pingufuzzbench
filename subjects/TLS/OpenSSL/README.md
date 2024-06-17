@@ -19,8 +19,8 @@ The following commands run 4 instances of AFLNet and 4 instances of AFLnwe to si
 cd $PFBENCH
 mkdir results-openssl
 
-profuzzbench_exec_common.sh openssl 4 results-openssl aflnet out-openssl-aflnet "-P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100" 3600 5 &
-profuzzbench_exec_common.sh openssl 4 results-openssl aflnwe out-openssl-aflnwe "-D 10000 -K -W 100" 3600 5
+profuzzbench_exec_common.sh openssl 4 results-openssl aflnet out-openssl-aflnet "-P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100" 86400 5 &
+profuzzbench_exec_common.sh openssl 4 results-openssl aflnwe out-openssl-aflnwe "-D 10000 -K -W 100" 86400 5
 ```
 
 ## Step-3. Collect the results

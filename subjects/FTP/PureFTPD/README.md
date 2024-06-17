@@ -17,27 +17,30 @@ The following commands run 4 instances of AFLNet and 4 instances of AFLnwe to si
 
 ```bash
 cd $PFBENCH
-mkdir results-pure-ftpd
+mkdir results-pureftpd
 
-profuzzbench_exec_common.sh pure-ftpd 4 results-pure-ftpd aflnet out-pure-ftpd-aflnet "-t 1000+ -m none -P FTP -D 10000 -q 3 -s 3 -E -K" 3600 5 &
-profuzzbench_exec_common.sh pure-ftpd 4 results-pure-ftpd aflnwe out-pure-ftpd-aflnwe "-t 1000+ -m none -D 10000 -K" 3600 5
+profuzzbench_exec_common.sh pureftpd 4 results-pureftpd aflnet out-pureftpd-aflnet "-t 1000+ -P FTP -D 10000 -q 3 -s 3 -E -K" 3600 5 1 &
+profuzzbench_exec_common.sh pureftpd 4 results-pureftpd aflnwe out-pureftpd-aflnwe "-t 1000+ -D 10000 -K" 3600 5 1 &
+profuzzbench_exec_common.sh pureftpd 4 results-pureftpd libaflnet out-pureftpd-libaflnet "-P ftp" 3600 5 1 &
 ```
 
 ## Step-3. Collect the results
 The following commands collect the code coverage results produced by AFLNet and AFLnwe and save them to results.csv.
 
 ```bash
-cd $PFBENCH/results-pure-ftpd
+cd $PFBENCH/results-pureftpd
 
-profuzzbench_generate_csv.sh pure-ftpd 4 aflnet results.csv 0
-profuzzbench_generate_csv.sh pure-ftpd 4 aflnwe results.csv 1
+profuzzbench_generate_csv.sh pureftpd 4 aflnet results_cov.csv results_exec.csv 0 && \
+profuzzbench_generate_csv.sh pureftpd 4 aflnwe results_cov.csv results_exec.csv 1 && \
+profuzzbench_generate_csv.sh pureftpd 4 libaflnet results_cov.csv results_exec.csv 1
 ```
 
 ## Step-4. Analyze the results
 The results collected in step 3 (i.e., results.csv) can be used for plotting. Use the following command to plot the coverage over time and save it to a file.
 
-```
-cd $PFBENCH/results-pure-ftpd
+```bash
+cd $PFBENCH/results-pureftpd
 
-profuzzbench_plot.py -i results.csv -p pure-ftpd -r 4 -c 60 -s 1 -o cov_over_time.png
+profuzzbench_plot.py -t cov -i results_cov.csv -p pureftpd -r 4 -c 60 -s 1 -o cov_over_time.jpg && \
+profuzzbench_plot.py -t exec -i results_exec.csv -p pureftpd -r 4 -c 60 -s 1 -o exec_over_time.jpg
 ```

@@ -1,5 +1,10 @@
 FROM ubuntu:20.04
 
+ARG proxy=http://172.17.0.1:7890
+
+ENV http_proxy=$proxy
+ENV https_proxy=$proxy
+
 # Install common dependencies
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update && \

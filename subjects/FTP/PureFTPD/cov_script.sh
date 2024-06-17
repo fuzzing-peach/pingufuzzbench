@@ -1,13 +1,11 @@
 #!/bin/bash
 
-folder=$1   #fuzzer result folder
-pno=$2      #port number
-step=$3     #step to skip running gcovr and outputting data to covfile
+fuzzer=$1   #fuzzer name
+folder=$2   #fuzzer result folder
+pno=$3      #port number
+step=$4     #step to skip running gcovr and outputting data to covfile
             #e.g., step=5 means we run gcovr after every 5 test cases
-covfile=$4  #path to coverage file
-fmode=$5    #file mode -- structured or not
-            #fmode = 0: the test case is a concatenated message sequence -- there is no message boundary
-            #fmode = 1: the test case is a structured file keeping several request messages
+covfile=$5  #path to coverage file
 
 #delete the existing coverage file
 rm $covfile; touch $covfile
@@ -19,54 +17,55 @@ gcovr -r . -s -d > /dev/null 2>&1
 #Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
 echo "Time,l_per,l_abs,b_per,b_abs" >> $covfile
 
-#files stored in replayable-* folders are structured
-#in such a way that messages are separated
-if [ $fmode -eq "1" ]; then
-  testdir="replayable-queue"
+# files stored in replayable-* folders are structured
+# in such a way that messages are separated
+if [ $fuzzer = "aflnet" ]; then
+  # aflnet
   replayer="aflnet-replay"
-else
-  testdir="queue"
+  testcases=$(echo $folder/replayable-queue/id*)
+elif [ $fuzzer = "aflnwe" ]; then
+  # aflnwe
   replayer="afl-replay"
+  testcases=$(echo $folder/queue/id*)
+else
+  # libaflnet
+  replayer="/home/ubuntu/libaflnet/aflnet-replay"
+  testcases=$(find $folder/queue -type f -name '*trace' | while read -r file; do
+    number=$(echo "$file" | grep -oE 'ts:[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+    if [[ -n $number ]]; then
+        echo "$number $file"
+    fi
+    done | sort -n | cut -d ' ' -f2-)
 fi
 
 #process initial seed corpus first
-for f in $(echo $folder/$testdir/*.raw); do 
-  time=$(stat -c %Y $f)
-
-  #terminate running server(s)
-  pkill pure-ftpd
-
-  $replayer $f FTP $pno 1 > /dev/null 2>&1 &
-  GCOV_PREFIX=/home/fuzzing/ timeout -k 0 3s src/pure-ftpd -A
-  
-  wait
-  cp /home/fuzzing/home/ubuntu/experiments/pure-ftpd-gcov/src/*.gcda /home/ubuntu/experiments/pure-ftpd-gcov/src/ > /dev/null 2>&1
-  cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
-  l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
-  l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
-  b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
-  b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
-  
-  echo "$time,$l_per,$l_abs,$b_per,$b_abs" >> $covfile
-done
-
-#process fuzzer-generated testcases
 count=0
-for f in $(echo $folder/$testdir/id*); do 
-  time=$(stat -c %Y $f)
+for f in $testcases; do
+  if [ $fuzzer = "libaflnet" ]; then
+    time=$(echo $f | grep -oE 'ts:[0-9]+' | grep -oE '[0-9]+' | head -n 1)
+  else
+    time=$(stat -c %Y $f)
+  fi
 
   #terminate running server(s)
   pkill pure-ftpd
-  
-  $replayer $f FTP $pno 1 > /dev/null 2>&1 &
-  GCOV_PREFIX=/home/fuzzing/ timeout -k 0 3s src/pure-ftpd -A
 
+  if [ $fuzzer = "libaflnet" ]; then
+    p="ftp"
+  else
+    p="FTP"
+  fi
+
+  $replayer $f $p $pno 1 > /dev/null 2>&1 &
+  GCOV_PREFIX=/home/fuzzing/ timeout -k 0 3s src/pure-ftpd -A
+  
   wait
-  cp /home/fuzzing/home/ubuntu/experiments/pure-ftpd-gcov/src/*.gcda /home/ubuntu/experiments/pure-ftpd-gcov/src/ > /dev/null 2>&1
   count=$(expr $count + 1)
   rem=$(expr $count % $step)
   if [ "$rem" != "0" ]; then continue; fi
+  cp /home/fuzzing/home/ubuntu/experiments/pure-ftpd-gcov/src/*.gcda /home/ubuntu/experiments/pure-ftpd-gcov/src/ > /dev/null 2>&1
   cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+  echo $cov_data
   l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
   l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
   b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)

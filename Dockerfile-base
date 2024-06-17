@@ -1,0 +1,22 @@
+FROM rust-aflnet-aflnwe:1.0.0
+
+USER ubuntu
+WORKDIR /home/ubuntu
+
+ARG LIBAFLNET_VERSION=1.1.0
+ARG GITHUB_TOKEN
+ARG proxy=http://172.17.0.1:7890
+ARG MAKE_OPT
+
+ENV http_proxy=$proxy
+ENV https_proxy=$proxy
+
+RUN git clone https://Kherrisan:$GITHUB_TOKEN@github.com/Kherrisan/libaflnet.git && \
+    cd libaflnet && \
+    git checkout $LIBAFLNET_VERSION
+    
+WORKDIR /home/ubuntu/libaflnet
+
+RUN . $HOME/.cargo/env && \
+    cargo build -Z unstable-options --release --out-dir /home/ubuntu/libaflnet
+    
