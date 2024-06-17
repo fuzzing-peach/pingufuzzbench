@@ -1,4 +1,4 @@
-FROM ubuntu:jammy
+FROM ubuntu:22.04
 
 ARG proxy=http://172.17.0.1:7890
 ENV http_proxy=$proxy
@@ -8,9 +8,9 @@ RUN apt install apt-transport-https ca-certificates
 RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.seu.edu.cn@g' /etc/apt/sources.list && apt clean
 
 # LLVM-17
-RUN apt-get update && apt-get install -y --no-install-recommends wget ca-certificates gnupg2 && rm -rf /var/lib/apt/lists
-RUN echo deb deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main >> /etc/apt/sources.list
-RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - 
+RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg2 && rm -rf /var/lib/apt/lists
+RUN echo deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main >> /etc/apt/sources.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 
 # Install common dependencies
 ENV DEBIAN_FRONTEND=noninteractive
@@ -59,10 +59,10 @@ RUN git config --global http.proxy $proxy && \
     git config --global http.version HTTP/1.1 
 
 # Set up afl environment
-RUN git clone https://github.com/Kherrisan/aflnet.git && \
-    cd aflnet && \
-    make clean all $MAKE_OPT && \
-    cd llvm_mode && make $MAKE_OPT
+RUN git clone https://github.com/AFLplusplus/AFLplusplus.git && \
+    cd AFLplusplus && \
+    make all && \
+    sudo make install
 
 # Set up rust environments
 ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static \
