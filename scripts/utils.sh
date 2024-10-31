@@ -82,28 +82,6 @@ function compute_coverage {
   rm $covfile || true
   touch $covfile
 
-<<<<<<< HEAD
-  echo "touch $covfile is done"
-  pwd
-  # clear gcov data 
-  # in openssl
-  # gcovr -r . -s -d > /dev/null 2>&1
-
-  # in Live555
-  # gcovr -r .. -s -d >/dev/null 2>&1 
-
-  # in dcmtk and mosquitto
-  # gcovr -r ../.. -s -d > /dev/null 2>&1
-  # 1023 !!!
-  # gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d > /dev/null 2>&1
-  # gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d
-  gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d > /dev/null 2>&1
-
-
-
-  echo "gcovr is done"
-=======
->>>>>>> origin/main
   # output the header of the coverage file which is in the CSV format
   # Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
   echo "time,l_abs,l_per,b_abs,b_per"
