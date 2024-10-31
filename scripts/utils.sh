@@ -82,15 +82,22 @@ function compute_coverage {
   touch $covfile
 
   echo "touch $covfile is done"
-  # clear gcov data
+  pwd
+  # clear gcov data 
+  # in openssl
   # gcovr -r . -s -d > /dev/null 2>&1
 
-  # gcovr -r .. -s -d >/dev/null 2>&1 in Live555!!!!!!
+  # in Live555
   # gcovr -r .. -s -d >/dev/null 2>&1 
 
-  # in dcmtk
-  gcovr -r ../.. -s -d > /dev/null 2>&1
-  
+  # in dcmtk and mosquitto
+  # gcovr -r ../.. -s -d > /dev/null 2>&1
+  # 1023 !!!
+  # gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d > /dev/null 2>&1
+  # gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d
+  gcovr -r ${HOME}/target/gcov/consumer/dcmtk -s -d > /dev/null 2>&1
+
+
 
   echo "gcovr is done"
   # output the header of the coverage file which is in the CSV format
@@ -109,8 +116,15 @@ function compute_coverage {
     count=$((count + 1))
     rem=$((count % step))
     if [ "$rem" != "0" ]; then continue; fi
-    # cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:") !!!
-    cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
+    # in openssl
+    # cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:") 
+
+    # in live555
+    # cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")  
+
+    # in dcmtk and mosquitto
+    # cov_data=$(gcovr -r ../.. -s | grep "[lb][a-z]*:")  mosquitto yuanlai
+    cov_data=$(gcovr -r ../.. -s | grep "[lb][a-z]*:")
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -122,8 +136,16 @@ function compute_coverage {
   # output cov data for the last testcase(s) if step > 1
   if [[ $step -gt 1 ]]; then
     time=$(stat -c %Y $f)
-    # cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:") !!!
-    cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")
+    # in openssl
+    # cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:") 
+
+    # in live555
+    # cov_data=$(gcovr -r .. -s | grep "[lb][a-z]*:")  
+
+    # in dcmtk
+    # cov_data=$(gcovr -r ../.. -s | grep "[lb][a-z]*:")  mosquitto yuanlai
+    cov_data=$(gcovr -r ../..  -s | grep "[lb][a-z]*:")
+    
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)

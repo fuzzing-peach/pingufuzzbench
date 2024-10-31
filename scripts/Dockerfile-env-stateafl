@@ -89,7 +89,7 @@ RUN zsh -c ". ~/.zshrc"
 ##############
 
 # StateAFL
-ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
+# ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
 RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark && sudo pip3 install --proxy=${HTTP_PROXY} --break-system-packages -i https://mirrors.aliyun.com/pypi/simple pyshark
 RUN git clone https://gitee.com/zhangadiu/stateafl.git --depth=1 && \
     cd stateafl && \
