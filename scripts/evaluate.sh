@@ -131,6 +131,5 @@ done
 if [[ -n "$summary" ]]; then
     docker exec -w /home/user/profuzzbench -it pingu-eval python3 scripts/evaluation/summary.py "${coverage_files[@]}"
 else 
-    # docker exec -w /home/user/profuzzbench -it pingu-eval python3 scripts/evaluation/plot.py -c 60 -s 1 -o "${output_tar_prefix}-coverage.png" "${coverage_files[@]}"
-    docker exec -w /home/user/profuzzbench -it pingu-eval python3 scripts/plot.py -c 60 -s 1 -o "${output_tar_prefix}-coverage.png" "${coverage_files[@]}"
+    docker exec -w /home/user/profuzzbench -it pingu-eval python3 scripts/evaluation/plot.py -c 60 -s 1 -o "${output_tar_prefix}-coverage.png" "${coverage_files[@]}"
 fi

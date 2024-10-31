@@ -6,13 +6,19 @@ cd $(dirname $0)
 cd ..
 source scripts/utils.sh
 
+# Check if kernel.core_pattern is set to 'core'
+core_pattern=$(cat /proc/sys/kernel/core_pattern)
+if [ "$core_pattern" != "core" ]; then
+    log_error "[!] kernel.core_pattern is not set to 'core'. Current value: $core_pattern"
+    log_error "[!] Please set it to 'core' using: echo core | sudo tee /proc/sys/kernel/core_pattern"
+    exit 1
+fi
+
+log_success "[+] kernel.core_pattern is correctly set to 'core'"
+
 # Parameters after -- is passed directly to the run script
 args=($(get_args_before_double_dash "$@"))
 fuzzer_args=$(get_args_after_double_dash "$@")
-
-# echo "args: ${args[@]}"
-# echo "fuzzer_args: $fuzzer_args"
-
 
 opt_args=$(getopt -o o:f:t:v: -l output:,fuzzer:,generator:,target:,version:,times:,timeout:,cleanup,detached,dry-run -- "${args[@]}")
 if [ $? != 0 ]; then
@@ -120,7 +126,7 @@ for i in $(seq 1 $times); do
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \
         -v .:/home/user/profuzzbench \
-        -v ${output}/${cname}:/tmp/fuzzing-output \
+        -v ${output}/${cname}:/tmp/fuzzing-output:rw \
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \

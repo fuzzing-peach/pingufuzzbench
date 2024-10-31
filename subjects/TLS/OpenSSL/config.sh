@@ -11,8 +11,7 @@ function checkout {
 
 function replay {
     # the process launching order is confusing.
-    #${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
-    ${HOME}/stateafl/aflnet-replay $1 TLS 4433 100 &
+    ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./apps/openssl s_server \
         -cert ${HOME}/profuzzbench/test.fullchain.pem \
@@ -44,7 +43,6 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    # echo "run_aflnet is called"
     timeout=$1
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
@@ -58,7 +56,6 @@ function run_aflnet {
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
-    # echo "export is used"
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/4433 \
@@ -68,10 +65,14 @@ function run_aflnet {
         -key ${HOME}/profuzzbench/test.key.pem \
         -accept 4433 -4
 
-    # echo "timeout is called"
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
+    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/openssl
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
+    
+    # clear the gcov data before computing coverage
+    gcovr -r . -s -d >/dev/null 2>&1
+    
+    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
@@ -79,9 +80,6 @@ function run_aflnet {
 }
 
 function build_stateafl {
-    # echo "Not implemented"
-    # exit 1
-
     mkdir -p target/stateafl
     rm -rf target/stateafl/*
     cp -r repo/openssl target/stateafl/openssl
@@ -101,8 +99,6 @@ function build_stateafl {
     popd >/dev/null
 }
 
-
-# zkc stateafl
 function run_stateafl {
     timeout=$1
     outdir=/tmp/fuzzing-output
@@ -126,9 +122,14 @@ function run_stateafl {
         -key ${HOME}/profuzzbench/test.key.pem \
         -accept 4433 -4
 
+    # clear the gcov data before computing coverage
+    gcovr -r . -s -d >/dev/null 2>&1
+
+    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/openssl
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
+
+    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
