@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
 
 function checkout {
-    mkdir -p repo
-    git clone https://github.com/rgaufman/live555.git repo/live555
-    pushd repo/live555 >/dev/null
-    git checkout "$@"
-    git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-live555.patch
-    popd >/dev/null
+    mkdir -p repo/live555
+    cd repo/live555 
+    git init
+    git remote add origin https://github.com/rgaufman/live555.git
+    git fetch origin
+    git checkout -b master origin/master  # 将 'main' 替换为仓库的主分支名称
+
+    git checkout  "$@"
+    echo "$(pwd)"
+    pushd . >/dev/null  # 记住当前目录
+    git apply "${HOME}/profuzzbench/subjects/RTSP/Live555/ft-live555.patch"
+    popd >/dev/null  # 返回原始目录
+    
+    
+
 }
 
 function replay {
