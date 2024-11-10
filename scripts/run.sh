@@ -119,7 +119,7 @@ for i in $(seq 1 $times); do
     ts=$(date +%s%3N)
     cname="${container_name}-${i}-${ts}"
     mkdir -p ${output}/${cname}
-    cmd="docker run -it -d \
+    cmd="docker run -it --privileged -d \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \

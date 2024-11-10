@@ -135,8 +135,34 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
-    echo "Not implemented"
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/live555 target/sgfuzz/live555
+    pushd target/sgfuzz/live555 >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
+    export LDFLAGS="-fsanitize=address -fsanitize=fuzzer-no-link"
+
+    python3 $HOME/SGFuzz/sanitizer/State_machine_instrument.py . #  -b <(echo "EC_Normal\nOFFilename\nnptr")
+
+    sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
+    sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
+    sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
+
+    set +e
+    ./genMakefiles linux
+    make -j
+    set -e
+
+    cd testProgs
+    clang++ -otestOnDemandRTSPServer -L. -fsanitize=address -DFT_FUZZING -DSGFUZZ -DFT_CONSUMER testOnDemandRTSPServer.o announceURL.o ../liveMedia/libliveMedia.a ../groupsock/libgroupsock.a ../BasicUsageEnvironment/libBasicUsageEnvironment.a ../UsageEnvironment/libUsageEnvironment.a -lssl -lcrypto -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ -fsanitize=fuzzer -fsanitize=address -DSGFUZZ
+
+    echo "done!"
 }
+
 
 function build_ft_generator {
     echo "Not implemented"

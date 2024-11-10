@@ -98,7 +98,7 @@ RUN git clone https://gitee.com/skyworld123/aflnet.git && \
     cd llvm_mode && make ${MAKE_OPT}
 
 # SGFuzz
-RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=1 && \
+RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=3 && \
     cd SGFuzz && \
     git checkout 00dbbd70ba79f1bcff3f7dfdb4fda0645cf91225 && \
     git apply /tmp/patches/sgfuzz.patch && \
