@@ -232,7 +232,7 @@ function run_sgfuzz {
     cd ${HOME}/target/gcov/consumer/openssl
 
     gcovr -r . -s -d >/dev/null 2>&1
-
+    source ~/profuzzbench/scripts/utils.sh
     compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
