@@ -44,7 +44,8 @@ function build_aflnet {
 
 function run_aflnet {
     timeout=$1
-    outdir=/tmp/fuzzing-output
+    #outdir=/tmp/fuzzing-output
+    outdir=~/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/aflnet/openssl >/dev/null
 
@@ -142,26 +143,23 @@ function build_sgfuzz {
     mkdir -p target/sgfuzz
     rm -rf target/sgfuzz/*
     cp -r repo/openssl target/sgfuzz/openssl
-    pushd target/sgfuzz/openssl >/dev/null
 
-    cp "${HOME}/sgfuzz/example/openssl/blocked_variables.txt" ./
+    pushd $HOME/target/sgfuzz/openssl > /dev/null
 
-    python3 "${HOME}/sgfuzz/sanitizer/State_machine_instrument.py" ./ -b blocked_variables.txt
+    python3 $HOME/SGFuzz/sanitizer/State_machine_instrument.py . # -b <(echo "type")
 
     ./config -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
     sed -i 's@CXX=$(CROSS_COMPILE)g++.*@CXX=clang++@g' Makefile
-    sed -i 's/CFLAGS=.*/CFLAGS=-fPIC -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
-    sed -i 's/CXXFLAGS=.*/CXXFLAGS=-fPIC -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
+    sed -i 's/CFLAGS=.*/CFLAGS=-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
+    sed -i 's/CXXFLAGS=.*/CXXFLAGS=-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
     sed -i 's@-Wl,-z,defs@@g' Makefile
-    
+
     set +e
-    bear -- make ${MAKE_OPT}
+    bear -- make -j4
     set -e
-    
-    clang++ -fsanitize=fuzzer-no-link -fsanitize=address \
-        -pthread -m64 -Wa,--noexecstack -Qunused-arguments -Wall -O3 -L. -Wno-int-conversion \
-        -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
+
+    clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -Wno-int-conversion -L.   \
         -o apps/openssl \
         apps/lib/openssl-bin-cmp_mock_srv.o \
         apps/openssl-bin-asn1parse.o apps/openssl-bin-ca.o \
@@ -191,9 +189,10 @@ function build_sgfuzz {
         apps/openssl-bin-srp.o apps/openssl-bin-storeutl.o \
         apps/openssl-bin-ts.o apps/openssl-bin-verify.o \
         apps/openssl-bin-version.o apps/openssl-bin-x509.o \
-        apps/libapps.a -lssl -lcrypto -ldl -pthread -lsFuzzer -lhfnetdriver -lhfcommon
+        apps/libapps.a -lssl -lcrypto -ldl -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ -fsanitize=fuzzer -fsanitize=address -DSGFUZZ
 
     echo "done!"
+    popd > /dev/null
 }
 
 function run_sgfuzz {
@@ -201,16 +200,48 @@ function run_sgfuzz {
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/sgfuzz/openssl >/dev/null
+    export LD_LIBRARY_PATH=~/target/sgfuzz/openssl:$LD_LIBRARY_PATH
+    export HFND_TCP_PORT=4433
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     mkdir -p $outdir
     rm -rf $outdir/*
 
-    SGFuzzPara="-close_fd_mask=3 -shrink=1 -print_full_coverage=1 -check_input_sha1=1 -reduce_inputs=1 \
-                -max_total_time=${timeout} -reload=30 -print_final_stats=1 -detect_leaks=0 ${outdir} ${indir}"
-    OpenSSLPara="s_server -key ${HOME}/profuzzbench/test.key.pem -cert ${HOME}/profuzzbench/test.fullchain.pem -4 -no_anti_replay -accept 4433 -4"
-    ./apps/openssl ${SGFuzzPara} -- ${OpenSSLPara}
-}
+    SGFuzz_ARGS=(
+        -close_fd_mask=3
+        -shrink=1
+        -print_full_coverage=1
+        -check_input_sha1=1
+        -reduce_inputs=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        "${outdir}"
+        "${indir}"
+    )
 
+    OPENSSL_ARGS=(
+        s_server
+        -key "${HOME}/profuzzbench/test.key.pem"
+        -cert "${HOME}/profuzzbench/test.fullchain.pem"
+        -accept "4433"
+        -4
+    )
+
+    timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
+    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
+    list_cmd="ls -1 ${outdir}/ | tr '\n' ' ' | sed 's/ $//'"
+    cd ${HOME}/target/gcov/consumer/openssl
+
+    gcovr -r . -s -d >/dev/null 2>&1
+    source ~/profuzzbench/scripts/utils.sh
+    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+    # 单独replay subjects/TLS/OpenSSL/in-tls/tls.raw 也会出现版本号错误的信息，我不知道是不是因为这个原因
+    # 导致tls.raw产生的testcase全部都版本号错误且覆盖率一样
+    popd >/dev/null
+}
 function build_ft_generator {
     mkdir -p target/ft/generator
     rm -rf target/ft/generator/*
@@ -283,7 +314,6 @@ function run_ft {
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/openssl
     grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
-
     popd >/dev/null
 }
 
