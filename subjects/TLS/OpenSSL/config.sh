@@ -146,9 +146,9 @@ function build_sgfuzz {
 
     pushd $HOME/target/sgfuzz/openssl > /dev/null
 
-    python3 $HOME/SGFuzz/sanitizer/State_machine_instrument.py . # -b <(echo "type")
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . # -b <(echo "type")
 
-    ./config -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
     sed -i 's@CXX=$(CROSS_COMPILE)g++.*@CXX=clang++@g' Makefile
     sed -i 's/CFLAGS=.*/CFLAGS=-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
@@ -156,10 +156,11 @@ function build_sgfuzz {
     sed -i 's@-Wl,-z,defs@@g' Makefile
 
     set +e
-    bear -- make -j4
+    bear -- make ${MAKE_OPT}
     set -e
 
-    clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -Wno-int-conversion -L.   \
+    clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
+        -fsanitize=address -fsanitize=fuzzer -Wno-int-conversion -L.   \
         -o apps/openssl \
         apps/lib/openssl-bin-cmp_mock_srv.o \
         apps/openssl-bin-asn1parse.o apps/openssl-bin-ca.o \
@@ -189,9 +190,9 @@ function build_sgfuzz {
         apps/openssl-bin-srp.o apps/openssl-bin-storeutl.o \
         apps/openssl-bin-ts.o apps/openssl-bin-verify.o \
         apps/openssl-bin-version.o apps/openssl-bin-x509.o \
-        apps/libapps.a -lssl -lcrypto -ldl -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ -fsanitize=fuzzer -fsanitize=address -DSGFUZZ
+        apps/libapps.a -lssl -lcrypto -ldl -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++
 
-    echo "done!"
+    rm -rf fuzz test .git doc
     popd > /dev/null
 }
 
@@ -200,7 +201,7 @@ function run_sgfuzz {
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/sgfuzz/openssl >/dev/null
-    export LD_LIBRARY_PATH=~/target/sgfuzz/openssl:$LD_LIBRARY_PATH
+
     export HFND_TCP_PORT=4433
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -229,19 +230,37 @@ function run_sgfuzz {
     )
 
     timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
-    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
+    
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
+    cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
     list_cmd="ls -1 ${outdir}/ | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/openssl
 
-    gcovr -r . -s -d >/dev/null 2>&1
-    source ~/profuzzbench/scripts/utils.sh
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
+    # sgfuzz 产生的 testcase 的文件内容不符合 aflnet-replay 的格式要求（4字节的长度前缀）
+    # 所以需要单独提供 replay 函数，用 afl-replay 来一次性将 testcase 的所有内容都发出去
+    function replay {
+        # the process launching order is confusing.
+        ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 1s 3s ./apps/openssl s_server \
+            -cert ${HOME}/profuzzbench/test.fullchain.pem \
+            -key ${HOME}/profuzzbench/test.key.pem \
+            -accept 4433 -4
+        wait
+    }
+
+    gcovr -r . -s -d ${MAKE_OPT} >/dev/null 2>&1
+    # 10 是 step 参数，表示每 10 个 testcase 计算一次覆盖率
+    # 因为 sgfuzz（libfuzzer） 产生的 testcase 数量很多，如果每 1 个都计算一次覆盖率，时间开销会很大
+    # 每个 testcase 都是 replay 的，但是每 10 个 testcase 统计一下覆盖率
+    compute_coverage replay "$list_cmd" 10 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
-    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+    gcovr -r . --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
     # 单独replay subjects/TLS/OpenSSL/in-tls/tls.raw 也会出现版本号错误的信息，我不知道是不是因为这个原因
     # 导致tls.raw产生的testcase全部都版本号错误且覆盖率一样
     popd >/dev/null
 }
+
 function build_ft_generator {
     mkdir -p target/ft/generator
     rm -rf target/ft/generator/*
@@ -392,8 +411,6 @@ function run_pingu {
 
     popd >/dev/null
 }
-
-
 
 function build_gcov {
     mkdir -p target/gcov/consumer

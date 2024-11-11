@@ -146,7 +146,7 @@ function build_sgfuzz {
     export CXXFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
     export LDFLAGS="-fsanitize=address -fsanitize=fuzzer-no-link"
 
-    python3 $HOME/SGFuzz/sanitizer/State_machine_instrument.py . #  -b <(echo "EC_Normal\nOFFilename\nnptr")
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . #  -b <(echo "EC_Normal\nOFFilename\nnptr")
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
     sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
