@@ -14,7 +14,7 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 | Protocol                                | **Pingu** | [AFLNet] | [StateAFL] | [SGFuzz] | [FT-Net] | [tlspuffin] | [tlsfuzzer] | [tls-anvil] |
 | --------------------------------------- | --------- | -------- | ---------- | -------- | -------- | ----------- | ----------- | ----------- |
 | [DICOM/dcmtk]()                         |           |          |            |          |          |             |             |             |
-| [RTP/live555]()                         |           |          |            |          |          |             |             |             |
+| [RTP/live555]()                         |           | ✅        | ✅          |          |          |             |             |             |
 | [MQTT/mosquitto]()                      |           |          |            |          |          |             |             |             |
 | [TLS/openssl](subjects/TLS/OpenSSL)     | ✅         | ✅        |            |          | ✅        |             |             |             |
 | [TLS/wolfssl](subjects/TLS/WolfSSL)     | ✅         | ✅        |            |          | ✅        |             |             |             |
@@ -117,6 +117,14 @@ Arguments:
 - ***-f*** : name of the fuzzer. Supports aflnet, stateafl, sgfuzz, ft, puffin, pingu.
 
 The parameters specified after the **--** are the build arguments passed directly for the docker build command. You can specify sth like `--network=host --build-arg HTTP_PROXY=xxx`. Check the [Dockerfile-env](scripts/Dockerfile-env) to see the available build arguments.
+
+### CI status of the base images
+
+| Fuzzer   | Dockerfile                                             | Status                                                                                                                                                                                                                         |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AFLNet   | [Dockerfile-aflnet](scripts/Dockerfile-env-aflnet)     | [![pingu-env-aflnet CI](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-aflnet-CI.yml/badge.svg)](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-aflnet-CI.yml)       |
+| StateAFL | [Dockerfile-stateafl](scripts/Dockerfile-env-stateafl) | [![pingu-env-stateafl CI](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-stateafl-CI.yml/badge.svg)](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-stateafl-CI.yml) |
+| SGFuzz   | [Dockerfile-sgfuzz](scripts/Dockerfile-env-sgfuzz)     | [![pingu-env-sgfuzz CI](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-sgfuzz-CI.yml/badge.svg)](https://github.com/fuzzing-peach/pingufuzzbench/actions/workflows/pingu-env-sgfuzz-CI.yml)       |
 
 ## Step-1.5. (Optional) Launch the development environment
 

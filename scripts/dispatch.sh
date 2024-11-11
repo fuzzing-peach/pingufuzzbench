@@ -7,6 +7,10 @@ cd $(dirname $0)
 cd ..
 source scripts/utils.sh
 
+# Disable ASLR in the current shell
+# But this is not permitted
+# setarch `uname -m` -R /bin/bash
+
 function in_subshell() {
     (
         cd "$HOME"
@@ -16,7 +20,7 @@ function in_subshell() {
 }
 
 if [[ $# -lt 1 ]]; then
-    echo "[!] Not enough arguments! TODO: <path> [mode]"
+    echo "[!] Not enough arguments! TODO: <path> [fuzzer]"
     echo "[!] <path>: TLS/openssl etc."
     exit 1
 fi
@@ -46,10 +50,22 @@ checkout)
 esac
 
 # cmd is build/run
-mode=${3-"all"}
+fuzzer=${3-"all"}
 shift 3
-case $mode in
+case $fuzzer in
 deps)
+    # build deps
+    if ! grep -q "source $target_config" ~/.zshrc; then
+        echo "source $(pwd)/$target_config" >> ~/.zshrc
+        echo "source $(pwd)/scripts/utils.sh" >> ~/.zshrc
+    fi
+    if ! grep -q "source $target_config" ~/.bashrc; then
+        echo "source $(pwd)/$target_config" >> ~/.bashrc
+        echo "source $(pwd)/scripts/utils.sh" >> ~/.bashrc
+    fi
+
+    sed -i '11i setup_proxy 172.17.0.1:9870' ~/.zshrc
+
     source $target_config
     in_subshell install_dependencies "$@"
     ;;
@@ -141,7 +157,7 @@ all)
     echo "[!] Not implemented for 'all'"
     ;;
 *)
-    echo "[!] Invalid mode $mode"
+    echo "[!] Invalid fuzzer $fuzzer"
     exit 1
     ;;
 esac

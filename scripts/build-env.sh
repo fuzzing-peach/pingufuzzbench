@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+export TERM=xterm-256color
+
 set -e
 set -o pipefail
 cd $(dirname $0)

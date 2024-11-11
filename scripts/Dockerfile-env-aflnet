@@ -75,15 +75,12 @@ RUN git config --global http.version HTTP/1.1 && \
     git config --global user.email zdkscope@qq.com
     
 COPY patches /tmp/patches
-COPY scripts/.zshrc ${HOME}/.zshrc
-COPY scripts/.p10k.zsh ${HOME}/.p10k.zsh
+COPY --chown=user:user scripts/.zshrc ${HOME}/.zshrc
+COPY --chown=user:user scripts/.p10k.zsh ${HOME}/.p10k.zsh
 RUN zsh -c ". ~/.zshrc"
 
 ##############
 # End of user setup
-
-# Code
-##############
 
 # Environments and fuzzer tools
 ##############

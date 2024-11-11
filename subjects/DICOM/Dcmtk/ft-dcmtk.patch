@@ -1,0 +1,89 @@
+diff --git a/dcmnet/apps/dcmrecv.cc b/dcmnet/apps/dcmrecv.cc
+index d34eee071..e08f4cd36 100644
+--- a/dcmnet/apps/dcmrecv.cc
++++ b/dcmnet/apps/dcmrecv.cc
+@@ -65,7 +65,11 @@ static char rcsid[] = "$dcmtk: " OFFIS_CONSOLE_APPLICATION " v"
+ #define SHORTCOL 4
+ #define LONGCOL 21
+ 
+-int main(int argc, char *argv[])
++#ifdef SGFUZZ
++extern "C" int HonggfuzzNetDriver_main(int argc, char ** argv)
++#else
++int main(int argc, char ** argv)
++#endif
+ {
+ 
+ #ifdef WITH_OPENSSL
+diff --git a/dcmnet/libsrc/dcmtrans.cc b/dcmnet/libsrc/dcmtrans.cc
+index a29121a24..cdadaab52 100644
+--- a/dcmnet/libsrc/dcmtrans.cc
++++ b/dcmnet/libsrc/dcmtrans.cc
+@@ -358,6 +358,9 @@ ssize_t DcmTCPConnection::write(void *buf, size_t nbyte)
+ 
+ void DcmTCPConnection::close()
+ {
++#if defined(FT_CONSUMER) && !defined(SGFUZZ)
++				exit(0);
++#endif
+   closeTransportConnection();
+ }
+ 
+diff --git a/dcmnet/libsrc/dulfsm.cc b/dcmnet/libsrc/dulfsm.cc
+index 2fedb9b1f..4d2880275 100644
+--- a/dcmnet/libsrc/dulfsm.cc
++++ b/dcmnet/libsrc/dulfsm.cc
+@@ -225,10 +225,18 @@ static OFCondition
+ AR_10_ConfirmRelease(PRIVATE_NETWORKKEY ** network,
+         PRIVATE_ASSOCIATIONKEY ** association, int nextState, void *params);
+ 
++#ifdef FT_FUZZING
++OFCondition
++requestAssociationTCP(PRIVATE_NETWORKKEY ** network,
++                      DUL_ASSOCIATESERVICEPARAMETERS * params,
++                      PRIVATE_ASSOCIATIONKEY ** association);
++#else
+ static OFCondition
+ requestAssociationTCP(PRIVATE_NETWORKKEY ** network,
+                       DUL_ASSOCIATESERVICEPARAMETERS * params,
+                       PRIVATE_ASSOCIATIONKEY ** association);
++#endif
++
+ static OFCondition
+ sendAssociationRQTCP(PRIVATE_NETWORKKEY ** network,
+                      DUL_ASSOCIATESERVICEPARAMETERS * params,
+@@ -2213,11 +2221,18 @@ AA_8_UnrecognizedPDUSendAbort(PRIVATE_NETWORKKEY ** /* network */,
+ **      Description of the algorithm (optional) and any other notes.
+ */
+ 
+-
+-static OFCondition
++#ifdef FT_FUZZING
++OFCondition
++requestAssociationTCP(PRIVATE_NETWORKKEY ** network,
++                      DUL_ASSOCIATESERVICEPARAMETERS * params,
++                      PRIVATE_ASSOCIATIONKEY ** association)
++#else
++static
++OFCondition
+ requestAssociationTCP(PRIVATE_NETWORKKEY ** network,
+                       DUL_ASSOCIATESERVICEPARAMETERS * params,
+                       PRIVATE_ASSOCIATIONKEY ** association)
++#endif
+ {
+     char node[128];
+     int  port;
+diff --git a/dcmnet/libsrc/scp.cc b/dcmnet/libsrc/scp.cc
+index 452c8dd84..5ba9e5dc9 100644
+--- a/dcmnet/libsrc/scp.cc
++++ b/dcmnet/libsrc/scp.cc
+@@ -633,6 +633,9 @@ void DcmSCP::handleAssociation()
+         notifyDIMSEError(cond);
+         ASC_abortAssociation(m_assoc);
+     }
++#if defined(FT_FUZZING) && !defined(SGFUZZ)
++    exit(1);
++#endif
+ }
+ 
+ // ----------------------------------------------------------------------------

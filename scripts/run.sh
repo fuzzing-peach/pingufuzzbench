@@ -119,14 +119,14 @@ for i in $(seq 1 $times); do
     ts=$(date +%s%3N)
     cname="${container_name}-${i}-${ts}"
     mkdir -p ${output}/${cname}
-    cmd="docker run -it -d \
+    cmd="docker run -it --privileged -d \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \
         -v .:/home/user/profuzzbench \
-        -v ${output}/${cname}:/tmp/fuzzing-output \
+        -v ${output}/${cname}:/tmp/fuzzing-output:rw \
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \

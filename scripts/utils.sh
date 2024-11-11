@@ -76,13 +76,11 @@ function compute_coverage {
   testcases=$(eval "$2")
   step=$3
   covfile=$4
+  cov_cmd=$5
 
   # delete the existing coverage file
   rm $covfile || true
   touch $covfile
-
-  # clear gcov data
-  gcovr -r . -s -d >/dev/null 2>&1
 
   # output the header of the coverage file which is in the CSV format
   # Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
@@ -93,14 +91,18 @@ function compute_coverage {
   count=0
   for f in $testcases; do
     echo $f
-    time=$(stat -c %Y $f)
-
-    "$replayer" "$f" || true
+    time=$(stat -c %Y "/tmp/fuzzing-output/$f")
+    "$replayer" "/tmp/fuzzing-output/$f" || true
 
     count=$((count + 1))
     rem=$((count % step))
     if [ "$rem" != "0" ]; then continue; fi
-    cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+    # Run the coverage command if provided, otherwise use default gcovr command
+    if [ -n "$cov_cmd" ]; then
+        cov_data=$(eval "$cov_cmd")
+    else
+        cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+    fi
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -112,7 +114,12 @@ function compute_coverage {
   # output cov data for the last testcase(s) if step > 1
   if [[ $step -gt 1 ]]; then
     time=$(stat -c %Y $f)
-    cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+    # Run the coverage command if provided, otherwise use default gcovr command
+    if [ -n "$cov_cmd" ]; then
+        cov_data=$(eval "$cov_cmd")
+    else
+        cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
+    fi
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)

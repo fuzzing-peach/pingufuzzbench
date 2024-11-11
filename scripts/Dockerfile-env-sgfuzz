@@ -75,8 +75,8 @@ RUN git config --global http.version HTTP/1.1 && \
     git config --global user.email zdkscope@outlook.com
     
 COPY patches /tmp/patches  
-COPY scripts/.zshrc ${HOME}/.zshrc
-COPY scripts/.p10k.zsh ${HOME}/.p10k.zsh
+COPY --chown=user:user scripts/.zshrc ${HOME}/.zshrc
+COPY --chown=user:user scripts/.p10k.zsh ${HOME}/.p10k.zsh
 RUN zsh -c ". ~/.zshrc"
 
 ##############
@@ -88,8 +88,17 @@ RUN zsh -c ". ~/.zshrc"
 # Environments and fuzzer tools
 ##############
 
+# AFLNet
+# We need aflnet-replay to replay all the testcases
+RUN git clone https://gitee.com/skyworld123/aflnet.git && \
+    cd aflnet && \
+    git checkout 62d63a59230bb5f5c6e54cddd381b9425dba3726 && \
+    git apply /tmp/patches/aflnet.patch && \
+    make clean all ${MAKE_OPT} && \
+    cd llvm_mode && make ${MAKE_OPT}
+
 # SGFuzz
-RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=1 && \
+RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=3 && \
     cd SGFuzz && \
     git checkout 00dbbd70ba79f1bcff3f7dfdb4fda0645cf91225 && \
     git apply /tmp/patches/sgfuzz.patch && \
