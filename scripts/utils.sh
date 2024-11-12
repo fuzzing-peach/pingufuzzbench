@@ -91,8 +91,8 @@ function compute_coverage {
   count=0
   for f in $testcases; do
     echo $f
-    time=$(stat -c %Y "/tmp/fuzzing-output/$f")
-    "$replayer" "/tmp/fuzzing-output/$f" || true
+    time=$(stat -c %Y $f)
+    "$replayer" "$f" || true
 
     count=$((count + 1))
     rem=$((count % step))

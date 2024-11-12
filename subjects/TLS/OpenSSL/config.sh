@@ -125,12 +125,12 @@ function run_stateafl {
         -key ${HOME}/profuzzbench/test.key.pem \
         -accept 4433 -4 > /tmp/fuzzing-output/stateafl.log 2>&1
 
-    # clear the gcov data before computing coverage
-    gcovr -r . -s -d >/dev/null 2>&1
-
-    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/openssl
+    # clear the gcov data before computing coverage
+    gcovr -r . -s -d ${MAKE_OPT} >/dev/null 2>&1
+
+    cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
 
     compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
@@ -233,7 +233,7 @@ function run_sgfuzz {
     
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
     cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
-    list_cmd="ls -1 ${outdir}/ | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/openssl
 
     # sgfuzz 产生的 testcase 的文件内容不符合 aflnet-replay 的格式要求（4字节的长度前缀）
