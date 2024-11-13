@@ -209,6 +209,7 @@ function run_sgfuzz {
     rm -rf $outdir/*
 
     SGFuzz_ARGS=(
+        -max_total_time=$timeout
         -close_fd_mask=3
         -shrink=1
         -print_full_coverage=1
@@ -229,7 +230,8 @@ function run_sgfuzz {
         -4
     )
 
-    timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
+    # timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
+    ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
     
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
     cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
