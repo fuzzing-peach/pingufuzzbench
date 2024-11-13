@@ -23,10 +23,7 @@ RUN apt-get -y update && \
     strace \
     wget
 
-
-
-
-RUN apt-get install libssl-dev libwebsockets-dev uuid-dev docbook-xsl docbook xsltproc
+RUN apt-get install  libwebsockets-dev uuid-dev docbook-xsl docbook xsltproc
 
 
 # Add a new user ubuntu, pass: ubuntu
@@ -63,56 +60,30 @@ ENV AFL_PATH="${AFLNET}"
 ENV AFL_I_DONT_CARE_ABOUT_MISSING_CRASHES=1 \
     AFL_SKIP_CPUFREQ=1 \
     AFL_NO_AFFINITY=1
-
+ENV    AFL_USE_ASAN=1
 
 RUN mkdir $WORKDIR
 
-USER root
-RUN apt-get -y install cmake
-
-COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
-COPY --chown=ubuntu:ubuntu normal.patch ${WORKDIR}/normal.patch
+#COPY --chown=ubuntu:ubuntu fuzzing.patch ${WORKDIR}/fuzzing.patch
+#COPY --chown=ubuntu:ubuntu gcov.patch ${WORKDIR}/gcov.patch
 
 # Set up environment variables for ASAN
 env ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0:malloc_fill_byte=0:max_malloc_fill_size=16777216'
 
-# Download and compile Dcmtk for fuzzing
-RUN cd $WORKDIR && \
-    git clone https://github.com/DCMTK/dcmtk && \
-    cd dcmtk && \
-    git checkout 7f8564c && \
-    patch -p1 < $WORKDIR/fuzzing.patch && \
-    mkdir build && cd build && \
-    cmake .. && \
-    AFL_USE_ASAN=1 make dcmqrscp $MAKE_OPT
 
 
-# Download and compile Dcmtk for coverage analysis
-RUN cd $WORKDIR && \
-    git clone https://github.com/DCMTK/dcmtk dcmtk-gcov && \
-    cd dcmtk-gcov && \
-    git checkout 7f8564c && \
-    patch -p1 < $WORKDIR/normal.patch && \
-    mkdir build && cd build && \
-    cmake -G"Unix Makefiles" .. -DCMAKE_C_FLAGS="-g -fprofile-arcs -ftest-coverage" -DCMAKE_CXX_FLAGS="-g -fprofile-arcs -ftest-coverage" && \
-    make dcmqrscp $MAKE_OPT
 
+# Download and compile  for fuzzing
+RUN cd %WORKDIR && \
+    git clone https://github.com/eclipse/mosquitto.git && \
+    cd mosquitto && \
+    git checkout 2665705 && \
+  #  patch -p1 < $WORKDIR/fuzzing.patch && \
+    AFL_USE_ASAN=1 \
+    make clean all WITH_TLS=no WITH_TLS_PSK:=no WITH_STATIC_LIBRARIES=yes WITH_DOCS=no WITH_CJSON=no WITH_EPOLL:=no
 
-# Setup server
-
-COPY --chown=ubuntu:ubuntu dcmqrscp.cfg ${WORKDIR}/dcmqrscp.cfg
-COPY --chown=ubuntu:ubuntu in-dicom ${WORKDIR}/in-dicom
+COPY --chown=ubuntu:ubuntu kill-server.sh ${WORKDIR}/kill-server
+COPY --chown=ubuntu:ubuntu in-rtsp ${WORKDIR}/in-rtsp
+COPY --chown=ubuntu:ubuntu rtsp.dict ${WORKDIR}/rtsp.dict
 COPY --chown=ubuntu:ubuntu cov_script.sh ${WORKDIR}/cov_script
 COPY --chown=ubuntu:ubuntu run.sh ${WORKDIR}/run
-COPY --chown=ubuntu:ubuntu clean.sh ${WORKDIR}/clean
-COPY --chown=ubuntu:ubuntu dicom.dic ${WORKDIR}/dcmtk/dcmdata/data/dicom.dic
-
-ENV DCMDICTPATH=${WORKDIR}/dcmtk/dcmdata/data/dicom.dic
-
-RUN cd $WORKDIR/dcmtk/build/bin && \
-    mkdir ACME_STORE && \
-    cp $WORKDIR/dcmqrscp.cfg ./
-
-RUN cd $WORKDIR/dcmtk-gcov/build/bin && \
-    mkdir ACME_STORE && \
-    cp $WORKDIR/dcmqrscp.cfg ./
