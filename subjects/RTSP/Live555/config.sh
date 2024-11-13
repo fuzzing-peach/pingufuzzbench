@@ -163,6 +163,60 @@ function build_sgfuzz {
     echo "done!"
 }
 
+function run_sgfuzz {
+    timeout=$1
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
+    pushd ${HOME}/target/sgfuzz/live555/testProgs >/dev/null
+
+    mkdir -p $outdir
+    rm -rf $outdir/*
+
+    export HFND_TCP_PORT=8554
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    SGFuzz_ARGS=(
+        -close_fd_mask=3
+        -shrink=1
+        -print_full_coverage=1
+        -check_input_sha1=1
+        -reduce_inputs=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        "${outdir}"
+        "${indir}"
+    )
+
+    LIVE555_ARGS=(
+        8554
+    )
+
+    ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
+
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
+    cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
+    list_cmd="ls -1 ${outdir}/* | tr '\n' ' ' | sed 's/ $//'"
+    cd ${HOME}/target/gcov/consumer/live555/testProgs
+
+    function replay {
+        /home/user/aflnet/afl-replay $1 RTSP 8554 1 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        timeout -k 0 3s ./testOnDemandRTSPServer 8554
+
+        wait
+    }
+
+    gcovr -r . -s -d ${MAKE_OPT} >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" 10 ${outdir}/coverage.csv "$cov_cmd"
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
+    popd >/dev/null
+}
 
 function build_ft_generator {
     echo "Not implemented"
