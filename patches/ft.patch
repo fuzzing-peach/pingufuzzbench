@@ -127,7 +127,7 @@ diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
 index 3aa7cd0..12b8758 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
-@@ -118,12 +118,14 @@ impl Jail {
+@@ -118,12 +118,13 @@ impl Jail {
          // Mount the bear minimum to allow execution of software.
  
          // Mount / into our new root
@@ -139,7 +139,6 @@ index 3aa7cd0..12b8758 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
-+            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",

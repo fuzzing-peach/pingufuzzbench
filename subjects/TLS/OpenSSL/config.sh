@@ -273,8 +273,8 @@ function build_ft_generator {
     export FT_HOOK_INS=branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_GENERATOR"
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -334,7 +334,7 @@ function run_ft {
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/openssl
-    grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
+    grcov --branch --threads 4 -s . -t html . -o ${work_dir}/cov_html
     popd >/dev/null
 }
 

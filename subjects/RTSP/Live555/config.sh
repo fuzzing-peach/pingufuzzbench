@@ -138,6 +138,11 @@ function build_sgfuzz {
     mkdir -p target/sgfuzz
     rm -rf target/sgfuzz/*
     cp -r repo/live555 target/sgfuzz/live555
+
+    # cd target/sgfuzz/live555
+    # git reset --hard HEAD
+    # git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
+
     pushd target/sgfuzz/live555 >/dev/null
 
     export CC=clang
@@ -221,18 +226,83 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    echo "Not implemented"
+    mkdir -p target/ft/generator
+    rm -rf target/ft/generator/*
+    cp -r repo/live555 target/ft/generator/live555
+    pushd target/ft/generator/live555 >/dev/null
 
+    export FT_CALL_INJECTION=1
+    export FT_HOOK_INS=call,branch,load,store,select,switch
+
+    export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
+    export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
+    export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+
+    sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
+    sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
+    sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
+
+    ./genMakefiles linux
+    make ${MAKE_OPT}
+
+    popd >/dev/null
 }
 
 function build_ft_consumer {
-    echo "Not implemented"
+    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/ft-net.conf /etc/ld.so.conf.d/
+    sudo ldconfig
 
+    mkdir -p target/ft/consumer
+    rm -rf target/ft/consumer/*
+    cp -r repo/live555 target/ft/consumer/live555
+    pushd target/ft/consumer/live555 >/dev/null
+
+    export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
+    export CC=${AFL_PATH}/afl-clang-fast
+    export CXX=${AFL_PATH}/afl-clang-fast++
+    export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+
+    sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
+    sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
+    sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
+    
+    ./genMakefiles linux
+    make ${MAKE_OPT}
+
+    popd >/dev/null
 }
 
 function run_ft {
-    echo "Not implemented"
+    timeout=$1
+    consumer="Live555"
+    generator=${GENERATOR:-$consumer}
+    work_dir=/tmp/fuzzing-output
+    pushd ${HOME}/target/ft/ >/dev/null
 
+    temp_file=$(mktemp)
+        sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    cat "$temp_file" >ft.yaml
+    printf "\n" >>ft.yaml
+    rm "$temp_file"
+    cat ${HOME}/profuzzbench/subjects/RTSP/${generator}/ft-source.yaml >>ft.yaml
+    cat ${HOME}/profuzzbench/subjects/RTSP/${consumer}/ft-sink.yaml >>ft.yaml
+
+    # fuzzing
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+
+    # collecting coverage results
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
+    sudo chmod -R 755 $work_dir
+    sudo chown -R $(id -u):$(id -g) $work_dir
+    cd ${HOME}/target/gcov/consumer/live555
+    grcov --branch --threads 4 -s . -t html . -o ${work_dir}/cov_html
+    
+    popd >/dev/null
 }
 
 function build_pingu_generator {

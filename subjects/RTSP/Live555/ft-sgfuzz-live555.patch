@@ -1,0 +1,47 @@
+diff --git a/liveMedia/GenericMediaServer.cpp b/liveMedia/GenericMediaServer.cpp
+index 332ac2b..307bf61 100644
+--- a/liveMedia/GenericMediaServer.cpp
++++ b/liveMedia/GenericMediaServer.cpp
+@@ -394,6 +394,16 @@ GenericMediaServer::ClientSession* GenericMediaServer::createNewClientSessionWit
+   u_int32_t sessionId;
+   char sessionIdStr[8+1];
+ 
++#if (defined(FT_FUZZING) || defined(SGFUZZ)) && ! defined(FT_UNPATCHED_SESSION_ID)
++    sessionId = (u_int32_t)1234;
++    snprintf(sessionIdStr, sizeof sessionIdStr, "%08X", sessionId);
++    fPreviousClientSessionId = 1234;
++
++  ClientSession* clientSession = createNewClientSession(sessionId);
++  if (clientSession != NULL) fClientSessions->Add(sessionIdStr, clientSession);
++
++  return clientSession;
++#else
+   // Choose a random (unused) 32-bit integer for the session id
+   // (it will be encoded as a 8-digit hex number).  (We avoid choosing session id 0,
+   // because that has a special use by some servers.  Similarly, we avoid choosing the same
+@@ -409,6 +419,7 @@ GenericMediaServer::ClientSession* GenericMediaServer::createNewClientSessionWit
+   if (clientSession != NULL) fClientSessions->Add(sessionIdStr, clientSession);
+ 
+   return clientSession;
++#endif
+ }
+ 
+ GenericMediaServer::ClientSession*
+diff --git a/testProgs/testOnDemandRTSPServer.cpp b/testProgs/testOnDemandRTSPServer.cpp
+index 131c21e..d33ccb9 100644
+--- a/testProgs/testOnDemandRTSPServer.cpp
++++ b/testProgs/testOnDemandRTSPServer.cpp
+@@ -52,7 +52,12 @@ static void onOggDemuxCreation(OggFileServerDemux* newDemux, void* /*clientData*
+   newDemuxWatchVariable = 1;
+ }
+ 
+-int main(int argc, char** argv) {
++#ifdef SGFUZZ
++extern "C" int HonggfuzzNetDriver_main(int argc, char ** argv)
++#else
++int main(int argc, char ** argv)
++#endif
++{
+   // Begin by setting up our usage environment:
+   TaskScheduler* scheduler = BasicTaskScheduler::createNew();
+   env = BasicUsageEnvironment::createNew(*scheduler);

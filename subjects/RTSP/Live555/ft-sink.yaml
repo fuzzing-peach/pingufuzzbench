@@ -1,0 +1,20 @@
+sink:
+  bin-path: "/home/user/target/ft/consumer/live555/testProgs/testOnDemandRTSPServer"
+  arguments:
+    [
+      "8554"
+    ]
+  input-type: Tcp
+  output-type: Tcp
+  is-server: true
+  server-port: "8554"
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+
+gcov:
+  bin-path: "/home/user/target/gcov/consumer/live555/testProgs/testOnDemandRTSPServer"
+  env:
+    - LD_PRELOAD: "libgcov_preload.so"
+  src-dir: "/home/user/target/gcov/consumer/live555"
+  reporter: grcov
