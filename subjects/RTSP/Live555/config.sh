@@ -161,6 +161,7 @@ function build_sgfuzz {
     clang++ -otestOnDemandRTSPServer -L. -fsanitize=address -DFT_FUZZING -DSGFUZZ -DFT_CONSUMER testOnDemandRTSPServer.o announceURL.o ../liveMedia/libliveMedia.a ../groupsock/libgroupsock.a ../BasicUsageEnvironment/libBasicUsageEnvironment.a ../UsageEnvironment/libUsageEnvironment.a -lssl -lcrypto -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ -fsanitize=fuzzer -fsanitize=address -DSGFUZZ
 
     echo "done!"
+    popd >/dev/null
 }
 
 function run_sgfuzz {
@@ -176,7 +177,7 @@ function run_sgfuzz {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     SGFuzz_ARGS=(
         -close_fd_mask=3
@@ -199,7 +200,7 @@ function run_sgfuzz {
     ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
 
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
-    cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
+    cov_cmd="gcovr -r .. -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
     list_cmd="ls -1 ${outdir}/* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
@@ -211,10 +212,11 @@ function run_sgfuzz {
         wait
     }
 
-    gcovr -r . -s -d ${MAKE_OPT} >/dev/null 2>&1
+    gcovr -r .. -s -d ${MAKE_OPT} >/dev/null 2>&1
     compute_coverage replay "$list_cmd" 10 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
-    gcovr -r . --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
+    gcovr -r .. --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
+
     popd >/dev/null
 }
 
@@ -260,7 +262,7 @@ function build_gcov {
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
     ./genMakefiles linux
-    make -j
+    make ${MAKE_OPT}
 
     popd >/dev/null
 }
