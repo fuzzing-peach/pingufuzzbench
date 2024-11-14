@@ -11,31 +11,31 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 > [!NOTE]
 > dcmtk, live555 and mosquitto are not cryptographic network protocols, but are included here in the benchmark for the purpose of testing the workness of the fuzzer, and serve as the baseline for cross-fuzzers comparison.
 
-| Protocol                                | **Pingu** | [AFLNet] | [StateAFL] | [SGFuzz] | [FT-Net] | [tlspuffin] | [tlsfuzzer] | [tls-anvil] |
-| --------------------------------------- | --------- | -------- | ---------- | -------- | -------- | ----------- | ----------- | ----------- |
-| [DICOM/dcmtk]()                         |           |          |            |          |          |             |             |             |
-| [RTP/live555]()                         |           | ✅        | ✅          |          |          |             |             |             |
-| [MQTT/mosquitto]()                      |           |          |            |          |          |             |             |             |
-| [TLS/openssl](subjects/TLS/OpenSSL)     | ✅         | ✅        | ✅          |          | ✅        |             |             |             |
-| [TLS/wolfssl](subjects/TLS/WolfSSL)     | ✅         | ✅        |            |          | ✅        |             |             |             |
-| [TLS/libressl](subjects/TLS/LibreSSL)   |           |          |            |          |          |             |             |             |
-| [TLS/boringssl](subjects/TLS/boringssl) |           |          |            |          |          |             |             |             |
-| [TLS/gnutls](subjects/TLS/GnuTLS)       |           |          |            |          | ✅        |             |             |             |
-| [TLS/s2n](subjects/TLS/s2n)             |           |          |            |          |          |             |             |             |
-| [SSH/openssh]()                         |           |          |            |          |          |             |             |             |
-| [SSH/wolfssh]()                         |           |          |            |          |          |             |             |             |
-| [SSH/dropbear]()                        |           |          |            |          |          |             |             |             |
-| SSH/libssh                              |           |          |            |          |          |             |             |             |
-| [QUIC/openssl]()                        |           |          |            |          |          |             |             |             |
-| [QUIC/ngtcp2]()                         |           |          |            |          |          |             |             |             |
-| QUIC/mvfst                              |           |          |            |          |          |             |             |             |
-| QUIC/picoquic                           |           |          |            |          |          |             |             |             |
-| QUIC/lsquic                             |           |          |            |          |          |             |             |             |
-| QUIC/quiche                             |           |          |            |          |          |             |             |             |
-| QUIC/xquic                              |           |          |            |          |          |             |             |             |
-| [HTTP3/nginx]()                         |           |          |            |          |          |             |             |             |
-| [HTTP3/apache]()                        |           |          |            |          |          |             |             |             |
-| [HTTP3/h2o]()                           |           |          |            |          |          |             |             |             |
+| Protocol           | **Pingu** | [AFLNet] | [StateAFL] | [SGFuzz] | [FT-Net] | [tlspuffin] | [tlsfuzzer] | [tls-anvil] |
+| ------------------ | --------- | -------- | ---------- | -------- | -------- | ----------- | ----------- | ----------- |
+| [DICOM/dcmtk]()    |           |          |            |          |          |             |             |             |
+| [RTP/live555]()    |           | ✅        | ✅          |          |          |             |             |             |
+| [MQTT/mosquitto]() |           |          |            |          |          |             |             |             |
+| [TLS/openssl]()    | ✅         | ✅        | ✅          | ✅        | ✅        |             |             |             |
+| [TLS/wolfssl]()    | ✅         | ✅        |            |          | ✅        |             |             |             |
+| [TLS/libressl]()   |           |          |            |          |          |             |             |             |
+| [TLS/boringssl]()  |           |          |            |          |          |             |             |             |
+| [TLS/gnutls]()     |           |          |            |          | ✅        |             |             |             |
+| [TLS/s2n]()        |           |          |            |          |          |             |             |             |
+| [SSH/openssh]()    |           |          |            |          |          |             |             |             |
+| [SSH/wolfssh]()    |           |          |            |          |          |             |             |             |
+| [SSH/dropbear]()   |           |          |            |          |          |             |             |             |
+| SSH/libssh         |           |          |            |          |          |             |             |             |
+| [QUIC/openssl]()   |           |          |            |          |          |             |             |             |
+| [QUIC/ngtcp2]()    |           |          |            |          |          |             |             |             |
+| QUIC/mvfst         |           |          |            |          |          |             |             |             |
+| QUIC/picoquic      |           |          |            |          |          |             |             |             |
+| QUIC/lsquic        |           |          |            |          |          |             |             |             |
+| QUIC/quiche        |           |          |            |          |          |             |             |             |
+| QUIC/xquic         |           |          |            |          |          |             |             |             |
+| [HTTP3/nginx]()    |           |          |            |          |          |             |             |             |
+| [HTTP3/apache]()   |           |          |            |          |          |             |             |             |
+| [HTTP3/h2o]()      |           |          |            |          |          |             |             |             |
 
 [AFLNet]: https://github.com/aflnet/aflnet
 [StateAFL]: https://github.com/aflnet/aflnet
