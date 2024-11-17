@@ -103,6 +103,15 @@ RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark
 RUN git clone https://gitee.com/zhangadiu/stateafl.git --depth=1 && \
     cd stateafl && \
     git checkout d923e22f7b2688db45b08f3fa3a29a566e7ff3a4 && \
+    rm afl-fuzz.c aflnet.c aflnet.h aflnet-replay.c
+
+COPY stateafl/afl-fuzz.c ${HOME}/stateafl
+COPY stateafl/aflnet.c ${HOME}/stateafl
+COPY stateafl/aflnet.h ${HOME}/stateafl
+COPY stateafl/aflnet-replay.c ${HOME}/stateafl
+
+    
+RUN cd stateafl && \
     git submodule init && \
     git submodule update && \
     git apply /tmp/patches/stateafl.patch && \

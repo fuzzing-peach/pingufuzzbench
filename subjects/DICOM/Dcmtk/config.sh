@@ -5,18 +5,15 @@ function checkout {
     git clone https://git.dcmtk.org/dcmtk.git repo/dcmtk
     pushd repo/dcmtk >/dev/null
     git checkout "$@"
-    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/ft-dcmtk.patch 
     
     popd >/dev/null
 }
 
 function replay {
     # the process launching order is confusing.
-    ${HOME}/stateafl/aflnet-replay $1 DICOM 6789 1 &
+    ${HOME}/stateafl/aflnet-replay $1 DICOM 5158 1 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-        timeout -k 0 -s SIGTERM 3s ./dcmrecv 6789 \
-        --config-file ${HOME}/target/stateafl/dcmtk/dcmnet/etc/storescp.cfg \
-        Default -d
+        timeout -k 0 -s SIGTERM 3s ./dcmqrscp --single-process --config ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
     wait
 }
 
@@ -28,7 +25,8 @@ function build_stateafl {
     pushd target/stateafl/dcmtk >/dev/null
     
 
-    # export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/Dcmtk/dicom.dic
+    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/fuzzing.patch
+    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/buffer.patch
 
     export ASAN_OPTIONS=detect_leaks=0
     export CC=${HOME}/stateafl/afl-clang-fast
@@ -41,12 +39,13 @@ function build_stateafl {
     mkdir build && cd build
     cmake ..
     
-    
-    make -j2
+    export AFL_USE_ASAN=1 
+    make dcmqrscp
+   
 
-    # cd bin
-    # mkdir ACME_STORE
-    # cp ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/dcmqrscp.cfg ./
+    cd bin
+    mkdir ACME_STORE
+    cp ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/dcmqrscp.cfg ./
 
     rm -rf fuzz test .git doc
 
@@ -58,7 +57,7 @@ function build_stateafl {
 function run_stateafl {
     timeout=$1
     outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/DICOM/Dcmtk/seeds/replayable
+    indir=${HOME}/profuzzbench/subjects/DICOM/Dcmtk/in-dicom-replay
     pushd ${HOME}/target/stateafl/dcmtk/build/bin >/dev/null
 
     mkdir -p $outdir
@@ -67,32 +66,35 @@ function run_stateafl {
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/Dcmtk/dicom.dic
     
     export AFL_SKIP_CPUFREQ=1
-    # export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    # export AFL_SKIP_CRASHES=1
-    # export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export AFL_NO_AFFINITY=1
 
-    timeout -k 0 --preserve-status $timeout \
-        ${HOME}/stateafl/afl-fuzz -m none -i $indir \
-        -o $outdir \
-        -N tcp://127.0.0.1/6789 \
-        -q 3 -s 3 -R -E \
-        -- ./dcmrecv 6789 \
-        --config-file ${HOME}/target/stateafl/dcmtk/dcmnet/etc/storescp.cfg \
-        Default -d
+    
 
+    
+    timeout -k 0 --preserve-status $timeout \
+        ${HOME}/stateafl/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/5158 \
+        -P DICOM -D 10000 -E -K -m none -t 1000 \
+        ./dcmqrscp --config ${HOME}/target/stateafl/dcmtk/build/bin/dcmqrscp.cfg --single-process
+
+
+
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c  /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l   /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c  /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l   /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    # cd ${HOME}/target/gcov/consumer/dcmtk
+    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/dcmtk/build/bin
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
 
-    echo "Current directory in run_stateafl: $(pwd)"
+    gcovr -r ../.. -s -d >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$gcov_cmd"
 
     mkdir -p ${outdir}/cov_html
-    # gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
     gcovr -r ../.. --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
@@ -105,15 +107,16 @@ function build_gcov {
     cp -r repo/dcmtk target/gcov/consumer/dcmtk
     pushd target/gcov/consumer/dcmtk >/dev/null
 
+
+    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/normal.patch
     mkdir build && cd build
 
-    export AFL_LLVM_LAF_SPLIT_SWITCHES=1
-    export AFL_LLVM_LAF_TRANSFORM_COMPARES=1
-    export AFL_LLVM_LAF_SPLIT_COMPARES=1
-    export FT_IGNORE_TARGET_SIGTERM_HANDLER=1
-
     cmake -G"Unix Makefiles" .. -DCMAKE_C_FLAGS="-g -fprofile-arcs -ftest-coverage" -DCMAKE_CXX_FLAGS="-g -fprofile-arcs -ftest-coverage"
-    make -j2
+    make dcmqrscp
+
+    cd bin
+    mkdir ACME_STORE
+    cp /home/user/profuzzbench/subjects/DICOM/Dcmtk/dcmqrscp.cfg ./
 
     rm -rf fuzz test .git doc
 

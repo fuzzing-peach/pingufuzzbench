@@ -16,7 +16,7 @@ function replay {
 
     # 预加载gcov和伪随机库，并限制服务器运行3秒
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-    timeout -k 0 3s ./mosquitto 7899 -p
+    timeout -k 0 3s ./mosquitto -p 7899
 
     wait
 }
@@ -119,27 +119,26 @@ function run_stateafl {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    # export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
-    # export ASAN_OPTIONS='abort_on_error=1:symbolize=0:detect_leaks=0:detect_stack_use_after_return=1:detect_container_overflow=0:poison_array_cookie=0'
     export AFL_NO_AFFINITY=1
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -m none -i $indir \
         -o $outdir \
         -N tcp://127.0.0.1/7899 \
-        -q 3 -s 3 -R -E \
-        -- ./mosquitto 7899 \
-        -p
-
+        -q 3 -s 3 -R -E -K \
+        -- ./mosquitto -p 7899 \
+        
         
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-
+    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/mosquitto/build/src
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
+
+    gcovr -r ../.. -s -d >/dev/null 2>&1
+
+    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$gcov_cmd"
     mkdir -p ${outdir}/cov_html
-    # gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
     gcovr -r ../.. --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
