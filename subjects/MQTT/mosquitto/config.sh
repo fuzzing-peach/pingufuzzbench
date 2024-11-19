@@ -5,19 +5,27 @@ function checkout {
     git clone https://github.com/eclipse/mosquitto.git repo/mosquitto
     pushd repo/mosquitto >/dev/null
     git checkout "$@"
-   # git apply "${HOME}/profuzzbench/subjects/MQTT/mosquitto/fuzzing.patch"
-    popd >/dev/null
+    git checkout v2.0.18
+    git apply --check "${HOME}/profuzzbench/subjects/MQTT/mosquitto/fuzzing copy.patch"
+    popd >/dev/null 
+    git clone https://github.com/aflnet/aflnet.git aflnetmqtt
+    cd aflnetmqtt 
+    git checkout  6d86ca0cf6852cfa7a776a77fb7886d8bee46c14
+    git apply /tmp/patches/aflnet.patch 
+    make clean all ${MAKE_OPT} 
+    cd llvm_mode 
+    make ${MAKE_OPT} 
 }
 
 function replay {
     # 启动后台的 aflnet-replay
-    /home/user/aflnet/aflnet-replay $1 MQTT 1883 &
+    /home/user/aflnetmqtt/aflnet-replay $1 MQTT 7899 1 &
     # 预加载gcov和伪随机库，并限制服务器运行3秒
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-    timeout -k 0 3s ./mosquitto 
+    timeout -k 1s 3s ./mosquitto -p 7899
     wait
 }
-
+ 
 
 function build_aflnet {
     mkdir -p target/aflnet
@@ -42,8 +50,9 @@ function build_aflnet {
 function run_aflnet {
     timeout=$1
     outdir=/tmp/fuzzing-output
-     indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqttqq
- #   indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqtt
+ #    indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqttqq
+   indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqtt
+ #  indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqtt-replay
     pushd ${HOME}/target/aflnet/mosquitto/build/src >/dev/null
     mkdir -p $outdir
     rm -rf $outdir/*
@@ -58,16 +67,16 @@ function run_aflnet {
     
 
     timeout -k 0 --preserve-status $timeout \
-        ${HOME}/aflnet/afl-fuzz -d -i $indir \
-        -o $outdir -N tcp://127.0.0.1/1883 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
-        ./mosquitto 
+        ${HOME}/aflnetmqtt/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/7899 \
+        -P MQTT -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
+        ./mosquitto -p 7899
  
 
 
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    gcov_cmd="gcovr -r .. -s | grep \"[lb][a-z]*:\""
+    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
    
     cd ${HOME}/target/gcov/consumer/mosquitto/build/src
     gcovr -r ../.. -s -d >/dev/null 2>&1
@@ -80,29 +89,33 @@ function run_aflnet {
     popd >/dev/null
 }
 
+
 function build_gcov {
     mkdir -p target/gcov/consumer
     rm -rf target/gcov/consumer/*
     cp -r repo/mosquitto target/gcov/consumer/mosquitto
     pushd target/gcov/consumer/mosquitto >/dev/null
+
+    
+    export AFL_LLVM_LAF_SPLIT_SWITCHES=1
+    export AFL_LLVM_LAF_TRANSFORM_COMPARES=1
+    export AFL_LLVM_LAF_SPLIT_COMPARES=1
+
     export CFLAGS="-fprofile-arcs -ftest-coverage"
     export CPPFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
-     export AFL_LLVM_LAF_SPLIT_SWITCHES=1
-    export AFL_LLVM_LAF_TRANSFORM_COMPARES=1
-    export AFL_LLVM_LAF_SPLIT_COMPARES=1
-    
+   
     mkdir build
     cd build
     cmake -DWITH_STATIC_LIBRARIES=ON ..
     make -j
 
+   
 
     popd >/dev/null
 }
-
 
 
 function install_dependencies {
