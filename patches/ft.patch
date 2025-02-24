@@ -123,6 +123,78 @@ index 47294d0..45bd76d 100644
      self->argv[self->argc++] = "-lgenerator_agent";
      self->argv[self->argc++] = "-DNDEBUG";
  
+diff --git a/generator/pass/fuzztruction-source-llvm-pass.cc b/generator/pass/fuzztruction-source-llvm-pass.cc
+index f275c54..27fef89 100644
+--- a/generator/pass/fuzztruction-source-llvm-pass.cc
++++ b/generator/pass/fuzztruction-source-llvm-pass.cc
+@@ -281,7 +281,9 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
+ 
+ 
+ /*
+-Delete call if one of the functions specified by name is called
++Delete call if one of the functions specified by name is called.
++
++In fact, the FT_NOP_FN is not used in FT-Net experiments. So no functions will be deleted~
+ */
+ bool FuzztructionSourcePass::maybeDeleteFunctionCall(Module &M, CallInst *call_ins, std::set<std::string> &target_functions) {
+     Function *callee = call_ins->getCalledFunction();
+@@ -351,7 +353,12 @@ uint64_t get_alloction_size_in_bits(AllocaInst *ins, Value *target) {
+     }
+ }
+ 
+-
++/***
++ * Instrument custom patch points.
++ * 
++ * Randomly mutate the byte returns by the __ft_get_byte, using patchpoint.
++ * But actually, the __ft_get_byte(s) is not used in FT-Net
++ */
+ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *stackmap_intr) {
+     auto custom_patch_points_enables = env_var_set("FT_CUSTOM_PATCH_POINTS");
+ 
+@@ -387,7 +394,9 @@ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *st
+     return true;
+ }
+ 
+-
++/**
++ * Instrument the entry block of a function to randomly select a target function and inject it.
++ */
+ bool FuzztructionSourcePass::instrumentFunctionEntry(Function &instrumented_function, Function *stackmap_intr) {
+     auto call_injection_enabled = env_var_set("FT_CALL_INJECTION");
+     if (!call_injection_enabled || instrumented_function.isVarArg()) {
+@@ -620,6 +629,21 @@ bool FuzztructionSourcePass::instrumentInsArg(Module &M, Function *stackmap_intr
+     return true;
+ }
+ 
++/***
++ * Instrument a call instruction.
++ * 
++ * Insert a patchpoint before the call instruction to decide whether the call should be executed or not.
++ *  Head
++ * cond = alloca
++ * store cond, true
++ * patchpoint(cond, 1)
++ * mutated_cond = load cond
++    if (mutated_cond)
++    {
++        Original Call Instruction
++    }
++    Tail
++ */
+ bool FuzztructionSourcePass::instrumentCall(Module &M, Function *stackmap_intr, CallInst *call) {
+     if (!call->user_empty())
+         return false;
+@@ -741,6 +765,9 @@ bool FuzztructionSourcePass::injectPatchPoints(Module &M) {
+             }
+     }
+ 
++    /**
++     * may delete calls to abort() like termination function specified in abort_fn_callees.
++     */
+     for (auto call_ins: abort_fn_callees) {
+         dbgs() << "Deleting call to abort " << *call_ins << "\n";
+         auto bb = call_ins->getParent();
 diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
 index 3aa7cd0..12b8758 100644
 --- a/lib/jail/src/jail.rs
@@ -301,6 +373,69 @@ index e98c37a..ee979a7 100644
  pub(crate) fn handle_cli_llvm_cov_subcommand(
      trace_matches: &ArgMatches,
      config: &Config,
+diff --git a/scheduler/src/competitors/stateafl.rs b/scheduler/src/competitors/stateafl.rs
+index 2a2727a..cb7cf69 100644
+--- a/scheduler/src/competitors/stateafl.rs
++++ b/scheduler/src/competitors/stateafl.rs
+@@ -47,13 +47,14 @@ impl StateAflWorker {
+ 
+     fn _loop(self, init_finished: mpsc::Sender<()>) {
+         let stateafl_config = self
+-            .config
+-            .stateafl
+-            .as_ref()
+-            .expect("Target has no StateAfl config");
+-
+-        let seed_dir = stateafl_config.input_dir.clone();
+-        let workdir = self.config.general.stateafl_workdir();
++        .config
++        .stateafl
++        .as_ref()
++        .expect("Target has no StateAfl config");
++    
++    let seed_dir = stateafl_config.input_dir.clone();
++    let workdir = self.config.general.stateafl_workdir();
++    println!("workdir: {:?}", workdir);
+         fs::create_dir_all(&workdir).unwrap();
+ 
+         let mut log_path = workdir.clone();
+@@ -70,7 +71,7 @@ impl StateAflWorker {
+             .unwrap();
+         let log_fd = log_file.into_raw_fd();
+ 
+-        let mut cmd = Command::new("/competitors/stateafl/afl-fuzz");
++        let mut cmd = Command::new("/home/user/stateafl/afl-fuzz");
+ 
+         unsafe {
+             cmd.stdout(Stdio::from_raw_fd(log_fd));
+@@ -211,12 +212,12 @@ impl StateAflWorker {
+             cmd.gid(jail_uid_gid.1);
+         }
+ 
+-        OpenOptions::new()
+-            .write(true)
+-            .open("/proc/sys/kernel/randomize_va_space")
+-            .unwrap()
+-            .write_all("0".as_bytes())
+-            .unwrap();
++        // OpenOptions::new()
++        //     .write(true)
++        //     .open("/proc/sys/kernel/randomize_va_space")
++        //     .unwrap()
++        //     .write_all("0".as_bytes())
++        //     .unwrap();
+ 
+         let mut child = None;
+         for try_idx in 0..6 {
+@@ -263,7 +264,7 @@ impl StateAflWorker {
+     pub fn run(self) -> WorkerProxy {
+         let (init_finshied_sender, init_finshied_receiver) = mpsc::channel::<()>();
+         let handle = thread::spawn(|| {
+-            unshare_network_namespace(&self.config);
++            // unshare_network_namespace(&self.config);
+             self._loop(init_finshied_sender)
+         });
+         init_finshied_receiver
 diff --git a/scheduler/src/config.rs b/scheduler/src/config.rs
 index 036e283..c3c61df 100644
 --- a/scheduler/src/config.rs
@@ -898,6 +1033,23 @@ index 8886de7..a09a7da 100644
 +    }
 +    Ok(false)
 +}
+diff --git a/scheduler/src/fuzzer/common.rs b/scheduler/src/fuzzer/common.rs
+index 934c860..2f6fa0f 100644
+--- a/scheduler/src/fuzzer/common.rs
++++ b/scheduler/src/fuzzer/common.rs
+@@ -201,9 +201,9 @@ pub fn common_calibrate(
+         .unwrap_or(DEFAULT_CALIBRATION_TIMEOUT);
+ 
+     let mut exec_durations = Vec::with_capacity(CALIBRATION_MEASURE_CYCLES.try_into().unwrap());
+-    if config.sink.send_sigterm {
+-        default_timeout *= 2;
+-    }
++    // if config.sink.send_sigterm {
++    //     default_timeout *= 2;
++    // }
+ 
+     let mut crash_did_not_crash_ctr = 0;
+ 
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
 index 728d127..a2d288b 100644
 --- a/scheduler/src/fuzzer/worker_impl/init.rs

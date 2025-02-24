@@ -1,7 +1,7 @@
 # FT-Net: https://github.com/fuzztruction-net/fuzztruction-net
-FROM nbars/fuzztruction-llvm_debug:llvmorg-17.0.6 as llvm
+FROM nbars/fuzztruction-llvm_debug:llvmorg-17.0.6 AS llvm
 
-FROM ubuntu:23.04 as builder
+FROM ubuntu:24.04 AS builder
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -109,7 +109,7 @@ RUN zsh -c ". ~/.zshrc"
 ##############
 
 # FT-Net
-FROM builder as ft-net-builder
+FROM builder AS ft-net-builder
 COPY patches /tmp/patches
 RUN --mount=type=cache,target=${HOME}/.cargo,uid=${USER_ID},gid=${GROUP_ID} \
     --mount=type=cache,target=${HOME}/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
@@ -128,7 +128,7 @@ RUN cd fuzztruction-net/generator/pass && \
     make clean && \ 
     make all ${MAKE_OPT}
 
-FROM builder as faketime-builder
+FROM builder AS faketime-builder
 RUN git clone https://gitee.com/kherrisan/libfaketime.git && \
     cd libfaketime && \
     make -j

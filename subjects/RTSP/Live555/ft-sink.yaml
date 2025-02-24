@@ -11,6 +11,7 @@ sink:
   log-stdout: true
   log-stderr: true
   allow-unstable-sink: true
+  send-sigterm: true
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/live555/testProgs/testOnDemandRTSPServer"

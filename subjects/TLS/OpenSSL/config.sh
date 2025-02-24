@@ -102,8 +102,6 @@ function build_stateafl {
 
 function run_stateafl {
     timeout=$1
-    shift
-    fuzzer_args=$@
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls-replay
     pushd ${HOME}/target/stateafl/openssl >/dev/null
@@ -115,6 +113,10 @@ function run_stateafl {
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    if [ ! -z "${CPU_CORE}" ]; then
+        fuzzer_args="-b ${CPU_CORE}"
+    fi
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
@@ -199,14 +201,15 @@ function build_sgfuzz {
 function run_sgfuzz {
     timeout=$1
     outdir=/tmp/fuzzing-output
+    queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/sgfuzz/openssl >/dev/null
 
     export HFND_TCP_PORT=4433
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
-    mkdir -p $outdir
-    rm -rf $outdir/*
+    mkdir -p $queue
+    rm -rf $queue/*
 
     SGFuzz_ARGS=(
         -max_total_time=$timeout
@@ -218,7 +221,7 @@ function run_sgfuzz {
         -reload=30
         -print_final_stats=1
         -detect_leaks=0
-        "${outdir}"
+        "${queue}"
         "${indir}"
     )
 
@@ -233,9 +236,9 @@ function run_sgfuzz {
     # timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
     ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
     
-    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
     cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
-    list_cmd="ls -1 ${outdir}/* | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${queue}/* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/openssl
 
     # sgfuzz 产生的 testcase 的文件内容不符合 aflnet-replay 的格式要求（4字节的长度前缀）
@@ -258,8 +261,7 @@ function run_sgfuzz {
     compute_coverage replay "$list_cmd" 10 ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
-    # 单独replay subjects/TLS/OpenSSL/in-tls/tls.raw 也会出现版本号错误的信息，我不知道是不是因为这个原因
-    # 导致tls.raw产生的testcase全部都版本号错误且覆盖率一样
+    
     popd >/dev/null
 }
 
