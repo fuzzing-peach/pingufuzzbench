@@ -48,7 +48,6 @@ echo "[+] Checking if pingu-dev container exists"
 if ! docker ps -a | grep -q ${container_name}; then
     echo "[+] ${container_name} container is not existed, start running container..."
     cmd="docker run -it -d \
-            --network=host \
             --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
             --security-opt seccomp=unconfined \
             --security-opt apparmor=unconfined \
