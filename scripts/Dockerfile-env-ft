@@ -1,7 +1,7 @@
 # FT-Net: https://github.com/fuzztruction-net/fuzztruction-net
-FROM nbars/fuzztruction-llvm_debug:llvmorg-17.0.6 as llvm
+FROM nbars/fuzztruction-llvm_debug:llvmorg-17.0.6 AS llvm
 
-FROM ubuntu:23.04 as builder
+FROM ubuntu:24.04 AS builder
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -67,8 +67,8 @@ ARG GROUP_ID=1000
 ENV USER_ID=${USER_ID}
 ENV GROUP_ID=${GROUP_ID}
 
-# ubuntu:23.04 has an 'ubuntu' user and group
-# so we use the 'user' as the default
+# ubuntu:23.04 hAS an 'ubuntu' user and group
+# so we use the 'user' AS the default
 # to avoid the conflict between ${USER_ID} and the id of 'ubuntu'
 # here we remove the existed user 'ubuntu'
 RUN userdel $(getent passwd ${USER_ID} | cut -d: -f1) || true
@@ -77,7 +77,7 @@ RUN groupadd -g ${GROUP_ID} user && \
     useradd -u ${USER_ID} -rm -d /home/user -s /usr/bin/zsh -g user -G sudo user -p "$(openssl passwd -1 user)" && \
     echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Use user as default username
+# Use user AS default username
 USER user
 WORKDIR /home/user
 ENV HOME=/home/user
@@ -109,7 +109,7 @@ RUN zsh -c ". ~/.zshrc"
 ##############
 
 # FT-Net
-FROM builder as ft-net-builder
+FROM builder AS ft-net-builder
 COPY patches /tmp/patches
 RUN --mount=type=cache,target=${HOME}/.cargo,uid=${USER_ID},gid=${GROUP_ID} \
     --mount=type=cache,target=${HOME}/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
@@ -128,7 +128,7 @@ RUN cd fuzztruction-net/generator/pass && \
     make clean && \ 
     make all ${MAKE_OPT}
 
-FROM builder as faketime-builder
+FROM builder AS faketime-builder
 RUN git clone https://gitee.com/kherrisan/libfaketime.git && \
     cd libfaketime && \
     make -j
