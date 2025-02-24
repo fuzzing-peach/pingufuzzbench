@@ -124,6 +124,7 @@ for i in $(seq 1 $times); do
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \
+        --user $(id -u):$(id -g) \
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \
         -v .:/home/user/profuzzbench \
@@ -131,9 +132,10 @@ for i in $(seq 1 $times); do
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \
+        -e CPU_CORE=$((2*i - 1)) \
         --name $cname \
         $image_name \
-        /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $timeout ${container_fuzzing_args}\""
+        /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
     echo $cmd
     id=$(eval $cmd)
     log_success "[+] Launch docker container: ${cname}"

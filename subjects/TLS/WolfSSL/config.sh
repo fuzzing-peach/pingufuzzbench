@@ -4,7 +4,7 @@ function checkout {
     mkdir -p repo
     git clone https://gitee.com/zzroot/wolfssl.git repo/wolfssl
     pushd repo/wolfssl >/dev/null
-    
+
     git checkout "$@"
     ./autogen.sh
 
@@ -14,7 +14,7 @@ function checkout {
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-    timeout -k 1s 3s ./examples/server/server \
+        timeout -k 1s 3s ./examples/server/server \
         -c ${HOME}/profuzzbench/test.fullchain.pem \
         -k ${HOME}/profuzzbench/test.key.pem \
         -e -p 4433
@@ -169,21 +169,40 @@ function run_ft {
 }
 
 function build_pingu_generator {
+
+    # mkdir -p target/pingu/analyzer
+    # rm -rf target/pingu/analyzer/*
+    # cp -r repo/wolfssl target/pingu/analyzer/wolfssl
+    # pushd target/pingu/analyzer/wolfssl >/dev/null
+
+    # CC=/home/user/typm/llvm-project/install/bin/clang CCAS=/home/user/typm/llvm-project/install/bin/clang ./configure --enable-static --enable-shared=no
+    # sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -v -fpass-plugin=\/home\/user\/mlta\/IRDumper\/build\/lib\/libDumper.so -Xclang -fno-inline-functions -Xclang -no-opaque-pointers/' Makefile
+    # sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -v -fpass-plugin=\/home\/user\/mlta\/IRDumper\/build\/lib\/libDumper.so -Xclang -fno-inline-functions -Xclang -no-opaque-pointers/' Makefile
+
     mkdir -p target/pingu/generator
     rm -rf target/pingu/generator/*
     cp -r repo/wolfssl target/pingu/generator/wolfssl
-    pushd target/pingu/generator/wolfssl >/dev/null 
+    pushd target/pingu/generator/wolfssl >/dev/null
 
+    CC=clang CCAS=clang CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    bear -- make examples/client/client ${MAKE_OPT}
+
+    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
+    sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
+
+    export PINGU_ROLE=source
+    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export FT_HOOK_INS=load,store
-    export CC=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast
-    export CXX=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    export GENERATOR_AGENT_SO_DIR="${HOME}/pingu/fuzztruction/target/debug/"
-    export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
+    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
+    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
+    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
+    export FT_DISABLE_INLINEING=1
+    export PINGU_ENABLE_NEW_PASS=1
 
-    ./configure --enable-static --enable-shared=no
-    make examples/client/client ${MAKE_OPT}
+    rm -rf /dev/shm/pingu_pass_patchpoint_id_atomic
+    make clean && make examples/client/client ${MAKE_OPT}
 
     rm -rf .git
 
@@ -199,13 +218,24 @@ function build_pingu_consumer {
     cp -r repo/wolfssl target/pingu/consumer/wolfssl
     pushd target/pingu/consumer/wolfssl >/dev/null
 
-    export CC="${HOME}/pingu/target/debug/libafl_cc"
-    export CXX="${HOME}/pingu/target/debug/libafl_cxx"
-    export CFLAGS="-O3 -g -fsanitize=address"
-    export CXXFLAGS="-O3 -g -fsanitize=address"
+    CC=clang CCAS=clang CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    bear -- make examples/server/server ${MAKE_OPT}
 
-    ./configure --enable-static --enable-shared=no
-    make examples/server/server ${MAKE_OPT}
+    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-cc\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-cc\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
+    sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
+
+    export PINGU_ROLE=sink
+    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
+    export FT_HOOK_INS=load,store
+    export LLVM_PASS_DIR=${HOME}/pingu/pingu-cc/pass
+    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
+    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-cc/pass/mem_functions.ll
+    export FT_DISABLE_INLINEING=1
+
+    rm -rf /dev/shm/pingu_pass_patchpoint_id_atomic
+    make clean && make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
 

@@ -28,9 +28,6 @@ function build_aflnet {
 
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
-    # --with-rand-seed=none only will raise: entropy source strength too weak
-    # mentioned by: https://github.com/openssl/openssl/issues/20841
-    # see https://github.com/openssl/openssl/blob/master/INSTALL.md#seeding-the-random-generator for selectable options for --with-rand-seed=X
     export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
     export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
     export LDFLAGS="-fsanitize=address"
@@ -58,7 +55,7 @@ function run_aflnet {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
@@ -101,6 +98,8 @@ function build_stateafl {
     popd >/dev/null
 }
 
+# TODO:
+# stateafl 插桩之后 testOnDemandRTSPServer 会出现内存泄漏，因此这里暂时将 detect_leaks 设置为 0
 function run_stateafl {
     timeout=$1
     outdir=/tmp/fuzzing-output
@@ -112,8 +111,8 @@ function run_stateafl {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
-    export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
@@ -139,11 +138,10 @@ function build_sgfuzz {
     rm -rf target/sgfuzz/*
     cp -r repo/live555 target/sgfuzz/live555
 
-    # cd target/sgfuzz/live555
-    # git reset --hard HEAD
-    # git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
-
     pushd target/sgfuzz/live555 >/dev/null
+
+    git reset --hard HEAD
+    git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
 
     export CC=clang
     export CXX=clang++
@@ -169,14 +167,17 @@ function build_sgfuzz {
     popd >/dev/null
 }
 
+# TODO:
+# 内存泄漏，且 libfuzzer 无法通过设置 -fork=1 来在 OOM 之后重启
 function run_sgfuzz {
     timeout=$1
     outdir=/tmp/fuzzing-output
+    queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
     pushd ${HOME}/target/sgfuzz/live555/testProgs >/dev/null
 
-    mkdir -p $outdir
-    rm -rf $outdir/*
+    mkdir -p $queue
+    rm -rf $queue/*
 
     export HFND_TCP_PORT=8554
     export AFL_SKIP_CPUFREQ=1
@@ -194,7 +195,8 @@ function run_sgfuzz {
         -print_final_stats=1
         -detect_leaks=0
         -max_total_time=$timeout
-        "${outdir}"
+        -fork=1
+        "${queue}"
         "${indir}"
     )
 
@@ -202,11 +204,16 @@ function run_sgfuzz {
         8554
     )
 
-    ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
+    # 如果设置了 CPU_CORE 环境变量，则使用 taskset 绑定到指定核心
+    if [ ! -z "${CPU_CORE}" ]; then
+        taskset -c ${CPU_CORE} ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
+    else
+        ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
+    fi
 
-    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
     cov_cmd="gcovr -r .. -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
-    list_cmd="ls -1 ${outdir}/* | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${queue}/* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
     function replay {
@@ -291,7 +298,7 @@ function run_ft {
     rm "$temp_file"
     cat ${HOME}/profuzzbench/subjects/RTSP/${generator}/ft-source.yaml >>ft.yaml
     cat ${HOME}/profuzzbench/subjects/RTSP/${consumer}/ft-sink.yaml >>ft.yaml
-
+ 
     # fuzzing
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
 
