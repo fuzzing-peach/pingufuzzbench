@@ -232,8 +232,10 @@ index 2689dde..68c2bd8 100644
 +++ b/scheduler/src/checks.rs
 @@ -132,12 +132,12 @@ fn check_mqueue_queues_max() -> Result<()> {
  pub fn check_system() -> Result<()> {
-     check_core_pattern_is_core()?;
-     check_fs_suid_dumpable()?;
+-    check_core_pattern_is_core()?;
++    // check_core_pattern_is_core()?;
+-    check_fs_suid_dumpable()?;
++    // check_fs_suid_dumpable()?;
 -    check_if_tmp_is_tmpfs()?;
 +    // check_if_tmp_is_tmpfs()?;
      check_if_agent_is_in_path()?;
