@@ -27,24 +27,29 @@ function use_prebuilt {
 }
 
 function get_args_after_double_dash {
-  local args=()
+    local args=()
 
-  while [[ "$1" != "--" ]]; do
-    if [[ -z $1 ]]; then
-      echo ""
-      return
-    fi
+    # 跳过 -- 之前的参数
+    while [[ "$1" != "--" ]]; do
+        if [[ -z $1 ]]; then
+            echo ""
+            return
+        fi
+        shift
+    done
+
+    # 跳过 -- 本身
     shift
-  done
 
-  shift
+    # 收集所有剩余参数，保持原始形式
+    while [[ -n "$1" ]]; do
+        # 保留每个参数的原始形式，包括 -e 标志
+        args+=("$1")
+        shift
+    done
 
-  while [[ -n "$1" ]]; do
-    args+=("$1")
-    shift
-  done
-
-  echo -n "${args[@]}"
+    # 使用引号打印所有参数，保持完整的参数结构
+    printf '%s ' "${args[@]}"
 }
 
 function get_args_before_double_dash() {
