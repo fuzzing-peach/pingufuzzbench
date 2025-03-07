@@ -1,7 +1,7 @@
 # https://github.com/fuzzing-peach/pingufuzzbench
 FROM ghcr.io/fuzzing-peach/fuzztruction-llvm_debug:llvmorg-17.0.6 AS llvm
 
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -57,10 +57,6 @@ COPY --from=llvm /llvm/* /usr
 
 RUN chmod 777 /tmp
 
-RUN echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" > /etc/apt/apt.conf.d/99proxy && \
-    echo "Acquire::ftp::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy && \
-    echo "Acquire::https::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy
-
 # Users
 ##############
 # Add a new user
@@ -69,10 +65,6 @@ ARG GROUP_ID=1000
 ENV USER_ID=${USER_ID}
 ENV GROUP_ID=${GROUP_ID}
 
-# ubuntu:23.04 hAS an 'ubuntu' user and group
-# so we use the 'user' AS the default
-# to avoid the conflict between ${USER_ID} and the id of 'ubuntu'
-# here we remove the existed user 'ubuntu'
 RUN userdel $(getent passwd ${USER_ID} | cut -d: -f1) || true
 RUN groupdel $(getent group ${GROUP_ID} | cut -d: -f1) || true
 RUN groupadd -g ${GROUP_ID} user && \
@@ -91,9 +83,7 @@ RUN git config --global http.version HTTP/1.1 && \
 # Rust
 ENV RUSTUP_DIST_SERVER=https://rsproxy.cn
 ENV RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
-RUN --mount=type=cache,target=${HOME}/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
-    --mount=type=cache,target=${HOME}/.cargo,uid=${USER_ID},gid=${GROUP_ID} \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain stable && \
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain stable && \
     ${HOME}/.cargo/bin/cargo install grcov && \
     sudo cp ${HOME}/.cargo/bin/grcov /usr/local/bin/
     
@@ -111,11 +101,8 @@ RUN zsh -c ". ~/.zshrc"
 ##############
 
 # FT-Net
-FROM builder AS ft-net-builder
 COPY patches /tmp/patches
-RUN --mount=type=cache,target=${HOME}/.cargo,uid=${USER_ID},gid=${GROUP_ID} \
-    --mount=type=cache,target=${HOME}/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
-    git clone https://github.com/fuzztruction/fuzztruction-net.git && \
+RUN git clone https://github.com/fuzztruction/fuzztruction-net.git && \
     cd fuzztruction-net && \
     git checkout c34408b && \
     git apply /tmp/patches/ft.patch && \
@@ -130,50 +117,17 @@ RUN cd fuzztruction-net/generator/pass && \
     make clean && \ 
     make all ${MAKE_OPT}
 
-FROM builder AS faketime-builder
 RUN git clone https://gitee.com/kherrisan/libfaketime.git && \
     cd libfaketime && \
     make -j
 
-# build the final image
-FROM builder
-
 RUN sudo ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" | sudo tee /etc/timezone
-
-COPY patches /tmp/patches
-
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${HTTP_PROXY}
-ENV https_proxy=${HTTP_PROXY}
 
 # Install rr
 RUN cd /tmp && \
     wget https://github.com/rr-debugger/rr/releases/download/5.7.0/rr-5.7.0-Linux-$(uname -m).deb && \
     sudo dpkg -i rr-5.7.0-Linux-$(uname -m).deb
-
-# Copy libfaketime artifact
-COPY --from=faketime-builder ${HOME}/libfaketime/src/libfaketime.so.1 ${HOME}/libfaketime.so.1
-COPY --from=faketime-builder ${HOME}/libfaketime/src/libfaketimeMT.so.1 ${HOME}/libfaketimeMT.so.1
-# COPY --from=faketime-builder ${HOME}/libfaketime/src/faketime* ${HOME}/faketime*
-
-# Copy FT-Net artifact
-RUN mkdir -p ${HOME}/fuzztruction-net/target/release/ && \
-    mkdir -p ${HOME}/fuzztruction-net/target/debug/ && \
-    mkdir -p ${HOME}/fuzztruction-net/generator/pass/ && \
-    mkdir -p ${HOME}/fuzztruction-net/consumer/aflpp-consumer && \
-    mkdir -p ${HOME}/fuzztruction-net/eval-result
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/consumer/aflpp-consumer ${HOME}/fuzztruction-net/consumer/aflpp-consumer
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/target/release/fuzztruction ${HOME}/fuzztruction-net/target/release/fuzztruction
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/target/release/libgenerator_agent.a ${HOME}/fuzztruction-net/target/release/libgenerator_agent.a
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/target/release/libgenerator_agent.so ${HOME}/fuzztruction-net/target/release/libgenerator_agent.so
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++ ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so ${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/generator/pass/mem_functions.ll ${HOME}/fuzztruction-net/generator/pass/mem_functions.ll
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/env/check_env.sh /usr/bin/
-COPY --from=ft-net-builder ${HOME}/fuzztruction-net/fuzztruction-experiments ${HOME}/fuzztruction-net/fuzztruction-experiments
 
 RUN sudo touch /etc/ld.so.conf.d/ft-net.conf && \
     echo "${HOME}/fuzztruction-net/generator/pass" | sudo tee "/etc/ld.so.conf.d/ft-net.conf" && \
@@ -195,3 +149,5 @@ RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so && \
 # Disable ASLR fowever
 RUN echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/01-disable-aslr.conf && \
     sudo sysctl -p /etc/sysctl.d/01-disable-aslr.conf
+
+RUN unset HTTP_PROXY && unset HTTPS_PROXY && unset http_proxy && unset https_proxy

@@ -221,18 +221,19 @@ function build_pingu_consumer {
     CC=clang CCAS=clang CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     bear -- make examples/server/server ${MAKE_OPT}
 
-    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-cc\/pass\/pingu-clang-fast/' Makefile
-    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-cc\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
+    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
     sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
     sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
 
     export PINGU_ROLE=sink
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export FT_HOOK_INS=load,store
-    export LLVM_PASS_DIR=${HOME}/pingu/pingu-cc/pass
+    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-cc/pass/mem_functions.ll
+    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
     export FT_DISABLE_INLINEING=1
+    export PINGU_ENABLE_NEW_PASS=1
 
     rm -rf /dev/shm/pingu_pass_patchpoint_id_atomic
     make clean && make examples/server/server ${MAKE_OPT}

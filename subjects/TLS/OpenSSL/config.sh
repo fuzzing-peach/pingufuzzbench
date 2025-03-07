@@ -436,3 +436,7 @@ function build_gcov {
 function install_dependencies {
     echo "No dependencies"
 }
+
+function cleanup_artifacts {
+    
+}
