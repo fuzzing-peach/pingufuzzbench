@@ -6,7 +6,7 @@ cd $(dirname $0)
 cd ..
 source scripts/utils.sh
 
-opt_args=$(getopt -o f: -l fuzzer: --name "$0" -- "${args[@]}")
+opt_args=$(getopt -o f: -l fuzzer: --name "$0" -- "$@")
 if [ $? != 0 ]; then
     log_error "[!] Error in parsing shell arguments."
     exit 1
@@ -38,3 +38,6 @@ log_success "[+] Pulling prebuilt image: ${image_name}"
 docker pull ghcr.io/fuzzing-peach/pingu-env-${fuzzer}:latest
 
 log_success "[+] Pulled prebuilt image successfully: ${image_name}"
+
+docker tag ghcr.io/fuzzing-peach/pingu-env-${fuzzer}:latest pingu-env-${fuzzer}:latest
+docker rmi ghcr.io/fuzzing-peach/pingu-env-${fuzzer}:latest
