@@ -149,7 +149,7 @@ function build_sgfuzz {
     export CXXFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
     export LDFLAGS="-fsanitize=address -fsanitize=fuzzer-no-link"
 
-    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . #  -b <(echo "EC_Normal\nOFFilename\nnptr")
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
     sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
@@ -161,7 +161,24 @@ function build_sgfuzz {
     set -e
 
     cd testProgs
-    clang++ -otestOnDemandRTSPServer -L. -fsanitize=address -DFT_FUZZING -DSGFUZZ -DFT_CONSUMER testOnDemandRTSPServer.o announceURL.o ../liveMedia/libliveMedia.a ../groupsock/libgroupsock.a ../BasicUsageEnvironment/libBasicUsageEnvironment.a ../UsageEnvironment/libUsageEnvironment.a -lssl -lcrypto -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ -fsanitize=fuzzer -fsanitize=address -DSGFUZZ
+    clang++ -otestOnDemandRTSPServer -L. \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DSGFUZZ \
+        -DFT_CONSUMER \
+        testOnDemandRTSPServer.o \
+        announceURL.o \
+        ../liveMedia/libliveMedia.a \
+        ../groupsock/libgroupsock.a \
+        ../BasicUsageEnvironment/libBasicUsageEnvironment.a \
+        ../UsageEnvironment/libUsageEnvironment.a \
+        -lssl \
+        -lcrypto \
+        -lsFuzzer \
+        -lhfnetdriver \
+        -lhfcommon \
+        -lstdc++
 
     echo "done!"
     popd >/dev/null

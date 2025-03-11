@@ -2,18 +2,23 @@ FROM ubuntu:24.04
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
+ARG http_proxy=${HTTP_PROXY}
+ARG https_proxy=${HTTP_PROXY}
 
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${HTTP_PROXY}
-ENV https_proxy=${HTTP_PROXY}
+# ENV HTTP_PROXY=${HTTP_PROXY}
+# ENV HTTPS_PROXY=${HTTPS_PROXY}
+# ENV http_proxy=${HTTP_PROXY}
+# ENV https_proxy=${HTTP_PROXY}
+ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+ENV NO_PROXY=${no_proxy}
 
-ARG MAKE_OPT="-j"
-ENV MAKE_OPT=${MAKE_OPT}
+ARG MAKE_OPT="-j4"
 
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
-RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list && apt clean
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt clean
 
 # LLVM-17
 RUN apt update && apt install -y --no-install-recommends wget gnupg2 && rm -rf /var/lib/apt/lists
@@ -43,9 +48,9 @@ RUN pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simp
 
 RUN chmod 777 /tmp
 
-RUN echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" > /etc/apt/apt.conf.d/99proxy && \
-    echo "Acquire::ftp::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy && \
-    echo "Acquire::https::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy
+# RUN echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" > /etc/apt/apt.conf.d/99proxy && \
+#     echo "Acquire::ftp::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy && \
+#     echo "Acquire::https::Proxy \"${HTTP_PROXY}\";" >> /etc/apt/apt.conf.d/99proxy
 
 # Users
 ##############

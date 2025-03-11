@@ -16,7 +16,7 @@ function in_subshell() {
         cd "$HOME"
         echo "[+] Running in subshell: $@"
         $@
-    )
+    ) || exit 1
 }
 
 if [[ $# -lt 1 ]]; then
@@ -63,8 +63,6 @@ deps)
         echo "source $(pwd)/$target_config" >> ~/.bashrc
         echo "source $(pwd)/scripts/utils.sh" >> ~/.bashrc
     fi
-
-    sed -i '11i setup_proxy 172.17.0.1:9870' ~/.zshrc
 
     source $target_config
     in_subshell install_dependencies "$@"

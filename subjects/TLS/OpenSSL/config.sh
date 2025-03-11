@@ -148,7 +148,7 @@ function build_sgfuzz {
 
     pushd $HOME/target/sgfuzz/openssl > /dev/null
 
-    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . # -b <(echo "type")
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
     ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
@@ -158,8 +158,10 @@ function build_sgfuzz {
     sed -i 's@-Wl,-z,defs@@g' Makefile
 
     set +e
-    bear -- make ${MAKE_OPT}
+    make ${MAKE_OPT}
     set -e
+
+    echo "Finished make ${MAKE_OPT}"
 
     clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
         -fsanitize=address -fsanitize=fuzzer -Wno-int-conversion -L.   \
@@ -438,5 +440,5 @@ function install_dependencies {
 }
 
 function cleanup_artifacts {
-    
+    echo "No artifacts"
 }

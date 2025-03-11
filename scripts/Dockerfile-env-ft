@@ -5,14 +5,17 @@ FROM ubuntu:24.04
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
+ARG http_proxy=${HTTP_PROXY}
+ARG https_proxy=${HTTP_PROXY}
 
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${HTTP_PROXY}
-ENV https_proxy=${HTTP_PROXY}
+# ENV HTTP_PROXY=${HTTP_PROXY}
+# ENV HTTPS_PROXY=${HTTPS_PROXY}
+# ENV http_proxy=${HTTP_PROXY}
+# ENV https_proxy=${HTTP_PROXY}
+ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+ENV NO_PROXY=${no_proxy}
 
 ARG MAKE_OPT="-j4"
-ENV MAKE_OPT=${MAKE_OPT}
 
 ARG CARGO_BUILD_JOBS="4"
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
@@ -56,6 +59,8 @@ COPY --from=llvm /llvm/* /usr
 #     update-alternatives --install /usr/bin/llvm-profdata llvm-profdata $(which llvm-profdata-17) 100
 
 RUN chmod 777 /tmp
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
+RUN echo "nameserver 223.5.5.5" > /etc/resolv.conf
 
 # Users
 ##############
@@ -149,5 +154,3 @@ RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so && \
 # Disable ASLR fowever
 RUN echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/01-disable-aslr.conf && \
     sudo sysctl -p /etc/sysctl.d/01-disable-aslr.conf
-
-RUN unset HTTP_PROXY && unset HTTPS_PROXY && unset http_proxy && unset https_proxy

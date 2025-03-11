@@ -2,14 +2,15 @@ FROM ubuntu:24.04
 
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
+ARG http_proxy=${HTTP_PROXY}    
+ARG https_proxy=${HTTP_PROXY}
 
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV http_proxy=${HTTP_PROXY}
-ENV https_proxy=${HTTP_PROXY}
+# ENV HTTP_PROXY=${HTTP_PROXY}
+# ENV HTTPS_PROXY=${HTTPS_PROXY}
+# ENV http_proxy=${HTTP_PROXY}
+# ENV https_proxy=${HTTP_PROXY}
 
-ARG MAKE_OPT="-j"
-ENV MAKE_OPT=${MAKE_OPT}
+ARG MAKE_OPT="-j4"
 
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
