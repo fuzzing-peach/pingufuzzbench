@@ -138,7 +138,7 @@ The parameters specified after the **--** are the build arguments passed directl
 ## Step-2. Build the fuzzing runtime image
 
 ```sh
-./scripts/build.sh -t TLS/OpenSSL -f ft -v 7b649c7 -- --network=host
+./scripts/build.sh -t TLS/OpenSSL -f ft -v 7b649c7
 ```
 
 The parameters specified after the **--** are the build arguments passed directly for the docker build command. You can specify sth like `--network=host --build-arg HTTP_PROXY=xxx`. Check the [Dockerfile](scripts/Dockerfile) to see the available build arguments.
