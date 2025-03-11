@@ -169,16 +169,20 @@ function run_ft {
 }
 
 function build_pingu_generator {
-
-    # mkdir -p target/pingu/analyzer
-    # rm -rf target/pingu/analyzer/*
-    # cp -r repo/wolfssl target/pingu/analyzer/wolfssl
-    # pushd target/pingu/analyzer/wolfssl >/dev/null
-
-    # CC=/home/user/typm/llvm-project/install/bin/clang CCAS=/home/user/typm/llvm-project/install/bin/clang ./configure --enable-static --enable-shared=no
-    # sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -v -fpass-plugin=\/home\/user\/mlta\/IRDumper\/build\/lib\/libDumper.so -Xclang -fno-inline-functions -Xclang -no-opaque-pointers/' Makefile
-    # sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -v -fpass-plugin=\/home\/user\/mlta\/IRDumper\/build\/lib\/libDumper.so -Xclang -fno-inline-functions -Xclang -no-opaque-pointers/' Makefile
-
+    mkdir -p target/wllvm/generator
+    rm -rf target/wllvm/generator/*
+    cp -r repo/wolfssl target/wllvm/generator/wolfssl
+    pushd target/wllvm/generator/wolfssl >/dev/null
+    
+    # get the whole program bitcode
+    # build the whole program using wllvm
+    export LLVM_COMPILER=clang
+    CC=${HOME}/.local/bin/wllvm CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/client/client ${MAKE_OPT}
+    cd examples/client
+    ${HOME}/.local/bin/extract-bc client # now we have client.bc
+    popd >/dev/null
+    
     mkdir -p target/pingu/generator
     rm -rf target/pingu/generator/*
     cp -r repo/wolfssl target/pingu/generator/wolfssl

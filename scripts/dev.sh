@@ -56,11 +56,11 @@ if ! docker ps -a | grep -q ${container_name}; then
             --shm-size=64G \
             --name ${container_name} \
             ${docker_args}
-            ${container_name} tail -f /dev/null"
+            ${image_name} tail -f /dev/null"
     echo "[+] Executing: $cmd"
     eval $cmd
     exit 0
 else
     echo "[+] ${container_name} is running, enter container..."
-    docker exec -it ${container_name} /bin/zsh
+    docker exec -it ${container_name} /bin/bash
 fi

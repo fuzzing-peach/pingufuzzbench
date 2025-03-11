@@ -161,8 +161,6 @@ function build_sgfuzz {
     make ${MAKE_OPT}
     set -e
 
-    echo "Finished make ${MAKE_OPT}"
-
     clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
         -fsanitize=address -fsanitize=fuzzer -Wno-int-conversion -L.   \
         -o apps/openssl \
