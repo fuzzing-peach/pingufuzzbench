@@ -5,6 +5,7 @@ FROM ${BASE_IMAGE}
 USER user
 ENV HOME=/home/user
 
+ARG MAKE_OPT="-j4"
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG http_proxy=${HTTP_PROXY}
@@ -16,7 +17,7 @@ ARG FUZZER
 ARG TARGET
 ARG VERSION
 ARG GENERATOR
-ARG CARGO_BUILD_JOBS="8"
+ARG CARGO_BUILD_JOBS="4"
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV FUZZER=${FUZZER}
 ENV TARGET=${TARGET}
@@ -24,7 +25,6 @@ ENV VERSION=${VERSION}
 ENV GENERATOR=${GENERATOR}
 ENV TERM=xterm
 
-# RUN pwd
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build deps
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \

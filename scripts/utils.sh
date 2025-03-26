@@ -26,6 +26,15 @@ function use_prebuilt {
   return 1
 }
 
+function check_aslr_disabled {
+    local aslr_value=$(cat /proc/sys/kernel/randomize_va_space)
+    if [ "$aslr_value" != "0" ]; then
+        log_error "ASLR is enabled (value: $aslr_value). Please disable it by running:"
+        log_error "    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space"
+        exit 1
+    fi
+}
+
 function get_args_after_double_dash {
     local args=()
 
