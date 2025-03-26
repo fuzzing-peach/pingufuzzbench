@@ -169,33 +169,26 @@ function run_ft {
 }
 
 function build_pingu_generator {
-    mkdir -p target/wllvm/generator
-    rm -rf target/wllvm/generator/*
-    cp -r repo/wolfssl target/wllvm/generator/wolfssl
-    pushd target/wllvm/generator/wolfssl >/dev/null
-    
-    # get the whole program bitcode
-    # build the whole program using wllvm
-    export LLVM_COMPILER=clang
-    CC=${HOME}/.local/bin/wllvm CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
-    make examples/client/client ${MAKE_OPT}
-    cd examples/client
-    ${HOME}/.local/bin/extract-bc client # now we have client.bc
-    popd >/dev/null
-    
     mkdir -p target/pingu/generator
     rm -rf target/pingu/generator/*
     cp -r repo/wolfssl target/pingu/generator/wolfssl
     pushd target/pingu/generator/wolfssl >/dev/null
 
-    CC=clang CCAS=clang CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
-    bear -- make examples/client/client ${MAKE_OPT}
+    # get the whole program bitcode
+    # build the whole program using wllvm
+    export LLVM_COMPILER=clang
+    export CC=${HOME}/.local/bin/wllvm
+    export CCAS=${HOME}/.local/bin/wllvm
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/client/client ${MAKE_OPT}
+    cd examples/client
+    ${HOME}/.local/bin/extract-bc client
 
-    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
-    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
-    sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
-    sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
-
+    # now we have client.bc
+    # instrument the whole program bitcode
     export PINGU_ROLE=source
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export FT_HOOK_INS=load,store
@@ -203,10 +196,16 @@ function build_pingu_generator {
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
     export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
     export FT_DISABLE_INLINEING=1
-    export PINGU_ENABLE_NEW_PASS=1
+    export PINGU_INSTRUMENT_METHOD=direct
+    export PINGU_SVF_DUMP_FILE=1
 
-    rm -rf /dev/shm/pingu_pass_patchpoint_id_atomic
-    make clean && make examples/client/client ${MAKE_OPT}
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+        -passes="pingu-source" -debug-pass-manager \
+        client.bc -o client_opt.bc
+
+    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+        -lpingu_agent -fsanitize=address \
+        client_opt.bc -o client
 
     rm -rf .git
 
@@ -214,22 +213,26 @@ function build_pingu_generator {
 }
 
 function build_pingu_consumer {
-    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/pingu.conf /etc/ld.so.conf.d/
-    sudo ldconfig
-
     mkdir -p target/pingu/consumer
     rm -rf target/pingu/consumer/*
     cp -r repo/wolfssl target/pingu/consumer/wolfssl
     pushd target/pingu/consumer/wolfssl >/dev/null
 
-    CC=clang CCAS=clang CFLAGS="-O0 -g" CXXFLAGS="-O0 -g" ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
-    bear -- make examples/server/server ${MAKE_OPT}
+    # get the whole program bitcode
+    # build the whole program using wllvm
+    export LLVM_COMPILER=clang
+    export CC=${HOME}/.local/bin/wllvm
+    export CCAS=${HOME}/.local/bin/wllvm
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/server/server ${MAKE_OPT}
+    cd examples/server
+    ${HOME}/.local/bin/extract-bc server
 
-    sed -i 's/^CC = clang/CC = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
-    sed -i 's/^CCAS = clang/CCAS = \/home\/user\/pingu\/pingu-agent\/pass\/pingu-clang-fast/' Makefile
-    sed -i 's/^CFLAGS = \(.*\)/CFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
-    sed -i 's/^CCASFLAGS = \(.*\)/CCASFLAGS = \1 -O0 -g -fsanitize=address -fno-inline-functions -fno-inline -v/' Makefile
-
+    # now we have server.bc
+    # instrument the whole program bitcode
     export PINGU_ROLE=sink
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export FT_HOOK_INS=load,store
@@ -237,10 +240,17 @@ function build_pingu_consumer {
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
     export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
     export FT_DISABLE_INLINEING=1
-    export PINGU_ENABLE_NEW_PASS=1
+    export PINGU_INSTRUMENT_METHOD=direct
+    export PINGU_SVF_DUMP_FILE=1
 
-    rm -rf /dev/shm/pingu_pass_patchpoint_id_atomic
-    make clean && make examples/server/server ${MAKE_OPT}
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+        -passes="afl-coverage,pingu-source" -debug-pass-manager \
+        server.bc -o server_opt.bc
+
+    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+        -lpingu_agent -fsanitize=address \
+        server_opt.bc -o server
 
     rm -rf .git
 
@@ -297,5 +307,6 @@ function build_gcov {
 }
 
 function install_dependencies {
-    echo "Not implemented"
+    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/pingu.conf /etc/ld.so.conf.d/
+    sudo ldconfig
 }
