@@ -182,3 +182,41 @@ check_port_listening() {
         sleep_ms_perl $interval
     done
 }
+
+# 函数：获取负载最低的 N 个 CPU 核心编号
+# 用法：get_lowest_load_cpus [N]
+# 输出：空格分隔的核心编号（如 "2 1 0"）
+get_lowest_load_cpus() {
+    local N=${1:-1}
+    local cpu_count=$(grep -c "^processor" /proc/cpuinfo)
+    
+    if [[ ! $N =~ ^[0-9]+$ ]] || (( N > cpu_count )); then
+        echo "错误：参数必须为整数且不超过 CPU 核心数（当前为 $cpu_count）" >&2
+        return 1
+    fi
+
+    # 关键修复：动态查找 "id" 字段的位置，避免因 top 输出格式变化导致错误
+    local cpu_list
+    cpu_list=$(top -b -n1 -1 | awk -F, -v OFS=',' '
+        /^%Cpu[0-9]+/ {
+            cpu_id = substr($1, 5, index($1, ":") - 5);  # 提取核心编号（如 "0"）
+            idle = 0
+            # 遍历字段，寻找包含 "id" 的列（如 "0.0 id"）
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ / id/) {
+                    split($i, parts, " ");
+                    idle = parts[1];  # 提取数值部分（如 "0.0"）
+                    break;
+                }
+            }
+            print cpu_id, idle
+        }' | sort -t',' -k2,2nr | head -n "$N" | cut -d',' -f1
+    )
+
+    echo "$cpu_list" | tr '\n' ' ' | sed 's/ $//'
+}
+
+
+# 示例用法
+# lowest_cpus=$(get_lowest_load_cpus 3)
+# echo "最低负载的核心：$lowest_cpus"
