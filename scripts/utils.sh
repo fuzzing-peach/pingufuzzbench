@@ -183,9 +183,6 @@ check_port_listening() {
     done
 }
 
-# 函数：获取负载最低的 N 个 CPU 核心编号
-# 用法：get_lowest_load_cpus [N]
-# 输出：空格分隔的核心编号（如 "2 1 0"）
 get_lowest_load_cpus() {
     local N=${1:-1}
     local cpu_count=$(grep -c "^processor" /proc/cpuinfo)
@@ -215,8 +212,3 @@ get_lowest_load_cpus() {
 
     echo "$cpu_list" | tr '\n' ' ' | sed 's/ $//'
 }
-
-
-# 示例用法
-# lowest_cpus=$(get_lowest_load_cpus 3)
-# echo "最低负载的核心：$lowest_cpus"
