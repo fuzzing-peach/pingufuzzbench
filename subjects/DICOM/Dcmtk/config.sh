@@ -1,9 +1,7 @@
-
-
 function checkout {
     mkdir -p repo
-    git clone https://github.com/DCMTK/dcmtk.git repo/dcmtk
-    pushd repo/dcmtk >/dev/null
+    git clone https://github.com/DCMTK/dcmtk.git repo/Dcmtk
+    pushd repo/Dcmtk >/dev/null
     git checkout "$@"
     git apply "${HOME}/profuzzbench/subjects/DICOM/Dcmtk/ft-dcmtk.patch"
     
@@ -20,10 +18,10 @@ function replay {
 function build_stateafl {
     mkdir -p target/stateafl
     rm -rf target/stateafl/*
-    cp -r repo/dcmtk target/stateafl/dcmtk
+    cp -r repo/Dcmtk target/stateafl/dcmtk
     pushd target/stateafl/dcmtk >/dev/null
 
-    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/fuzzing.patch
+    git apply ${HOME}/profuzzbench/subjects/DICOM/Dcmtk/buffer.patch
 
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
@@ -48,7 +46,6 @@ function run_stateafl {
     timeout=$1
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/DICOM/Dcmtk/in-dicom-replay
-    # pushd ${HOME}/target/stateafl/dcmtk >/dev/null
     pushd ${HOME}/target/stateafl/dcmtk/build/bin >/dev/null
 
     mkdir -p $outdir
@@ -86,7 +83,7 @@ function run_stateafl {
 function build_aflnet {
     mkdir -p target/aflnet
     rm -rf target/aflnet/*
-    cp -r repo/dcmtk target/aflnet/dcmtk
+    cp -r repo/Dcmtk target/aflnet/dcmtk
     pushd target/aflnet/dcmtk >/dev/null
 
     export CC=${HOME}/aflnet/afl-clang-fast
@@ -150,7 +147,7 @@ function run_aflnet {
 function build_gcov {
     mkdir -p target/gcov/consumer
     rm -rf target/gcov/consumer/*
-    cp -r repo/dcmtk target/gcov/consumer/dcmtk
+    cp -r repo/Dcmtk target/gcov/consumer/dcmtk
     pushd target/gcov/consumer/dcmtk >/dev/null
 
     export CFLAGS="-O3 -DFT_FUZZING -DFT_CONSUMER -g -fprofile-arcs -ftest-coverage"
