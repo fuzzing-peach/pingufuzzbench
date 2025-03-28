@@ -75,7 +75,7 @@ WORKDIR /home/user
 ENV HOME=/home/user
 
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        git config --global url."https://gitclone.com/github.com/".insteadOf "https://github.com/"; \
+        git config --global url."https://gh-proxy.com/github.com/".insteadOf "https://github.com/"; \
     fi
 
 RUN git config --global http.version HTTP/1.1 && \

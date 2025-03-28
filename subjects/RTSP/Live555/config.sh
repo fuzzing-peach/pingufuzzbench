@@ -1,21 +1,13 @@
 #!/usr/bin/env bash
 
 function checkout {
-    mkdir -p repo/live555
-    cd repo/live555 
-    git init
-    git remote add origin https://github.com/rgaufman/live555.git
-    git fetch origin
-    git checkout -b master origin/master  # 将 'main' 替换为仓库的主分支名称
-
-    git checkout  "$@"
-    echo "$(pwd)"
-    pushd . >/dev/null  # 记住当前目录
-    git apply "${HOME}/profuzzbench/subjects/RTSP/Live555/ft-live555.patch"
-    popd >/dev/null  # 返回原始目录
+    mkdir -p repo
+    git clone https://github.com/rgaufman/live555.git repo/live555
+    pushd repo/live555 >/dev/null
+    git checkout "$@"
+    git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-live555.patch
     
-    
-
+    popd >/dev/null
 }
 
 function replay {
@@ -24,9 +16,12 @@ function replay {
 
     # 预加载gcov和伪随机库，并限制服务器运行3秒
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-    timeout -k 0 3s ./testOnDemandRTSPServer 8554
+        timeout -k 0 3s ./testOnDemandRTSPServer 8554
 
     wait
+
+    # 再次 kill 进程一次，确保进程停止
+    pkill testOnDemandR
 }
 
 function build_aflnet {
@@ -53,7 +48,9 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
     pushd ${HOME}/target/aflnet/live555/testProgs >/dev/null
@@ -72,13 +69,13 @@ function run_aflnet {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./testOnDemandRTSPServer 8554
 
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     gcov_cmd="gcovr -r .. -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
     gcovr -r .. -s -d >/dev/null 2>&1
     
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$gcov_cmd"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r .. --html --html-details -o ${outdir}/cov_html/index.html
 
@@ -110,7 +107,9 @@ function build_stateafl {
 # TODO:
 # stateafl 插桩之后 testOnDemandRTSPServer 会出现内存泄漏，因此这里暂时将 detect_leaks 设置为 0
 function run_stateafl {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp-replay
     pushd ${HOME}/target/stateafl/live555/testProgs >/dev/null
@@ -135,7 +134,7 @@ function run_stateafl {
 
     gcovr -r .. -s -d >/dev/null 2>&1
     
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$gcov_cmd"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r .. --html --html-details -o ${outdir}/cov_html/index.html
 
@@ -196,7 +195,9 @@ function build_sgfuzz {
 # TODO:
 # 内存泄漏，且 libfuzzer 无法通过设置 -fork=1 来在 OOM 之后重启
 function run_sgfuzz {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
@@ -251,7 +252,7 @@ function run_sgfuzz {
     }
 
     gcovr -r .. -s -d ${MAKE_OPT} >/dev/null 2>&1
-    compute_coverage replay "$list_cmd" 10 ${outdir}/coverage.csv "$cov_cmd"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
     gcovr -r .. --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
 

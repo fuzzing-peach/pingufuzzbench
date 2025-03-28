@@ -91,10 +91,15 @@ function compute_coverage {
   step=$3
   covfile=$4
   cov_cmd=$5
+  clean_cmd=$6
 
   # delete the existing coverage file
   rm $covfile || true
   touch $covfile
+
+  if [ -n "$clean_cmd" ]; then
+    eval "$clean_cmd"     
+  fi
 
   # output the header of the coverage file which is in the CSV format
   # Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
@@ -123,6 +128,10 @@ function compute_coverage {
     b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
     echo "$time,$l_abs,$l_per,$b_abs,$b_per"
     echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>$covfile
+
+    if [ -n "$clean_cmd" ]; then
+        eval "$clean_cmd"        
+    fi
   done
 
   # output cov data for the last testcase(s) if step > 1

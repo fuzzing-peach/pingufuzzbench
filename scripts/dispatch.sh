@@ -13,15 +13,15 @@ source scripts/utils.sh
 
 function in_subshell() {
     (
-        base=/home/user/profuzzbench
+        BASE=${HOME}/profuzzbench
         cmd="$@"
         echo "[+] Running in subshell: $cmd"
         if [[ -n "$CPU_CORE" ]]; then
             echo "[+] Running in cpu core: $CPU_CORE"
-            taskset -c $CPU_CORE bash -c "cd $base; source $target_config; source scripts/utils.sh; $cmd"
+            taskset -c $CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         else
             echo "[+] CPU_CORE is not set, running in any core"
-            bash -c "cd $base; source $target_config; source scripts/utils.sh; $cmd"
+            bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         fi
     ) || exit 1
 }

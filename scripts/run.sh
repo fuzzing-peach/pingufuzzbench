@@ -20,7 +20,7 @@ log_success "[+] kernel.core_pattern is correctly set to 'core'"
 args=($(get_args_before_double_dash "$@"))
 fuzzer_args=$(get_args_after_double_dash "$@")
 
-opt_args=$(getopt -o o:f:t:v: -l output:,fuzzer:,generator:,target:,version:,times:,timeout:,cleanup,detached,dry-run -- "${args[@]}")
+opt_args=$(getopt -o o:f:t:v: -l output:,fuzzer:,generator:,target:,version:,times:,timeout:,cleanup,detached,dry-run,replay-step:,gcov-step: -- "${args[@]}")
 if [ $? != 0 ]; then
     log_error "[!] Error in parsing shell arguments."
     exit 1
@@ -69,6 +69,14 @@ while true; do
         dry_run=1
         shift 1
         ;;
+    --replay-step)
+        replay_step="$2"
+        shift 2
+        ;;
+    --gcov-step)
+        gcov_step="$2"
+        shift 2
+        ;;
     *)
         # echo "Usage: run.sh -t TARGET -f FUZZER -v VERSION [--times TIMES, --timeout TIMEOUT]"
         break
@@ -91,6 +99,8 @@ if [[ -z "${dry_run}" ]]; then
 fi
 
 times=${times:-"1"}
+replay_step=${replay_step:-"1"}
+gcov_step=${gcov_step:-"1"}
 protocol=${target%/*}
 impl=${target##*/}
 # image_name=$(echo "pingu-$fuzzer-$protocol-$impl:$impl_version" | tr 'A-Z' 'a-z')
@@ -139,7 +149,7 @@ for i in $(seq 1 $times); do
         --shm-size=64G \
         --name $cname \
         $image_name \
-        /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
+        /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $replay_step $gcov_step $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
     echo $cmd
     id=$(eval $cmd)
     log_success "[+] Launch docker container: ${cname}"
