@@ -1,3 +1,9 @@
+diff --git a/fuzztruction-experiments b/fuzztruction-experiments
+--- a/fuzztruction-experiments
++++ b/fuzztruction-experiments
+@@ -1 +1 @@
+-Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8
++Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8-dirty
 diff --git a/fuzztruction_shared/src/util.rs b/fuzztruction_shared/src/util.rs
 index 0d07540..f2989a8 100644
 --- a/fuzztruction_shared/src/util.rs
@@ -199,7 +205,7 @@ diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
 index 3aa7cd0..12b8758 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
-@@ -118,12 +118,13 @@ impl Jail {
+@@ -118,12 +118,14 @@ impl Jail {
          // Mount the bear minimum to allow execution of software.
  
          // Mount / into our new root
@@ -211,6 +217,7 @@ index 3aa7cd0..12b8758 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
++            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",
@@ -249,10 +256,10 @@ index 2689dde..68c2bd8 100644
  }
  
 diff --git a/scheduler/src/cli/fuzztruction.rs b/scheduler/src/cli/fuzztruction.rs
-index eb8c21d..443e910 100644
+index eb8c21d..499e9e9 100644
 --- a/scheduler/src/cli/fuzztruction.rs
 +++ b/scheduler/src/cli/fuzztruction.rs
-@@ -358,6 +358,24 @@ fn parse_args() -> ArgMatches {
+@@ -358,6 +358,38 @@ fn parse_args() -> ArgMatches {
              Command::new("dump-stackmap")
                  .about("Dump the LLVM stackmap (e.g., locations and sizes)")
          )
@@ -272,12 +279,26 @@ index eb8c21d..443e910 100644
 +                    .short('d')
 +                    .help("Rerun the coverage computation and delete previous results, if any")
 +                    .action(clap::ArgAction::SetTrue)
++                ).arg(
++                    Arg::new("replay-step")
++                        .help("Replay the inputs found in the given step. If $i % $replay_step == 0, the input is replayed.")
++                        .short('r')
++                        .long("replay-step")
++                        .takes_value(true)
++                        .default_value("1"),
++                ).arg(
++                    Arg::new("gcov-step")
++                        .help("Run gcov for each insteresting input found in the given step. If $i % $gcov_step == 0, gcov is run.")
++                        .short('g')
++                        .long("gcov-step")
++                        .takes_value(true)
++                        .default_value("1"),
 +                )
 +        )
          .subcommand(
              Command::new("test-patchpoints")
              .about("Test the patchpoints of the source application (for debugging)")
-@@ -387,10 +405,18 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
+@@ -387,10 +419,18 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
      // Purge the working directory if requested.
      if config.general.work_dir.exists() && expects_empty_dir {
          if purge_flag {
@@ -299,7 +320,7 @@ index eb8c21d..443e910 100644
          } else {
              return Err(anyhow!(
                  "Workdir {:?} exists and --purge was not provided!",
-@@ -507,6 +533,10 @@ fn real_main() -> Result<()> {
+@@ -507,6 +547,10 @@ fn real_main() -> Result<()> {
              handler::handle_cli_llvm_cov_subcommand(llvm_cov_matches, &config)
                  .expect("Failed to run llvm-cov subcommand");
          }
@@ -311,18 +332,18 @@ index eb8c21d..443e910 100644
              handler::handle_cli_aflnet_subcommand(matches, &config)
                  .expect("Failed to run AFLNet mode");
 diff --git a/scheduler/src/cli/handler.rs b/scheduler/src/cli/handler.rs
-index e98c37a..ee979a7 100644
+index e98c37a..84ccd01 100644
 --- a/scheduler/src/cli/handler.rs
 +++ b/scheduler/src/cli/handler.rs
-@@ -1,6 +1,5 @@
+@@ -1,4 +1,7 @@
  use std::{
--    sync::{self, atomic::AtomicBool, Arc},
--    time::{Duration, Instant},
-+    fs, path::Path, process::{Command, Stdio}, sync::{self, atomic::AtomicBool, Arc}, time::{Duration, Instant}
++    fs,
++    path::Path,
++    process::{Command, Stdio},
+     sync::{self, atomic::AtomicBool, Arc},
+     time::{Duration, Instant},
  };
- 
- use anyhow::Result;
-@@ -271,6 +270,50 @@ pub(crate) fn handle_cli_sgfuzz_subcommand(matches: &ArgMatches, config: &Config
+@@ -271,6 +274,64 @@ pub(crate) fn handle_cli_sgfuzz_subcommand(matches: &ArgMatches, config: &Config
      Ok(())
  }
  
@@ -358,10 +379,24 @@ index e98c37a..ee979a7 100644
 +    if trace_matches.get_flag("delete") {
 +        cleanup_gcda(config.gcov.as_ref().unwrap().src_dir.as_ref())?;
 +    }
++    let replay_step: u32 = trace_matches
++        .value_of("replay-step")
++        .map(|v| v.parse().unwrap())
++        .unwrap_or(1);
++    let gcov_step: u32 = trace_matches
++        .value_of("gcov-step")
++        .map(|v| v.parse().unwrap())
++        .unwrap_or(1);
 +
 +    log::info!("Timeout is set to {timeout:?}");
 +
-+    coverage::networked::compute_gcov(config, termination_flag.clone(), timeout)?;
++    coverage::networked::compute_gcov(
++        config,
++        termination_flag.clone(),
++        timeout,
++        replay_step,
++        gcov_step,
++    )?;
 +
 +    if termination_flag.load(std::sync::atomic::Ordering::SeqCst) {
 +        return Ok(());
@@ -676,7 +711,7 @@ index bdedb83..b1e3e71 100644
  mod postprocess;
  pub use postprocess::postprocess_llvm_cov;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..a09a7da 100644
+index 8886de7..3f51ce4 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
 @@ -1,26 +1,41 @@
@@ -724,7 +759,7 @@ index 8886de7..a09a7da 100644
  
  unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()> {
      let mutations = entry.mutations();
-@@ -39,6 +54,239 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
+@@ -39,6 +54,249 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
      Ok(())
  }
  
@@ -732,6 +767,8 @@ index 8886de7..a09a7da 100644
 +    config: &Config,
 +    exit_requested: Arc<AtomicBool>,
 +    timeout: Duration,
++    replay_step: u32,
++    gcov_step: u32,
 +) -> Result<()> {
 +    let gcov_config = config.gcov.as_ref().unwrap();
 +
@@ -780,6 +817,10 @@ index 8886de7..a09a7da 100644
 +    let mock_time = Local::now();
 +
 +    for (idx, entry) in queue.iter().sorted_by_key(|q| q.id().0).enumerate() {
++        if idx % replay_step as usize != 0 {
++            continue;
++        }
++
 +        if exit_requested.load(atomic::Ordering::SeqCst) {
 +            break;
 +        }
@@ -921,6 +962,10 @@ index 8886de7..a09a7da 100644
 +        let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::SIGTERM);
 +        source.wait_for_child_termination(timeout, true)?;
 +
++        if idx % gcov_step as usize != 0 {
++            continue;
++        }
++
 +        let coverage = grcov.spawn()?;
 +
 +        // Compute line coverage ratio
@@ -964,7 +1009,7 @@ index 8886de7..a09a7da 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +431,68 @@ pub fn compute_llvm_cov(
+@@ -183,3 +441,68 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
