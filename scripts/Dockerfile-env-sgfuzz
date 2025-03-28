@@ -109,15 +109,15 @@ RUN zsh -c ". ~/.zshrc"
 
 # AFLNet
 # We need aflnet-replay to replay all the testcases
-RUN git clone https://gitee.com/skyworld123/aflnet.git && \
+RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
     cd aflnet && \
-    git checkout 62d63a59230bb5f5c6e54cddd381b9425dba3726 && \
+    git checkout 6d86ca0cf6852cfa7a776a77fb7886d8bee46c14 && \
     git apply /tmp/patches/aflnet.patch && \
     make clean all ${MAKE_OPT} && \
     cd llvm_mode && make ${MAKE_OPT}
 
 # SGFuzz
-RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=2 sgfuzz && \
+RUN git clone https://github.com/bajinsheng/SGFuzz.git --depth=2 sgfuzz && \
     cd sgfuzz && \
     git checkout 00dbbd70ba79f1bcff3f7dfdb4fda0645cf91225 && \
     git apply /tmp/patches/sgfuzz.patch && \
@@ -125,7 +125,7 @@ RUN git clone https://gitee.com/pine404/SGFuzz.git --depth=2 sgfuzz && \
     sudo cp libsfuzzer.a /usr/lib/libsFuzzer.a
 
 # Install hongfuzz netdrive that is used by SGFuzz
-RUN git clone https://gitee.com/kherrisan/honggfuzz.git --depth=1 && \
+RUN git clone https://github.com/google/honggfuzz.git --depth=1 && \
     cd honggfuzz && \
     git apply /tmp/patches/hf.patch && \
     CC=clang CFLAGS="-fsanitize=fuzzer-no-link -fsanitize=address" make libhfcommon/libhfcommon.a && \

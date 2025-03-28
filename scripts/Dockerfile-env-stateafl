@@ -98,9 +98,9 @@ RUN zsh -c ". ~/.zshrc"
 
 # AFLNet
 # We need aflnet-replay to replay all the testcases
-RUN git clone https://gitee.com/skyworld123/aflnet.git && \
+RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
     cd aflnet && \
-    git checkout 62d63a59230bb5f5c6e54cddd381b9425dba3726 && \
+    git checkout 6d86ca0cf6852cfa7a776a77fb7886d8bee46c14 && \
     git apply /tmp/patches/aflnet.patch && \
     make clean all ${MAKE_OPT} && \
     cd llvm_mode && make ${MAKE_OPT}
@@ -108,7 +108,7 @@ RUN git clone https://gitee.com/skyworld123/aflnet.git && \
 # StateAFL
 ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
 RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark && sudo pip3 install --proxy=${HTTP_PROXY} --break-system-packages -i https://mirrors.aliyun.com/pypi/simple pyshark
-RUN git clone https://gitee.com/zhangadiu/stateafl.git --depth=1 && \
+RUN git clone https://github.com/stateafl/stateafl.git --depth=1 && \
     cd stateafl && \
     git checkout d923e22f7b2688db45b08f3fa3a29a566e7ff3a4 && \
     git submodule init && \

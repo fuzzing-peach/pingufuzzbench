@@ -152,6 +152,7 @@ for i in $(seq 1 $times); do
         /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $replay_step $gcov_step $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
     echo $cmd
     id=$(eval $cmd)
+    echo "$idle_core" >> ${output}/${cname}/attached_core
     log_success "[+] Launch docker container: ${cname}"
     cids+=(${id::12}) # store only the first 12 characters of a container ID
 done
