@@ -1,13 +1,14 @@
 diff --git a/libhfnetdriver/netdriver.c b/libhfnetdriver/netdriver.c
-index 3e11f71..6d73585 100644
+index 3e11f71..4ee4711 100644
 --- a/libhfnetdriver/netdriver.c
 +++ b/libhfnetdriver/netdriver.c
-@@ -387,7 +387,7 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
+@@ -387,7 +387,8 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
      *argc = HonggfuzzNetDriverArgsForServer(
          *argc, *argv, &hfnd_globals.argc_server, &hfnd_globals.argv_server);
  
 -    netDriver_initNsIfNeeded();
 +    // netDriver_initNsIfNeeded();
++    if (!getenv("PINGU_HF_NET_INITIALIZED")) {LOG_I("PINGU_HF_NET_INITIALIZED\n");setenv("PINGU_HF_NET_INITIALIZED", "1", 1);return 0;}
      netDriver_startOriginalProgramInThread();
      for (;;) {
          if (netDriver_checkIfServerReady(*argc, *argv)) {

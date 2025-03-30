@@ -188,7 +188,6 @@ function build_sgfuzz {
         -lhfcommon \
         -lstdc++
 
-    echo "done!"
     popd >/dev/null
 }
 
@@ -203,6 +202,8 @@ function run_sgfuzz {
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
     pushd ${HOME}/target/sgfuzz/live555/testProgs >/dev/null
 
+    mkdir -p $outdir
+
     mkdir -p $queue
     rm -rf $queue/*
 
@@ -216,7 +217,6 @@ function run_sgfuzz {
         -close_fd_mask=3
         -shrink=1
         -print_full_coverage=1
-        -check_input_sha1=1
         -reduce_inputs=1
         -reload=30
         -print_final_stats=1
@@ -231,12 +231,7 @@ function run_sgfuzz {
         8554
     )
 
-    # 如果设置了 CPU_CORE 环境变量，则使用 taskset 绑定到指定核心
-    if [ ! -z "${CPU_CORE}" ]; then
-        taskset -c ${CPU_CORE} ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
-    else
-        ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
-    fi
+    ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
 
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
     cov_cmd="gcovr -r .. -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""

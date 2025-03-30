@@ -60,7 +60,7 @@ function run_aflnet {
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
-    export DCMDICTPATH=${HOME}/target/aflnet/dcmtk/dcmdata/data/dicom.dic
+    export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export WORKDIR=${HOME}/target/aflnet/dcmtk/build/bin
 
     timeout -k 0 --preserve-status $timeout \
@@ -97,8 +97,8 @@ function build_stateafl {
     export ASAN_OPTIONS=detect_leaks=0
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
-    export CFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
     mkdir build && cd build
@@ -125,10 +125,11 @@ function run_stateafl {
     mkdir -p $outdir
     rm -rf $outdir/*
 
+    export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
@@ -142,7 +143,7 @@ function run_stateafl {
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
 
     cd ${HOME}/target/gcov/consumer/dcmtk
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/dcmtk/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
 
