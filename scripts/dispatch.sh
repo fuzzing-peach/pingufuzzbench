@@ -16,9 +16,9 @@ function in_subshell() {
         BASE=${HOME}/profuzzbench
         cmd="$@"
         echo "[+] Running in subshell: $cmd"
-        if [[ -n "$CPU_CORE" ]]; then
-            echo "[+] Running in cpu core: $CPU_CORE"
-            taskset -c $CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
+        if [[ -n "$PFB_CPU_CORE" ]]; then
+            echo "[+] Running in cpu core: $PFB_CPU_CORE"
+            taskset -c $PFB_CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         else
             echo "[+] CPU_CORE is not set, running in any core"
             bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"

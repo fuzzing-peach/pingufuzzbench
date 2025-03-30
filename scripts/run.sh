@@ -130,10 +130,12 @@ cids=()
 for i in $(seq 1 $times); do
     # use current ms timestamp as the id
     ts=$(date +%s%3N)
-    cname="${container_name}-${i}-${ts}"
-    mkdir -p ${output}/${cname}
-    container_fuzzing_args="${fuzzer_args}"
     idle_core=${idle_cores_array[$((i-1))]}
+    # 将 CPU ID 加入到容器名称中: name-index-cpuid-timestamp
+    cname="${container_name}-${i}-cpu${idle_core}-${ts}"
+    mkdir -p ${output}/${cname}
+
+    container_fuzzing_args="${fuzzer_args}"
     cmd="docker run -it -d \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
@@ -143,7 +145,7 @@ for i in $(seq 1 $times); do
         -v /etc/timezone:/etc/timezone:ro \
         -v $(pwd):/home/user/profuzzbench \
         -v ${output}/${cname}:/tmp/fuzzing-output:rw \
-        -e CPU_CORE=${idle_core} \
+        -e PFB_CPU_CORE=${idle_core} \
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \
@@ -155,6 +157,7 @@ for i in $(seq 1 $times); do
     echo "$idle_core" >> ${output}/${cname}/attached_core
     log_success "[+] Launch docker container: ${cname}"
     cids+=(${id::12}) # store only the first 12 characters of a container ID
+    sleep 1
 done
 
 dlist="" # docker list

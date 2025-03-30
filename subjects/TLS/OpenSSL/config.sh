@@ -49,11 +49,9 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/openssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
-    export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -107,7 +105,6 @@ function run_stateafl {
     pushd ${HOME}/target/stateafl/openssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so

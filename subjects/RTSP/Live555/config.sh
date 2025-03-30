@@ -56,7 +56,6 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/live555/testProgs >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -115,7 +114,6 @@ function run_stateafl {
     pushd ${HOME}/target/stateafl/live555/testProgs >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so

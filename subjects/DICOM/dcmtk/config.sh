@@ -54,7 +54,6 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/dcmtk/build/bin >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -123,7 +122,6 @@ function run_stateafl {
     pushd ${HOME}/target/stateafl/dcmtk/build/bin >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
