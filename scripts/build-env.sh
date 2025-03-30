@@ -44,7 +44,9 @@ log_success "[+] Building docker image: ${image}:latest"
 # --build-arg HTTP_PROXY=http://172.17.0.1:7890 --build-arg HTTPS_PROXY=http://172.17.0.1:7890 
 # If needs to add dns server, passing:
 # --build-arg DNS_SERVER=9.9.9.9
-DOCKER_BUILDKIT=1 docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -f scripts/${dockerfile} $docker_args . -t ${image}:latest
+cmd="DOCKER_BUILDKIT=1 docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -f scripts/${dockerfile} $docker_args . -t ${image}:latest"
+echo $cmd
+eval $cmd
 if [[ $? -ne 0 ]]; then
     log_error "[!] Error while building the docker image: ${image}:latest"
     exit 1

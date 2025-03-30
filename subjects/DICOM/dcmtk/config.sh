@@ -94,6 +94,7 @@ function build_stateafl {
 
     git apply ${HOME}/profuzzbench/subjects/DICOM/dcmtk/buffer.patch
 
+    export ASAN_OPTIONS=detect_leaks=0
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
     export CFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
@@ -126,7 +127,7 @@ function run_stateafl {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
-    export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
+    export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
