@@ -45,8 +45,9 @@ def get_running_containers_cpu() -> Dict[int, str]:
     return cpu_allocations
 
 def find_available_cpus(max_cpus: int, allocated_cpus: Dict[int, str], n: int) -> List[int]:
-    """找到n个空闲的CPU"""
-    all_cpus = set(range(max_cpus))
+    """找到n个空闲的CPU，只返回偶数编号"""
+    # 只选择偶数CPU
+    all_cpus = set(range(0, max_cpus, 2))  # 步长为2，只包含偶数
     used_cpus = set(allocated_cpus.keys())
     free_cpus = sorted(list(all_cpus - used_cpus))
     return free_cpus[:n]
