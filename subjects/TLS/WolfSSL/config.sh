@@ -45,7 +45,6 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/wolfssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
