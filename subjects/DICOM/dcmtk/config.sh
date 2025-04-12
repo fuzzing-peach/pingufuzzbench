@@ -12,7 +12,7 @@ function checkout {
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 DICOM 5158 1 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-        timeout -k 0 -s SIGTERM 3s ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
+        timeout -k 0 -s SIGTERM 1s ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
     wait
 
     pkill dcmqrscp
@@ -107,6 +107,7 @@ function build_stateafl {
     cd bin
     mkdir ACME_STORE
     cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/stateafl/g' dcmqrscp.cfg
     
     rm -rf fuzz test .git doc
 
@@ -151,14 +152,134 @@ function run_stateafl {
     popd >/dev/null
 }
 
+function build_sgfuzz {
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/dcmtk target/sgfuzz/dcmtk
+
+    pushd target/sgfuzz/dcmtk >/dev/null
+
+    export LLVM_COMPILER=clang
+    export CC=${HOME}/.local/bin/wllvm
+    export CXX=${HOME}/.local/bin/wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+
+    export FT_BLOCK_PATH_POSTFIXES="libsrc/ofchrenc.cc"
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . -b $HOME/profuzzbench/subjects/DICOM/dcmtk/blocked_variable
+    
+    mkdir build && cd build
+    cmake ..
+
+    make dcmqrscp ${MAKE_OPT}
+    cd bin
+    ${HOME}/.local/bin/extract-bc dcmqrscp
+
+    export PINGU_USE_HF_MAIN=1
+    export FT_HOOK_INS=store
+    export PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager dcmqrscp.bc -o dcmqrscp_opt.bc
+
+    clang dcmqrscp_opt.bc -o dcmqrscp \
+        -lsFuzzer \
+        -lhfnetdriver \
+        -lhfcommon \
+        -lz \
+        -lm \
+        -lstdc++ \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DFT_CONSUMER \
+        -DSGFUZZ \
+        ../lib/libdcmqrdb.a \
+        ../lib/libdcmnet.a \
+        ../lib/libdcmdata.a \
+        ../lib/liboflog.a \
+        ../lib/libofstd.a \
+        ../lib/liboficonv.a 
+
+    if [ ! -d "ACME_STORE" ]; then
+        mkdir ACME_STORE
+    fi
+    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
+
+    popd >/dev/null
+}
+
+function run_sgfuzz {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/DICOM/dcmtk/in-dicom
+    pushd ${HOME}/target/sgfuzz/dcmtk/build/bin >/dev/null
+
+    mkdir -p $outdir/replayable-queue
+
+    export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export HFND_TCP_PORT=5158
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        -fork=1
+        "${outdir}/replayable-queue"
+        "${indir}"
+    )
+
+    DCMTK_ARGS=(
+        --single-process
+        --config ./dcmqrscp.cfg
+    )
+
+    ./dcmqrscp "${SGFuzz_ARGS[@]}" -- "${DCMTK_ARGS[@]}"
+
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
+
+    function replay {
+        /home/user/aflnet/afl-replay $1 DICOM 5158 1 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 0 1s ./build/bin/dcmqrscp --single-process --config ./build/bin/dcmqrscp.cfg
+
+        wait
+        pkill dcmqrscp
+    }
+
+    cd ${HOME}/target/gcov/consumer/dcmtk/
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"    
+    clean_cmd="rm -f ${HOME}/target/gcov/consumer/dcmtk/build/bin/ACME_STORE/*"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
+}
+
 function build_gcov {
     mkdir -p target/gcov/consumer
     rm -rf target/gcov/consumer/*
     cp -r repo/dcmtk target/gcov/consumer/dcmtk
     pushd target/gcov/consumer/dcmtk >/dev/null
 
-    export CFLAGS="-O3 -DFT_FUZZING -DFT_CONSUMER -g -fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-O3 -DFT_FUZZING -DFT_CONSUMER -g -fprofile-arcs -ftest-coverage"
+    export CFLAGS="-O3 -g -fprofile-arcs -ftest-coverage"
+    export CXXFLAGS="-O3 -g -fprofile-arcs -ftest-coverage"
     export LDFLAGS="-g -fprofile-arcs -ftest-coverage"
    
     mkdir build && cd build
@@ -170,6 +291,7 @@ function build_gcov {
         mkdir ACME_STORE
     fi
     cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 
     rm -rf fuzz test .git doc
 
