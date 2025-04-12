@@ -175,10 +175,9 @@ function build_sgfuzz {
     cd bin
     ${HOME}/.local/bin/extract-bc dcmqrscp
 
-    export PINGU_USE_HF_MAIN=1
-    export FT_HOOK_INS=store
-    export PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/sgfuzz-source-pass.so \
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager dcmqrscp.bc -o dcmqrscp_opt.bc
 
     clang dcmqrscp_opt.bc -o dcmqrscp \
