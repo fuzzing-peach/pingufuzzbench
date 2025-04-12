@@ -107,7 +107,15 @@ RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
 
 # StateAFL
 ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
-RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark && sudo pip3 install --proxy=${HTTP_PROXY} --break-system-packages -i https://mirrors.aliyun.com/pypi/simple pyshark
+RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark
+RUN if [ "${HTTP_PROXY}" != "" ]; then \
+        sudo pip3 install --proxy=${HTTP_PROXY} --break-system-packages pyshark; \
+    elif [ "${ZH_CN}" = "true" ]; then \
+        sudo pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple pyshark; \
+    else \
+        sudo pip3 install --break-system-packages pyshark; \
+    fi
+
 RUN git clone https://github.com/stateafl/stateafl.git --depth=1 && \
     cd stateafl && \
     git checkout d923e22f7b2688db45b08f3fa3a29a566e7ff3a4 && \
@@ -116,7 +124,7 @@ RUN git clone https://github.com/stateafl/stateafl.git --depth=1 && \
     git apply /tmp/patches/stateafl.patch && \
     make ${MAKE_OPT} && \
     rm as && \
-    cd llvm_mode  && \
+    cd llvm_mode && \
     rm -f libmvptree.a containers.a libtlsh.a && \
     cd tlsh && \
     git apply /tmp/patches/tlsh.patch && \

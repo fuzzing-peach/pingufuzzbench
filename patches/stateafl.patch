@@ -950,15 +950,7 @@ index 65290a9..4b56f2a 100644
  
  end_analysis:
  
-diff --git a/llvm_mode/containers.a b/llvm_mode/containers.a
-index b444fc7..2a8c822 100644
-Binary files a/llvm_mode/containers.a and b/llvm_mode/containers.a differ
-diff --git a/llvm_mode/libmvptree.a b/llvm_mode/libmvptree.a
-index 06015e6..9cebdfe 100644
-Binary files a/llvm_mode/libmvptree.a and b/llvm_mode/libmvptree.a differ
-diff --git a/llvm_mode/libtlsh.a b/llvm_mode/libtlsh.a
-index c97c5c9..d9821c8 100644
-Binary files a/llvm_mode/libtlsh.a and b/llvm_mode/libtlsh.a differ
+
 diff --git a/llvm_mode/tlsh b/llvm_mode/tlsh
 --- a/llvm_mode/tlsh
 +++ b/llvm_mode/tlsh
