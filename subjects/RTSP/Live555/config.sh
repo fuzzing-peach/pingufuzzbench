@@ -12,7 +12,7 @@ function checkout {
 
 function replay {
     # 启动后台的 aflnet-replay
-    /home/user/aflnet/aflnet-replay $1 RTSP 8554 1 &
+    ${HOME}/aflnet/aflnet-replay $1 RTSP 8554 1 &
 
     # 预加载gcov和伪随机库，并限制服务器运行3秒
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
@@ -149,32 +149,35 @@ function build_sgfuzz {
     git reset --hard HEAD
     git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
 
-    export CC=clang
-    export CXX=clang++
-    export CFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
-    export CXXFLAGS="-g -O3 -fsanitize=address -fsanitize=fuzzer-no-link -DSGFUZZ -v -Wno-int-conversion"
-    export LDFLAGS="-fsanitize=address -fsanitize=fuzzer-no-link"
-
+    export LLVM_COMPILER=clang
+    export CC=${HOME}/.local/bin/wllvm
+    export CXX=${HOME}/.local/bin/wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
     sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
     sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
 
-    set +e
     ./genMakefiles linux
     make -j
-    set -e
-
     cd testProgs
+    ${HOME}/.local/bin/extract-bc testOnDemandRTSPServer
+
+    export PINGU_USE_HF_MAIN=1
+    export FT_HOOK_INS=store
+    export PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/live555/enum_types
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager testOnDemandRTSPServer.bc -o testOnDemandRTSPServer_opt.bc
+
     clang++ -otestOnDemandRTSPServer -L. \
         -fsanitize=address \
         -fsanitize=fuzzer \
         -DFT_FUZZING \
         -DSGFUZZ \
         -DFT_CONSUMER \
-        testOnDemandRTSPServer.o \
-        announceURL.o \
         ../liveMedia/libliveMedia.a \
         ../groupsock/libgroupsock.a \
         ../BasicUsageEnvironment/libBasicUsageEnvironment.a \
@@ -189,29 +192,25 @@ function build_sgfuzz {
     popd >/dev/null
 }
 
-# TODO:
-# 内存泄漏，且 libfuzzer 无法通过设置 -fork=1 来在 OOM 之后重启
 function run_sgfuzz {
     replay_step=$1
     gcov_step=$2
     timeout=$3
     outdir=/tmp/fuzzing-output
-    queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp
     pushd ${HOME}/target/sgfuzz/live555/testProgs >/dev/null
 
-    mkdir -p $outdir
-
-    mkdir -p $queue
-    rm -rf $queue/*
+    mkdir -p $outdir/replayable-queue
 
     export HFND_TCP_PORT=8554
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export HFND_TCP_PORT=8554
 
     SGFuzz_ARGS=(
+        -max_len=100000
         -close_fd_mask=3
         -shrink=1
         -print_full_coverage=1
@@ -244,10 +243,10 @@ function run_sgfuzz {
         wait
     }
 
-    gcovr -r .. -s -d ${MAKE_OPT} >/dev/null 2>&1
+    gcovr -r .. -s -d >/dev/null 2>&1
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd"
     mkdir -p ${outdir}/cov_html
-    gcovr -r .. --html --html-details ${MAKE_OPT} -o ${outdir}/cov_html/index.html
+    gcovr -r .. --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
 }
