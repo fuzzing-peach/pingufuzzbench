@@ -23,14 +23,16 @@ index 573607f..426ff4a 100644
  #include <cstdlib>
  #include <cstring>
 diff --git a/sanitizer/State_machine_instrument.py b/sanitizer/State_machine_instrument.py
-index 3927537..5c8ec29 100644
+index 3927537..a65d613 100644
 --- a/sanitizer/State_machine_instrument.py
 +++ b/sanitizer/State_machine_instrument.py
-@@ -6,11 +6,17 @@ debug = False
+@@ -6,11 +6,19 @@ debug = False
  path = ""
  blocked_variables_file = ""
  blocked_variables_enabled = False
 +blocked_path_postfixes = os.environ.get("FT_BLOCK_PATH_POSTFIXES", "").split("|")  # type: ignore
++if len(blocked_path_postfixes) == 1 and blocked_path_postfixes[0] == "":
++    blocked_path_postfixes = []
  instrument_loc = 1
  
  # Regex search: return the content
@@ -45,36 +47,63 @@ index 3927537..5c8ec29 100644
      if len(match) > 0:
          return match
      return None
-@@ -107,6 +113,10 @@ def lookfor_enum_definition():
+@@ -107,6 +115,10 @@ def lookfor_enum_definition():
      enum_variable_uniq = set()
      for root, dirs, files in os.walk(path):
          for file in files:
 +            full_path = os.path.join(root, file)
-+            if [blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]:
++            if any([blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]):
 +                print(f"skipping blocked file {full_path}")
 +                continue
              if file.endswith(('.cpp', '.c', '.cc', '.h', '.hh', '.h.in')):
                  with open(os.path.join(root, file), 'r', encoding="utf-8", errors='ignore') as f:
                      content = f.read()
-@@ -131,6 +141,10 @@ def lookfor_enum_definition():
+@@ -131,11 +143,15 @@ def lookfor_enum_definition():
  def lookfor_enum_usage(enum_definition, enum_usage, enum_variable_uniq):
      for root, dirs, files in os.walk(path):
          for file in files:
 +            full_path = os.path.join(root, file)
-+            if [blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]:
++            if any([blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]):
 +                print(f"skipping blocked file {full_path}")
 +                continue
              if file.endswith(('.cpp', '.c', '.cc', '.h', '.hh', '.h.in')):
                  with open(os.path.join(root, file), 'r', encoding="utf-8", errors='ignore') as f:
                      content = f.read()
-@@ -154,6 +168,10 @@ def lookfor_enum_usage(enum_definition, enum_usage, enum_variable_uniq):
+                     for enum_type in enum_definition:
+-                        result = search_content(enum_type+" \w+ ?(?:;|=)", content)
++                        result = search_content(enum_type+r" \w+ ?(?:;|=)", content)
+                         if result is not None:
+                             for enum_variable_string in result:
+                                 get_type, get_var = parse_variable(enum_variable_string)
+@@ -154,11 +170,15 @@ def lookfor_enum_usage(enum_definition, enum_usage, enum_variable_uniq):
  def instrument(enum_variable_uniq):
      for root, dirs, files in os.walk(path):
          for file in files:
 +            full_path = os.path.join(root, file)
-+            if [blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]:
++            if any([blocked_path_postfix in full_path for blocked_path_postfix in blocked_path_postfixes]):
 +                print(f"skipping blocked file {full_path}")
 +                continue
              if file.endswith(('.cpp', '.c', '.cc', '.h', '.hh', '.h.in')):
                  with open(os.path.join(root, file), 'r+', encoding="utf-8", errors='ignore') as f:
                      content = f.read()
+                     for name in enum_variable_uniq:
+-                        result = search_index("^(?: |\t)*?(?:\w+\.|\w+->)*?" + name+" ?= ?\w+?;", content)
++                        result = search_index(r"^(?: |\t)*?(?:\w+\.|\w+->)*?" + name+r" ?= ?\w+?;", content)
+                         content = package_content(content, result, file, root)
+                     if not debug:
+                         f.seek(0)
+@@ -187,10 +207,10 @@ if __name__ == '__main__':
+             instrument_loc = int(sys.argv[4])
+ 
+     enum_definition, enum_usage, enum_variable_uniq = lookfor_enum_definition()
+-    enum_usage, enum_variable_uniq = lookfor_enum_usage(enum_definition, enum_usage, enum_variable_uniq)
+-    if blocked_variables_enabled:
+-        enum_variable_uniq = filter_file(blocked_variables_file, enum_variable_uniq)
+-    instrument(enum_variable_uniq)
++    with open('enum_types.txt', 'w') as f:
++        for definition in enum_definition:
++            f.write(str(definition) + '\n')
++            
+     if debug:
+         print("--------------Final states----------------")
+         print(enum_variable_uniq)

@@ -144,7 +144,7 @@ for i in $(seq 1 $times); do
         --user $(id -u):$(id -g) \
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \
-        -v ${pwd}:/home/user/profuzzbench \
+        -v $(pwd):/home/user/profuzzbench \
         -v ${output}/${cname}:/tmp/fuzzing-output:rw \
         -e PFB_CPU_CORE=${idle_core} \
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \

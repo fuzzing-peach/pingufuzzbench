@@ -160,8 +160,8 @@ function build_sgfuzz {
     pushd target/sgfuzz/dcmtk >/dev/null
 
     export LLVM_COMPILER=clang
-    export CC=${HOME}/.local/bin/wllvm
-    export CXX=${HOME}/.local/bin/wllvm++
+    export CC=wllvm
+    export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
 
@@ -173,10 +173,10 @@ function build_sgfuzz {
 
     make dcmqrscp ${MAKE_OPT}
     cd bin
-    ${HOME}/.local/bin/extract-bc dcmqrscp
+    extract-bc dcmqrscp
 
     export SGFUZZ_USE_HF_MAIN=1
-    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types.txt
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager dcmqrscp.bc -o dcmqrscp_opt.bc
 
@@ -224,6 +224,7 @@ function run_sgfuzz {
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=5158
+    export HFND_FORK_MODE=1
 
     SGFuzz_ARGS=(
         -max_len=100000
@@ -241,6 +242,7 @@ function run_sgfuzz {
     DCMTK_ARGS=(
         --single-process
         --config ./dcmqrscp.cfg
+        -d
     )
 
     ./dcmqrscp "${SGFuzz_ARGS[@]}" -- "${DCMTK_ARGS[@]}"

@@ -34,7 +34,6 @@ RUN apt update -y && yes | unminimize && apt upgrade -y && \
     libcap-dev libpcap-dev tcpdump \
     rsync autopoint gperf texinfo gettext \
     vim nano screen htop man wget httpie bash-completion ripgrep iputils-ping iproute2 telnet net-tools ncat netcat-traditional \
-    zsh autojump fzf \
     && rm -rf /var/lib/apt/lists
 
 RUN ln -sf /usr/bin/clang-17 /usr/bin/clang && \
@@ -66,7 +65,7 @@ ENV GROUP_ID=${GROUP_ID}
 RUN userdel $(getent passwd ${USER_ID} | cut -d: -f1) || true
 RUN groupdel $(getent group ${GROUP_ID} | cut -d: -f1) || true
 RUN groupadd -g ${GROUP_ID} user && \
-    useradd -u ${USER_ID} -rm -d /home/user -s /usr/bin/zsh -g user -G sudo user -p "$(openssl passwd -1 user)" && \
+    useradd -u ${USER_ID} -rm -d /home/user -s /usr/bin/bash -g user -G sudo user -p "$(openssl passwd -1 user)" && \
     echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Use user as default username
@@ -83,9 +82,6 @@ RUN git config --global http.version HTTP/1.1 && \
     git config --global user.email zdkscope@outlook.com
     
 COPY patches /tmp/patches
-COPY --chown=user:user scripts/.zshrc ${HOME}/.zshrc
-COPY --chown=user:user scripts/.p10k.zsh ${HOME}/.p10k.zsh
-RUN zsh -c ". ~/.zshrc"
 
 ##############
 # End of user setup
