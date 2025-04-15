@@ -168,7 +168,7 @@ function build_sgfuzz {
 
     export SGFUZZ_USE_HF_MAIN=1
     export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/live555/enum_types.txt
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/sgfuzz-source-pass.so \
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager testOnDemandRTSPServer.bc -o testOnDemandRTSPServer_opt.bc
 
     clang++ testOnDemandRTSPServer_opt.bc -o testOnDemandRTSPServer \
