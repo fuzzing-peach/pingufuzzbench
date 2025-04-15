@@ -122,7 +122,7 @@ fi
 
 output=$(realpath "$output")
 
-idle_cores=$(get_lowest_load_cpus $times)
+idle_cores=$(python3 ./scripts/idle_cpu.py $times)
 idle_cores_array=($idle_cores)
 
 log_success "[+] Ready to launch image: $image_id"
