@@ -150,8 +150,8 @@ function build_sgfuzz {
     git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
 
     export LLVM_COMPILER=clang
-    export CC=${HOME}/.local/bin/wllvm
-    export CXX=${HOME}/.local/bin/wllvm++
+    export CC=wllvm
+    export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
     
@@ -164,30 +164,30 @@ function build_sgfuzz {
     ./genMakefiles linux
     make -j
     cd testProgs
-    ${HOME}/.local/bin/extract-bc testOnDemandRTSPServer
+    extract-bc testOnDemandRTSPServer
 
-    export PINGU_USE_HF_MAIN=1
-    export FT_HOOK_INS=store
-    export PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/live555/enum_types
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/live555/enum_types.txt
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager testOnDemandRTSPServer.bc -o testOnDemandRTSPServer_opt.bc
 
-    clang++ -otestOnDemandRTSPServer -L. \
-        -fsanitize=address \
-        -fsanitize=fuzzer \
-        -DFT_FUZZING \
-        -DSGFUZZ \
-        -DFT_CONSUMER \
-        ../liveMedia/libliveMedia.a \
-        ../groupsock/libgroupsock.a \
-        ../BasicUsageEnvironment/libBasicUsageEnvironment.a \
-        ../UsageEnvironment/libUsageEnvironment.a \
-        -lssl \
-        -lcrypto \
+    clang++ testOnDemandRTSPServer_opt.bc -o testOnDemandRTSPServer \
+        -L. \
         -lsFuzzer \
         -lhfnetdriver \
         -lhfcommon \
-        -lstdc++
+        -lssl \
+        -lcrypto \
+        -lstdc++ \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DFT_CONSUMER \
+        -DSGFUZZ \
+        ../liveMedia/libliveMedia.a \
+        ../groupsock/libgroupsock.a \
+        ../BasicUsageEnvironment/libBasicUsageEnvironment.a \
+        ../UsageEnvironment/libUsageEnvironment.a
 
     popd >/dev/null
 }
@@ -202,12 +202,12 @@ function run_sgfuzz {
 
     mkdir -p $outdir/replayable-queue
 
-    export HFND_TCP_PORT=8554
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export HFND_TCP_PORT=8554
+    export HFND_FORK_MODE=1
 
     SGFuzz_ARGS=(
         -max_len=100000
@@ -220,7 +220,7 @@ function run_sgfuzz {
         -detect_leaks=0
         -max_total_time=$timeout
         -fork=1
-        "${queue}"
+        "${outdir}/replayable-queue"
         "${indir}"
     )
 
@@ -230,17 +230,18 @@ function run_sgfuzz {
 
     ./testOnDemandRTSPServer "${SGFuzz_ARGS[@]}" -- "${LIVE555_ARGS[@]}"
 
-    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
     cov_cmd="gcovr -r .. -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
-    list_cmd="ls -1 ${queue}/* | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/replayable-queue/* | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
     function replay {
-        /home/user/aflnet/afl-replay $1 RTSP 8554 1 &
+        ${HOME}/aflnet/afl-replay $1 RTSP 8554 1 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-        timeout -k 0 3s ./testOnDemandRTSPServer 8554
+            timeout -k 0 1s ./testOnDemandRTSPServer 8554
 
         wait
+        pkill -f testOnDemandRTSPServer
     }
 
     gcovr -r .. -s -d >/dev/null 2>&1

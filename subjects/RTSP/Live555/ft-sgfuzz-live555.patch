@@ -27,19 +27,3 @@ index 332ac2b..d6e72ac 100644
  }
  
  GenericMediaServer::ClientSession*
-diff --git a/testProgs/testOnDemandRTSPServer.cpp b/testProgs/testOnDemandRTSPServer.cpp
-index 131c21e..dcab9d0 100644
---- a/testProgs/testOnDemandRTSPServer.cpp
-+++ b/testProgs/testOnDemandRTSPServer.cpp
-@@ -52,7 +52,11 @@ static void onOggDemuxCreation(OggFileServerDemux* newDemux, void* /*clientData*
-   newDemuxWatchVariable = 1;
- }
- 
-+#ifdef SGFUZZ
-+extern "C" int HonggfuzzNetDriver_main(int argc, char ** argv) {
-+#else
- int main(int argc, char** argv) {
-+#endif
-   // Begin by setting up our usage environment:
-   TaskScheduler* scheduler = BasicTaskScheduler::createNew();
-   env = BasicUsageEnvironment::createNew(*scheduler);
