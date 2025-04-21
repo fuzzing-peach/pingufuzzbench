@@ -149,3 +149,34 @@ int close(int fd)
 
     return orig_close(fd);
 }
+
+static unsigned int g_rand_initialized = 0;
+static unsigned int g_rand_state = 0;
+
+int rand(void) {
+    if (!g_rand_initialized) {
+        srand(0); // 确保初始化
+    }
+    // 实现一个简单的 LCG 算法（与 glibc 不同，仅为示例）
+    g_rand_state = g_rand_state * 1103515245 + 12345;
+    return (g_rand_state >> 16) & 0x7FFF;
+}
+
+void srand(unsigned int seed) {
+    g_rand_state = seed;
+    g_rand_initialized = 1;
+}
+
+long random(void) {
+    return rand();
+}
+
+void srandom(unsigned int seed) {
+    srand(seed);
+}
+
+__attribute__((constructor)) static void init() {
+    char *seed_str = getenv("FAKERANDOM_SEED");
+    unsigned int seed = (seed_str != NULL) ? atoi(seed_str) : 0;
+    srand(seed);
+}
