@@ -155,9 +155,8 @@ static unsigned int g_rand_state = 0;
 
 int rand(void) {
     if (!g_rand_initialized) {
-        srand(0); // 确保初始化
+        srand(0);
     }
-    // 实现一个简单的 LCG 算法（与 glibc 不同，仅为示例）
     g_rand_state = g_rand_state * 1103515245 + 12345;
     return (g_rand_state >> 16) & 0x7FFF;
 }

@@ -26,14 +26,14 @@ function build_aflnet {
 
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
-    export CFLAGS="-g -O0 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
-    export CXXFLAGS="-g -O0 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CXXFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
     export LDFLAGS="-fsanitize=address"
    
     mkdir build
     cd build
-    cmake -DWITH_STATIC_LIBRARIES=ON ..
-    make -j
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF .. # -DWITH_TLS=OFF disable TLS to make sure util__random_bytes use random() or getrandom()
+    make ${MAKE_OPT}
     
     popd >/dev/null
 }
@@ -53,6 +53,7 @@ function run_aflnet {
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export AFL_NO_AFFINITY=1
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
@@ -73,6 +74,73 @@ function run_aflnet {
     popd >/dev/null
 }
 
+function build_stateafl {
+    mkdir -p target/stateafl
+    rm -rf target/stateafl/*
+    cp -r repo/mosquitto target/stateafl/mosquitto
+    pushd target/stateafl/mosquitto >/dev/null
+   
+    export CC=${HOME}/stateafl/afl-clang-fast
+    export CXX=${HOME}/stateafl/afl-clang-fast++
+    export CFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CXXFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export LDFLAGS="-fsanitize=address"
+   
+    mkdir build
+    cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF ..
+    make ${MAKE_OPT}
+
+    rm -rf fuzz test .git doc
+
+    popd >/dev/null
+}
+
+function run_stateafl {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqtt-replay
+    
+    pushd ${HOME}/target/stateafl/mosquitto/build/src >/dev/null
+
+    mkdir -p $outdir
+    rm -rf $outdir/*
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export AFL_NO_AFFINITY=1
+
+    timeout -k 0 --preserve-status $timeout \
+        ${HOME}/stateafl/afl-fuzz -m none -i $indir \
+        -o $outdir \
+        -N tcp://127.0.0.1/7899 \
+        -q 3 -s 3 -R -E -K \
+        ./mosquitto -p 7899
+
+    cd ${HOME}/target/gcov/consumer/mosquitto/build/src
+
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
+    gcovr -r ../.. -s -d >/dev/null 2>&1
+    
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
+    mkdir -p ${outdir}/cov_html
+    gcovr -r ../.. --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
+}
+
+function build_sgfuzz {
+    exit 1
+}
+
+function run_sgfuzz {
+    exit 1
+}
 
 function build_gcov {
     mkdir -p target/gcov/consumer
