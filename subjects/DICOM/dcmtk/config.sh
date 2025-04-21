@@ -177,6 +177,7 @@ function build_sgfuzz {
 
     export SGFUZZ_USE_HF_MAIN=1
     export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/dcmtk/enum_types.txt
+    export SGFUZZ_BLOCKING_TYPE_FILE=${HOME}/profuzzbench/subjects/DICOM/dcmtk/blocking-types.txt
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager dcmqrscp.bc -o dcmqrscp_opt.bc
 
@@ -217,6 +218,9 @@ function run_sgfuzz {
     pushd ${HOME}/target/sgfuzz/dcmtk/build/bin >/dev/null
 
     mkdir -p $outdir/replayable-queue
+    rm -rf $outdir/replayable-queue/*
+    mkdir -p $outdir/crash
+    rm -rf $outdir/crash/*
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
@@ -235,6 +239,8 @@ function run_sgfuzz {
         -detect_leaks=0
         -max_total_time=$timeout
         -fork=1
+        -artifact_prefix="${outdir}/crash/"
+        -ignore_crashes=1
         "${outdir}/replayable-queue"
         "${indir}"
     )
