@@ -5,7 +5,7 @@ function checkout {
     git clone https://github.com/eclipse/mosquitto.git repo/mosquitto
     pushd repo/mosquitto >/dev/null
     git checkout "$@"
-    git apply --check "${HOME}/profuzzbench/subjects/MQTT/mosquitto/ft.patch"
+    git apply ${HOME}/profuzzbench/subjects/MQTT/mosquitto/ft.patch
     popd >/dev/null
 }
 
