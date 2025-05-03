@@ -9,7 +9,7 @@ index 088e9a92..0adb8ab4 100644
 +    set(OPENSSL_USE_STATIC_LIBS TRUE)
  	find_package(OpenSSL REQUIRED)
  	add_definitions("-DWITH_TLS")
-
+ 
 diff --git a/include/mosquitto.h b/include/mosquitto.h
 index 5633b407..0d81770e 100644
 --- a/include/mosquitto.h
@@ -96,20 +96,16 @@ index dbc16ae3..5c4ca2d1 100644
 -
 -
 diff --git a/src/mosquitto.c b/src/mosquitto.c
-index 431254d8..b66600e5 100644
+index 431254d8..3e47e235 100644
 --- a/src/mosquitto.c
 +++ b/src/mosquitto.c
-@@ -444,8 +444,11 @@ static int pid__write(void)
+@@ -444,8 +444,7 @@ static int pid__write(void)
  	return MOSQ_ERR_SUCCESS;
  }
  
 -
 -int main(int argc, char *argv[])
-+#ifdef SGFUZZ
-+int HonggfuzzNetDriver_main(int argc, char ** argv)
-+#else
 +int main(int argc, char ** argv)
-+#endif
  {
  	struct mosquitto__config config;
  #ifdef WITH_BRIDGE
