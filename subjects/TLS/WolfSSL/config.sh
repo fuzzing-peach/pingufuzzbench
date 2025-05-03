@@ -176,29 +176,30 @@ function build_pingu_generator {
     # get the whole program bitcode
     # build the whole program using wllvm
     export LLVM_COMPILER=clang
-    export CC=${HOME}/.local/bin/wllvm
-    export CCAS=${HOME}/.local/bin/wllvm
+    export CC=wllvm
+    export CCAS=wllvm
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/client/client ${MAKE_OPT}
     cd examples/client
-    ${HOME}/.local/bin/extract-bc client
+    extract-bc client
 
     # now we have client.bc
     # instrument the whole program bitcode
     export PINGU_ROLE=source
+    export PINGU_HOOK_INS=LOAD,STORE
+    export PINGU_SVF_ENABLE=1
+    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
-    export FT_HOOK_INS=load,store
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
     export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
     export FT_DISABLE_INLINEING=1
     export PINGU_INSTRUMENT_METHOD=direct
-    export PINGU_SVF_DUMP_FILE=1
 
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
         client.bc -o client_opt.bc
 
@@ -212,6 +213,13 @@ function build_pingu_generator {
 }
 
 function build_pingu_consumer {
+    mkdir -p target/svf/consumer
+    rm -rf target/svf/consumer/*
+    cp -r repo/wolfssl target/svf/consumer/wolfssl
+    pushd target/svf/consumer/wolfssl >/dev/null
+
+
+
     mkdir -p target/pingu/consumer
     rm -rf target/pingu/consumer/*
     cp -r repo/wolfssl target/pingu/consumer/wolfssl
@@ -220,15 +228,16 @@ function build_pingu_consumer {
     # get the whole program bitcode
     # build the whole program using wllvm
     export LLVM_COMPILER=clang
-    export CC=${HOME}/.local/bin/wllvm
-    export CCAS=${HOME}/.local/bin/wllvm
+    export CC=wllvm
+    export CCAS=wllvm
+    export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/server/server ${MAKE_OPT}
     cd examples/server
-    ${HOME}/.local/bin/extract-bc server
+    extract-bc server
 
     # now we have server.bc
     # instrument the whole program bitcode

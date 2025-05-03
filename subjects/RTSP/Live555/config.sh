@@ -56,6 +56,7 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/live555/testProgs >/dev/null
 
     mkdir -p $outdir
+    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -68,10 +69,10 @@ function run_aflnet {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./testOnDemandRTSPServer 8554
 
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    gcov_cmd="gcovr -r .. -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    gcov_cmd="gcovr -r .. -s | grep \"[lb][a-z]*:\""
     gcovr -r .. -s -d >/dev/null 2>&1
     
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
@@ -114,6 +115,7 @@ function run_stateafl {
     pushd ${HOME}/target/stateafl/live555/testProgs >/dev/null
 
     mkdir -p $outdir
+    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -201,6 +203,9 @@ function run_sgfuzz {
     pushd ${HOME}/target/sgfuzz/live555/testProgs >/dev/null
 
     mkdir -p $outdir/replayable-queue
+    rm -rf $outdir/replayable-queue/*
+    mkdir -p $outdir/crash
+    rm -rf $outdir/crash/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -220,6 +225,8 @@ function run_sgfuzz {
         -detect_leaks=0
         -max_total_time=$timeout
         -fork=1
+        -artifact_prefix="${outdir}/crash/"
+        -ignore_crashes=1
         "${outdir}/replayable-queue"
         "${indir}"
     )
