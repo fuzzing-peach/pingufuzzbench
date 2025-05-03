@@ -135,11 +135,107 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
-    exit 1
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/mosquitto target/sgfuzz/mosquitto
+
+    pushd target/sgfuzz/mosquitto >/dev/null
+    
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . 
+    
+    mkdir build
+    cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF ..
+    make ${MAKE_OPT}
+
+    cd src
+    extract-bc mosquitto
+
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/mosquitto/enum_types.txt
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager mosquitto.bc -o mosquitto_opt.bc
+
+    clang mosquitto_opt.bc -o mosquitto \
+        -lsFuzzer \
+        -lhfnetdriver \
+        -lhfcommon \
+        -lz \
+        -lm \
+        -lstdc++ \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DSGFUZZ
+
+    popd >/dev/null
 }
 
 function run_sgfuzz {
-    exit 1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/MQTT/mosquitto/in-mqtt
+    pushd ${HOME}/target/sgfuzz/mosquitto/build/src >/dev/null
+
+    mkdir -p $outdir/replayable-queue
+    rm -rf $outdir/replayable-queue/*
+    mkdir -p $outdir/crash
+    rm -rf $outdir/crash/*
+
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export AFL_NO_AFFINITY=1
+    export HFND_TCP_PORT=7899
+    export HFND_FORK_MODE=1
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        -fork=1
+        -artifact_prefix="${outdir}/crash/"
+        -ignore_crashes=1
+        "${outdir}/replayable-queue"
+        "${indir}"
+    )
+    
+    MOSQUITTO_ARGS=(
+        -p 7899
+    )
+
+    ./mosquitto "${SGFuzz_ARGS[@]}" -- "${MOSQUITTO_ARGS[@]}"
+
+    function replay {
+        /home/user/aflnet/afl-replay $1 MQTT 7899 1 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 0 1s ./mosquitto -p 7899
+
+        wait
+        pkill mosquitto
+    }
+
+    cd ${HOME}/target/gcov/consumer/mosquitto/build/src
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"    
+    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
+    gcovr -r ../.. -s -d >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
+    
+    mkdir -p ${outdir}/cov_html
+    gcovr -r ../.. --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
 }
 
 function build_gcov {
@@ -147,20 +243,15 @@ function build_gcov {
     rm -rf target/gcov/consumer/*
     cp -r repo/mosquitto target/gcov/consumer/mosquitto
     pushd target/gcov/consumer/mosquitto >/dev/null
-    
-    export AFL_LLVM_LAF_SPLIT_SWITCHES=1
-    export AFL_LLVM_LAF_TRANSFORM_COMPARES=1
-    export AFL_LLVM_LAF_SPLIT_COMPARES=1
 
-    export CFLAGS="-fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-fprofile-arcs -ftest-coverage"
-    export LDFLAGS="-fprofile-arcs -ftest-coverage"
+    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export CPPFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export LDFLAGS="-g -fprofile-arcs -ftest-coverage"
 
-    mkdir build
-    cd build
-    cmake -DWITH_STATIC_LIBRARIES=ON ..
-    make -j
+    mkdir build && cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF ..
+    make ${MAKE_OPT}
 
     popd >/dev/null
 }
