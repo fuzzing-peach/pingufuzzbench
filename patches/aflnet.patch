@@ -118,6 +118,18 @@ index f0e4d85..5bfae06 100644
  
    }
  
+diff --git a/afl-replay.c b/afl-replay.c
+index 9179234..29496a7 100644
+--- a/afl-replay.c
++++ b/afl-replay.c
+@@ -65,6 +65,7 @@ int main(int argc, char* argv[])
+   else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
+   else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
+   else if (!strcmp(argv[2], "IPP")) extract_response_codes = &extract_response_codes_ipp;
++  else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
+   else {fprintf(stderr, "[AFL-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
+ 
+   portno = atoi(argv[3]);
 diff --git a/aflnet.c b/aflnet.c
 index 4f78ac6..81a0f0b 100644
 --- a/aflnet.c
