@@ -1,0 +1,18 @@
+source:
+  bin-path: "/home/user/target/ft/generator/dcmtk/build/bin/dcmsend"
+  env:
+    - DCMDICTPATH: /home/user/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
+  arguments: 
+    - "-aet"
+    - "YOU_AET"
+    - "-aec"
+    - "DCM4CHEE"
+    - "-d"
+    - "127.0.0.1"
+    - "6789"
+    - /home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/dcmtk/dcm_files/image-00000.dcm
+  input-type: Tcp
+  output-type: Tcp
+  is-server: false
+  log-stdout: true
+  log-stderr: true

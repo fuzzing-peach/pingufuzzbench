@@ -18,4 +18,4 @@ gcov:
   env:
     - LD_PRELOAD: "libgcov_preload.so"
   src-dir: "/home/user/target/gcov/consumer/live555"
-  reporter: gcovr
+  reporter: grcov

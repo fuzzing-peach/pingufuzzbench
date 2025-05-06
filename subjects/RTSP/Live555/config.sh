@@ -267,7 +267,6 @@ function build_ft_generator {
 
     export FT_CALL_INJECTION=1
     export FT_HOOK_INS=call,branch,load,store,select,switch
-
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
     export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
@@ -319,7 +318,7 @@ function run_ft {
     pushd ${HOME}/target/ft/ >/dev/null
 
     temp_file=$(mktemp)
-        sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
     cat "$temp_file" >ft.yaml
     printf "\n" >>ft.yaml
     rm "$temp_file"
@@ -333,8 +332,9 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/live555
-    grcov --branch --threads 4 -s . -t html . -o ${work_dir}/cov_html
+    cd ${HOME}/target/gcov/consumer/live555/testProgs
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r .. --html --html-details -o ${work_dir}/cov_html/index.html
     
     popd >/dev/null
 }

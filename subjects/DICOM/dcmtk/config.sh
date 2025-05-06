@@ -279,6 +279,75 @@ function run_sgfuzz {
     popd >/dev/null
 }
 
+function build_ft_consumer {
+    mkdir -p target/ft/consumer
+    rm -rf target/ft/consumer/*
+    cp -r repo/dcmtk target/ft/consumer/dcmtk
+    pushd target/ft/consumer/dcmtk >/dev/null
+
+    export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
+    export CC=${AFL_PATH}/afl-clang-fast
+    export CXX=${AFL_PATH}/afl-clang-fast++
+    export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+
+    mkdir build && cd build
+    cmake ..
+    make dcmqrscp ${MAKE_OPT}
+    
+    popd >/dev/null
+}
+
+function build_ft_generator {
+    mkdir -p target/ft/generator
+    rm -rf target/ft/generator/*
+    cp -r repo/dcmtk target/ft/generator/dcmtk
+    pushd target/ft/generator/dcmtk >/dev/null
+    
+    export FT_CALL_INJECTION=1
+    export FT_HOOK_INS=call,branch,load,store,select,switch
+    export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
+    export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
+    export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+
+    mkdir build && cd build
+    cmake ..
+    make dcmqrscp ${MAKE_OPT}
+    
+    popd >/dev/null
+}
+
+function run_ft {
+    timeout=$1
+    replay_step=$2
+    gcov_step=$3
+    consumer="dcmtk"
+    generator=${GENERATOR:-$consumer}
+    work_dir=/tmp/fuzzing-output
+    pushd ${HOME}/target/ft/ >/dev/null
+
+    # synthesize the ft configuration yaml
+    # according to the targeted fuzzer and generated
+    temp_file=$(mktemp)
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    cat "$temp_file" >ft.yaml
+    printf "\n" >>ft.yaml
+    rm "$temp_file"
+    cat ${HOME}/profuzzbench/subjects/DICOM/${generator}/ft-source.yaml >>ft.yaml
+    cat ${HOME}/profuzzbench/subjects/DICOM/${consumer}/ft-sink.yaml >>ft.yaml
+
+    # running ft-net
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+    
+    
+    
+    
+}
+
 function build_gcov {
     mkdir -p target/gcov/consumer
     rm -rf target/gcov/consumer/*

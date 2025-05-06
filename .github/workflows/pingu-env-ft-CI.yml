@@ -1,4 +1,4 @@
-name: pingu-env-stateafl CI
+name: pingu-env-ft CI
 
 on:
   push:

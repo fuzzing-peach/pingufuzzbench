@@ -310,6 +310,8 @@ function build_ft_consumer {
 
 function run_ft {
     timeout=$1
+    replay_step=$2
+    gcov_step=$3
     consumer="OpenSSL"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output

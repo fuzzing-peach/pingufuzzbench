@@ -1,9 +1,10 @@
 diff --git a/fuzztruction-experiments b/fuzztruction-experiments
+index ffaaeaf..d1c7d1f 160000
 --- a/fuzztruction-experiments
 +++ b/fuzztruction-experiments
 @@ -1 +1 @@
 -Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8
-+Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8-dirty
++Subproject commit d1c7d1f25ec6cd1456e1bb6fe4cfa9257eaea159
 diff --git a/fuzztruction_shared/src/util.rs b/fuzztruction_shared/src/util.rs
 index 0d07540..f2989a8 100644
 --- a/fuzztruction_shared/src/util.rs
@@ -202,10 +203,10 @@ index f275c54..27fef89 100644
          dbgs() << "Deleting call to abort " << *call_ins << "\n";
          auto bb = call_ins->getParent();
 diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
-index 3aa7cd0..12b8758 100644
+index 3aa7cd0..c3331b0 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
-@@ -118,12 +118,14 @@ impl Jail {
+@@ -118,12 +118,13 @@ impl Jail {
          // Mount the bear minimum to allow execution of software.
  
          // Mount / into our new root
@@ -217,12 +218,11 @@ index 3aa7cd0..12b8758 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
-+            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",
              "/etc/resolv.conf",
-@@ -134,8 +136,8 @@ impl Jail {
+@@ -134,8 +135,8 @@ impl Jail {
              Jail::remount_bind_mount_ro(&dst).context("Failed to remount as ro")?;
          }
  

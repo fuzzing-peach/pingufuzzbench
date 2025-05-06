@@ -34,7 +34,7 @@ eval "parse_args $args"
 if [[ -n "$fuzzer" ]]; then
     fuzzer=$(echo "$fuzzer" | tr '[:upper:]' '[:lower:]')
     image="pingu-env-${fuzzer}"
-    dockerfile="Dockerfile-env-${fuzzer}"
+    dockerfile="dockerfile/Dockerfile-env-${fuzzer}"
 fi
 
 log_success "[+] Build mode: ${profile}"

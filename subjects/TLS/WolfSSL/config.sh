@@ -140,7 +140,6 @@ function run_ft {
     timeout=$1
     consumer="WolfSSL"
     generator=${GENERATOR:-$consumer}
-    ts=$(date +%s)
     work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/ft/ >/dev/null
 
@@ -195,10 +194,12 @@ function build_pingu_generator {
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
-    export FT_DISABLE_INLINEING=1
     export PINGU_INSTRUMENT_METHOD=direct
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+        -passes="pingu-source" -debug-pass-manager \
+        client.bc -o _client_svf_useless.bc
 
+    export PINGU_SVF_ENABLE=0
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
         client.bc -o client_opt.bc
@@ -213,13 +214,6 @@ function build_pingu_generator {
 }
 
 function build_pingu_consumer {
-    mkdir -p target/svf/consumer
-    rm -rf target/svf/consumer/*
-    cp -r repo/wolfssl target/svf/consumer/wolfssl
-    pushd target/svf/consumer/wolfssl >/dev/null
-
-
-
     mkdir -p target/pingu/consumer
     rm -rf target/pingu/consumer/*
     cp -r repo/wolfssl target/pingu/consumer/wolfssl
@@ -242,14 +236,22 @@ function build_pingu_consumer {
     # now we have server.bc
     # instrument the whole program bitcode
     export PINGU_ROLE=sink
+    export PINGU_HOOK_INS=LOAD,STORE
+    export PINGU_SVF_ENABLE=1
+    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
-    export FT_HOOK_INS=load,store
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    export FT_MEM_FUNCTIONS_PATH=${HOME}/pingu/pingu-agent/pass/mem_functions.ll
-    export FT_DISABLE_INLINEING=1
     export PINGU_INSTRUMENT_METHOD=direct
-    export PINGU_SVF_DUMP_FILE=1
+
+    # instrument the whole program bitcode
+    # the instrumented bitcode here is useless, what we need is the patchpoint.json
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+        -passes="afl-coverage,pingu-source" -debug-pass-manager \
+        server.bc > /dev/null 2>&1
+
+    export PINGU_SVF_ENABLE=0
 
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
@@ -261,7 +263,6 @@ function build_pingu_consumer {
         server_opt.bc -o server
 
     rm -rf .git
-
     popd >/dev/null
 }
 
