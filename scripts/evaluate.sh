@@ -10,7 +10,9 @@ docker_args=$(get_args_after_double_dash "$@")
 # Check if the pingu-eval image exists, if not, build it
 if ! docker image inspect pingu-eval:latest > /dev/null 2>&1; then
     log_success "[+] pingu-eval image does not exist. Building now..."
-    DOCKER_BUILDKIT=1 docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t pingu-eval:latest $docker_args -f scripts/Dockerfile-eval .
+    cmd="DOCKER_BUILDKIT=1 docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t pingu-eval:latest $docker_args -f scripts/Dockerfile-eval ."
+    echo "[+] Building pingu-eval image with command: $cmd"
+    eval $cmd
     if [[ $? -ne 0 ]]; then
         log_error "[!] Error while building the pingu-eval image"
         exit 1
@@ -24,7 +26,7 @@ fi
 # Check if the pingu-eval container exists, if not, run a container with tail -f /dev/null
 if ! docker container inspect pingu-eval > /dev/null 2>&1; then
     log_success "[+] pingu-eval container does not exist. Running now..."
-    docker run -d --name pingu-eval -v .:/home/user/profuzzbench --network=host pingu-eval:latest
+    docker run -d --name pingu-eval -v $(pwd):/home/user/profuzzbench --network=host pingu-eval:latest
     if [[ $? -ne 0 ]]; then
         log_error "[!] Error while running the pingu-eval container"
         exit 1
