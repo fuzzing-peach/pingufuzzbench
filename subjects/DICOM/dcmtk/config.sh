@@ -280,6 +280,9 @@ function run_sgfuzz {
 }
 
 function build_ft_consumer {
+    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/ft-net.conf /etc/ld.so.conf.d/
+    sudo ldconfig
+
     mkdir -p target/ft/consumer
     rm -rf target/ft/consumer/*
     cp -r repo/dcmtk target/ft/consumer/dcmtk
@@ -288,13 +291,22 @@ function build_ft_consumer {
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
-    export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
     mkdir build && cd build
     cmake ..
     make dcmqrscp ${MAKE_OPT}
+
+    cd bin
+    # Create directory for DICOM database
+    if [ ! -d "ACME_STORE" ]; then
+        mkdir ACME_STORE
+    fi
+
+    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/ft\/consumer/g' dcmqrscp.cfg
     
     popd >/dev/null
 }
@@ -309,22 +321,22 @@ function build_ft_generator {
     export FT_HOOK_INS=call,branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
     mkdir build && cd build
     cmake ..
-    make dcmqrscp ${MAKE_OPT}
+    make ${MAKE_OPT}
     
     popd >/dev/null
 }
 
 function run_ft {
-    timeout=$1
-    replay_step=$2
-    gcov_step=$3
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="dcmtk"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
@@ -340,12 +352,23 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/DICOM/${generator}/ft-source.yaml >>ft.yaml
     cat ${HOME}/profuzzbench/subjects/DICOM/${consumer}/ft-sink.yaml >>ft.yaml
 
-    # running ft-net
+    # running ft-net fuzzing
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
+    cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
     
+    # collecting coverage results
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
+    sudo chmod -R 755 $work_dir
+    sudo chown -R $(id -u):$(id -g) $work_dir
+    cd ${HOME}/target/gcov/consumer/dcmtk
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
     
-    
-    
+    popd >/dev/null
 }
 
 function build_gcov {
@@ -354,8 +377,8 @@ function build_gcov {
     cp -r repo/dcmtk target/gcov/consumer/dcmtk
     pushd target/gcov/consumer/dcmtk >/dev/null
 
-    export CFLAGS="-O3 -g -fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-O3 -g -fprofile-arcs -ftest-coverage"
+    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
     export LDFLAGS="-g -fprofile-arcs -ftest-coverage"
    
     mkdir build && cd build
@@ -366,6 +389,7 @@ function build_gcov {
     if [ ! -d "ACME_STORE" ]; then
         mkdir ACME_STORE
     fi
+
     cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
     sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 

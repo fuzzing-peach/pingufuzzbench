@@ -187,21 +187,17 @@ function build_pingu_generator {
 
     # now we have client.bc
     # instrument the whole program bitcode
-    export PINGU_ROLE=source
-    export PINGU_HOOK_INS=LOAD,STORE
-    export PINGU_SVF_ENABLE=1
-    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    export PINGU_INSTRUMENT_METHOD=direct
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
+        -ins=load,store -role=source \
         client.bc -o _client_svf_useless.bc
 
-    export PINGU_SVF_ENABLE=0
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
+        -ins=load,store -role=source -dump-svf=0 -dump-pp=0 \
         client.bc -o client_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
@@ -235,27 +231,19 @@ function build_pingu_consumer {
 
     # now we have server.bc
     # instrument the whole program bitcode
-    export PINGU_ROLE=sink
-    export PINGU_HOOK_INS=LOAD,STORE
-    export PINGU_SVF_ENABLE=1
-    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    export PINGU_INSTRUMENT_METHOD=direct
-
-    # instrument the whole program bitcode
-    # the instrumented bitcode here is useless, what we need is the patchpoint.json
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
-        -passes="afl-coverage,pingu-source" -debug-pass-manager \
-        server.bc > /dev/null 2>&1
+        -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -ins=load,store -role=sink \
+        server.bc -o _server_svf_useless.bc
 
-    export PINGU_SVF_ENABLE=0
-
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
-        -passes="afl-coverage,pingu-source" -debug-pass-manager \
+        -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -ins=load,store -role=sink -dump-svf=0 -dump-pp=0 \
         server.bc -o server_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \

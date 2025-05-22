@@ -296,8 +296,8 @@ function build_ft_consumer {
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
-    export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -312,6 +312,8 @@ function build_ft_consumer {
 
 function run_ft {
     timeout=$1
+    replay_step=$2
+    gcov_step=$3
     consumer="Live555"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
