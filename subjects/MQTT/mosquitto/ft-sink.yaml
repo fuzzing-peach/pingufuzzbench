@@ -1,0 +1,26 @@
+sink:
+  bin-path: "/home/user/target/ft/consumer/dcmtk/build/bin/dcmqrscp"
+  env:
+    - DCMDICTPATH: /home/user/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
+  arguments:
+    [
+      "--single-process",
+      "--config",
+      "/home/user/target/ft/consumer/dcmtk/build/bin/dcmqrscp.cfg",
+      "-d"
+    ]
+  input-type: Tcp
+  output-type: Tcp
+  is-server: true
+  server-port: "5158"
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+  send-sigterm: true
+
+gcov:
+  bin-path: "/home/user/target/gcov/consumer/dcmtk/build/bin/dcmqrscp"
+  env:
+    - LD_PRELOAD: "libgcov_preload.so"
+  src-dir: "/home/user/target/gcov/consumer/dcmtk"
+  reporter: gcovr

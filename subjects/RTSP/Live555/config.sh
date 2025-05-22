@@ -269,8 +269,8 @@ function build_ft_generator {
     export FT_HOOK_INS=call,branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -296,8 +296,8 @@ function build_ft_consumer {
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
-    export CFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-fsanitize=address -O0 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
