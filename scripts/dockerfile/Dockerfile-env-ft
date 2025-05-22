@@ -101,11 +101,6 @@ COPY --chown=${USER_ID}:${GROUP_ID} scripts/cargo.toml ${HOME}/.cargo/
 # Environments and fuzzer tools
 ##############
 
-# Some cargo dependencies are downloaded via github, so we need to configure the mirror
-RUN if [ "${ZH_CN}" = "true" ]; then \
-        git config --global url."https://gh.llkk.cc/https://github.com/".insteadOf https://github.com/; \
-    fi
-
 COPY patches /tmp/patches
 
 # AFLNet
@@ -119,6 +114,11 @@ RUN if [ "${ZH_CN}" = "true" ]; then \
     git apply /tmp/patches/aflnet.patch && \
     make clean all ${MAKE_OPT} && \
     cd llvm_mode && make ${MAKE_OPT}
+
+# Some cargo dependencies are downloaded via github, so we need to configure the mirror
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git config --global url."https://github.moeyy.xyz/https://github.com/".insteadOf https://github.com/; \
+    fi
 
 # FT-Net
 RUN if [ "${ZH_CN}" = "true" ]; then \

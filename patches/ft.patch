@@ -5,6 +5,45 @@ index ffaaeaf..d1c7d1f 160000
 @@ -1 +1 @@
 -Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8
 +Subproject commit d1c7d1f25ec6cd1456e1bb6fe4cfa9257eaea159
+diff --git a/fuzztruction_shared/src/constants.rs b/fuzztruction_shared/src/constants.rs
+index 92f1bce..be052dc 100644
+--- a/fuzztruction_shared/src/constants.rs
++++ b/fuzztruction_shared/src/constants.rs
+@@ -1,4 +1,4 @@
+-pub const MAX_MUTATION_CACHE_ENTRIES: usize = 200000;
++pub const MAX_MUTATION_CACHE_ENTRIES: usize = 2000000;
+ pub const PATCH_POINT_SIZE: usize = 32;
+ pub const ENV_SHM_NAME: &str = "FT_SHM_NAME";
+ pub const ENV_LOG_LEVEL: &str = "FT_LOG_LEVEL";
+diff --git a/fuzztruction_shared/src/mutation_cache_content.rs b/fuzztruction_shared/src/mutation_cache_content.rs
+index 2b40d69..f095e05 100644
+--- a/fuzztruction_shared/src/mutation_cache_content.rs
++++ b/fuzztruction_shared/src/mutation_cache_content.rs
+@@ -139,6 +139,7 @@ impl MutationCacheContent {
+         assert!(self.next_free_slot < self.entry_decriptor_tbl.len());
+ 
+         if entry.size() > self.space_left() {
++            log::error!("Not enough space left in the cache to push entry");
+             return None;
+         }
+ 
+@@ -151,6 +152,7 @@ impl MutationCacheContent {
+             *slot = descriptor;
+             self.next_free_slot = min(self.next_free_slot + 1, max_slot_idx);
+         } else {
++            log::error!("entry_decriptor_tbl[{}] is not None", self.next_free_slot);
+             return None;
+         }
+ 
+@@ -168,7 +170,7 @@ impl MutationCacheContent {
+                 return Some(&*(dst_addr as *const MutationCacheEntry));
+             };
+         } else {
+-            warn!("Not enough descriptor entries available");
++            log::error!("Not enough descriptor entries available");
+             return None;
+         }
+     }
 diff --git a/fuzztruction_shared/src/util.rs b/fuzztruction_shared/src/util.rs
 index 0d07540..f2989a8 100644
 --- a/fuzztruction_shared/src/util.rs
@@ -552,6 +591,19 @@ index 036e283..c3c61df 100644
          };
          config.validate()?;
          Ok(config)
+diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
+index 463594a..6e57a20 100644
+--- a/scheduler/src/constants.rs
++++ b/scheduler/src/constants.rs
+@@ -5,7 +5,7 @@ use std::time::Duration;
+ /// Programmes containing more than this limit, will raise an assertion.
+ /// In this case, the limit might simply be raised to the desired value, however,
+ /// mind that this will increase the overall memory footprint.
+-pub const MAX_PATCHPOINT_CNT: usize = 400_000;
++pub const MAX_PATCHPOINT_CNT: usize = 600_000;
+ pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
+ pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
+ pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
 diff --git a/scheduler/src/coverage/grcov.rs b/scheduler/src/coverage/grcov.rs
 new file mode 100644
 index 0000000..2d0c728
