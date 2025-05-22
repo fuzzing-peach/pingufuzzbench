@@ -1183,7 +1183,7 @@ index a4b0084..2cbb0e2 100644
          }
      }
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
-index 549ac57..d95ef13 100644
+index 549ac57..a4a30c4 100644
 --- a/scheduler/src/source.rs
 +++ b/scheduler/src/source.rs
 @@ -1,6 +1,6 @@
@@ -1194,6 +1194,19 @@ index 549ac57..d95ef13 100644
  use fuzztruction_shared::{
      aux_messages::{AuxStreamMessage, AuxStreamType},
      aux_stream::AuxStreamAssembler,
+@@ -61,9 +61,9 @@ use crate::{networked::ServerReadySignalKind, trace::Trace};
+ 
+ use crate::io_channels::*;
+ 
+-const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(120);
+-const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(120);
+-const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
++const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(240);
++const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(240);
++const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(240);
+ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+ const MAX_OUTPUT_SIZE: u64 = n_mib_bytes!(1) as u64;
+ 
 @@ -465,7 +465,8 @@ impl Source {
                  // This is an own mount in our mount namespace, thus we need
                  // to explicitly mount it.
