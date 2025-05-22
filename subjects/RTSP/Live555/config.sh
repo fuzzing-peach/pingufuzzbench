@@ -311,9 +311,9 @@ function build_ft_consumer {
 }
 
 function run_ft {
-    timeout=$1
-    replay_step=$2
-    gcov_step=$3
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="Live555"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
