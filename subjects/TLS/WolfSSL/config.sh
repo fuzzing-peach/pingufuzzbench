@@ -165,6 +165,36 @@ function run_ft {
 
     popd >/dev/null
 }
+function build_tlspuffin {
+    version=${1:-wolfssl540}
+    local valid_versions=("wolfssl430" "wolfssl510" "wolfssl520" "wolfssl530" "wolfssl540")
+    if [[ ! " ${valid_versions[@]} " =~ " ${version} " ]]; then
+        echo "[!] Invalid version: ${version}. Allowed versions are: ${valid_versions[@]}"
+        exit 1
+    fi
+    cd /home/user/tlspuffin
+    cargo build --release -p tlspuffin --features=$version,asan
+    ./target/release/tlspuffin seed
+}
+function run_tlspuffin {
+    timeout=$3
+    timeout=${timeout}s
+    echo "run_tlspuffin:Timeout is set to $timeout"
+    echo "version is $VERSION"
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/TLS/WolfSSL/in-tls
+    mkdir -p $outdir
+    cd /home/user/tlspuffin
+    sudo nix-shell --command "
+    ./target/release/tlspuffin seed
+    export timeout=$timeout
+    export outdir=$outdir
+    echo 'nix-shell:Timeout is set to $timeout'
+    timeout -k 0 --preserve-status \$timeout \
+        ./target/release/tlspuffin --put ${VERSION}-asan --cores=0 quick-experiment
+    "
+    cp -r /home/user/tlspuffin/experiments/* /tmp/fuzzing-output/
+}
 
 function build_pingu_generator {
     mkdir -p target/pingu/generator
@@ -187,17 +217,21 @@ function build_pingu_generator {
 
     # now we have client.bc
     # instrument the whole program bitcode
+    export PINGU_ROLE=source
+    export PINGU_HOOK_INS=LOAD,STORE
+    export PINGU_SVF_ENABLE=1
+    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
+    export PINGU_INSTRUMENT_METHOD=direct
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store -role=source \
         client.bc -o _client_svf_useless.bc
 
+    export PINGU_SVF_ENABLE=0
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store -role=source -dump-svf=0 -dump-pp=0 \
         client.bc -o client_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
@@ -231,19 +265,27 @@ function build_pingu_consumer {
 
     # now we have server.bc
     # instrument the whole program bitcode
+    export PINGU_ROLE=sink
+    export PINGU_HOOK_INS=LOAD,STORE
+    export PINGU_SVF_ENABLE=1
+    export PINGU_SVF_DUMP_FILE=1
     export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
     export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
     export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
-        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
-        -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink \
-        server.bc -o _server_svf_useless.bc
+    export PINGU_INSTRUMENT_METHOD=direct
 
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+    # instrument the whole program bitcode
+    # the instrumented bitcode here is useless, what we need is the patchpoint.json
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
-        -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink -dump-svf=0 -dump-pp=0 \
+        -passes="afl-coverage,pingu-source" -debug-pass-manager \
+        server.bc > /dev/null 2>&1
+
+    export PINGU_SVF_ENABLE=0
+
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-llvm-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+        -passes="afl-coverage,pingu-source" -debug-pass-manager \
         server.bc -o server_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
