@@ -338,6 +338,39 @@ function run_ft {
     grcov --branch --threads 4 -s . -t html . -o ${work_dir}/cov_html
     popd >/dev/null
 }
+function build_tlspuffin {
+    version=${1:-openssl312}
+    local valid_versions=("openssl312" "openssl111u" "openssl111k" "openssl111j" "openssl102u" "openssl101f")
+    if [[ ! " ${valid_versions[@]} " =~ " ${version} " ]]; then
+        echo "[!] Invalid version: ${version}. Allowed versions are: ${valid_versions[@]}"
+        exit 1
+    fi
+    cd /home/user/tlspuffin
+    ./tools/mk_vendor make openssl:$version-asan &&
+    ls -al ./vendor/$version-asan &&
+    ./vendor/$version-asan/build/vendorinfo.sh &&
+    cargo build --release --bin=tlspuffin --features=cputs &&
+    ./target/release/tlspuffin seed
+}
+function run_tlspuffin {
+    timeout=$3
+    timeout=${timeout}s
+    echo "run_tlspuffin:Timeout is set to $timeout"
+    echo "version is $VERSION"
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+    mkdir -p $outdir
+    cd /home/user/tlspuffin
+    sudo nix-shell --command "
+    ./target/release/tlspuffin seed
+    export timeout=$timeout
+    export outdir=$outdir
+    echo 'nix-shell:Timeout is set to $timeout'
+    timeout -k 0 --preserve-status \$timeout \./target/release/tlspuffin --put ${VERSION}-asan --cores=0 quick-experiment
+        
+    "
+    cp -r /home/user/tlspuffin/experiments/* /tmp/fuzzing-output/
+}
 
 function build_pingu_generator {
     mkdir -p target/pingu/generator

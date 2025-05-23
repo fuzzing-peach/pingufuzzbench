@@ -80,16 +80,31 @@ log_success "[+] Docker build args: ${docker_args}"
 # --build-arg HTTP_PROXY=http://172.17.0.1:7890 --build-arg HTTPS_PROXY=http://172.17.0.1:7890
 # If needs to add dns server, passing: --build-arg DNS_SERVER=9.9.9.9
 # --build-arg DNS_SERVER=9.9.9.9
-cmd="docker build \
-    --build-arg FUZZER=$fuzzer \
-    --build-arg TARGET=$target \
-    --build-arg VERSION=$version \
-    --build-arg GENERATOR=$generator \
-    --build-arg USER_UID="$(id -u)" \
-    --build-arg USER_GID="$(id -g)" \
-    -f scripts/Dockerfile \
-    $docker_args . \
-    -t $image_name"
+if [[ "$fuzzer" = "tlspuffin" ]]; then
+    cmd="docker build \
+        --build-arg FUZZER=$fuzzer \
+        --build-arg TARGET=$target \
+        --build-arg VERSION=$version \
+        --build-arg GENERATOR=$generator \
+        --build-arg USER_UID="$(id -u)" \
+        --build-arg USER_GID="$(id -g)" \
+        --no-cache
+        -f scripts/Dockerfile-tlspuffin \
+        $docker_args . \
+        -t $image_name"
+else
+    cmd="docker build \
+        --build-arg FUZZER=$fuzzer \
+        --build-arg TARGET=$target \
+        --build-arg VERSION=$version \
+        --build-arg GENERATOR=$generator \
+        --build-arg USER_UID="$(id -u)" \
+        --build-arg USER_GID="$(id -g)" \
+        -f scripts/Dockerfile \
+        $docker_args . \
+        -t $image_name"
+fi
+
 log_success "[+] Running command: ${cmd}"
 DOCKER_BUILDKIT=1 ${cmd}
 if [[ $? -ne 0 ]]; then

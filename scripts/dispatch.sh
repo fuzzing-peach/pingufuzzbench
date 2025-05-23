@@ -147,6 +147,11 @@ sgfuzz)
     source $target_config
     in_subshell "$cmd"_sgfuzz "$@"
     ;;
+tlspuffin)
+    # Build the tlspuffin version
+    source $target_config
+    in_subshell "$cmd"_tlspuffin "$@"
+    ;;
 vanilla)
     # Build vanilla version
     # Vanilla means the true original version, without any instrumentation, hooking and analysis.
