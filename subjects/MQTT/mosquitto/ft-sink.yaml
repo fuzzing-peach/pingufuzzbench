@@ -1,26 +1,23 @@
 sink:
-  bin-path: "/home/user/target/ft/consumer/dcmtk/build/bin/dcmqrscp"
-  env:
-    - DCMDICTPATH: /home/user/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
+  bin-path: "/home/user/target/ft/consumer/mosquitto/build/src/mosquitto"
   arguments:
-    [
-      "--single-process",
-      "--config",
-      "/home/user/target/ft/consumer/dcmtk/build/bin/dcmqrscp.cfg",
-      "-d"
-    ]
+    - "-p"
+    - "7899"
+    - "-v"
   input-type: Tcp
   output-type: Tcp
   is-server: true
-  server-port: "5158"
+  server-port: "7899"
   log-stdout: true
   log-stderr: true
   allow-unstable-sink: true
+  server-ready-on: "Listen"
   send-sigterm: true
 
 gcov:
-  bin-path: "/home/user/target/gcov/consumer/dcmtk/build/bin/dcmqrscp"
+  bin-path: "/home/user/target/gcov/consumer/mosquitto/build/src/mosquitto"
   env:
     - LD_PRELOAD: "libgcov_preload.so"
-  src-dir: "/home/user/target/gcov/consumer/dcmtk"
+  cwd: "/home/user/target/gcov/consumer/mosquitto/build/src"
+  src-dir: "/home/user/target/gcov/consumer/mosquitto"
   reporter: gcovr

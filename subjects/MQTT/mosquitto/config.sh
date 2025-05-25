@@ -244,9 +244,9 @@ function build_gcov {
     cp -r repo/mosquitto target/gcov/consumer/mosquitto
     pushd target/gcov/consumer/mosquitto >/dev/null
 
-    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
+    export CPPFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-g -fprofile-arcs -ftest-coverage"
 
     mkdir build && cd build
@@ -322,22 +322,14 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/MQTT/${consumer}/ft-sink.yaml >>ft.yaml
 
     # running ft-net fuzzing
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
-    export AFL_NO_AFFINITY=1
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
+    cd ${HOME}/target/gcov/consumer/mosquitto/build/src
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ${HOME}/target/ft/ft.yaml gcov -t 3s
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/mosquitto/build/src
     mkdir -p ${work_dir}/cov_html
-    
-    list_cmd="ls -1 ${work_dir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
-    gcovr -r ../.. -s -d >/dev/null 2>&1
-    
-    compute_coverage replay "$list_cmd" ${gcov_step} ${work_dir}/coverage.csv "$gcov_cmd"
     gcovr -r ../.. --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null

@@ -242,9 +242,18 @@ index f275c54..27fef89 100644
          dbgs() << "Deleting call to abort " << *call_ins << "\n";
          auto bb = call_ins->getParent();
 diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
-index 3aa7cd0..c3331b0 100644
+index 3aa7cd0..d5105be 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
+@@ -39,7 +39,7 @@ where
+     }
+ }
+ 
+-fn internal_drop_privileges(uid: u32, gid: u32, permanent: bool) -> Result<()> {
++pub fn internal_drop_privileges(uid: u32, gid: u32, permanent: bool) -> Result<()> {
+     if permanent {
+         unsafe {
+             wrap_libc(|| libc::setgid(gid))?;
 @@ -118,12 +118,13 @@ impl Jail {
          // Mount the bear minimum to allow execution of software.
  
@@ -511,10 +520,10 @@ index 2a2727a..cb7cf69 100644
          });
          init_finshied_receiver
 diff --git a/scheduler/src/config.rs b/scheduler/src/config.rs
-index 036e283..c3c61df 100644
+index 036e283..44653b6 100644
 --- a/scheduler/src/config.rs
 +++ b/scheduler/src/config.rs
-@@ -289,6 +289,14 @@ pub struct StateAflConfig {
+@@ -289,6 +289,16 @@ pub struct StateAflConfig {
      pub enable_state_aware_mode: bool,
  }
  
@@ -523,13 +532,15 @@ index 036e283..c3c61df 100644
 +    pub bin_path: PathBuf,
 +    pub env: Vec<(String, String)>,
 +    pub src_dir: PathBuf,
++    pub cwd: PathBuf,
 +    pub reporter: String,
++    pub send_sigterm: bool
 +}
 +
  #[derive(Debug, Clone, Serialize)]
  pub struct VanillaConfig {
      /// Environment used during binary
-@@ -444,6 +452,8 @@ pub struct Config {
+@@ -444,6 +454,8 @@ pub struct Config {
      pub stateafl: Option<StateAflConfig>,
      /// Config for the SGFuzz fuzzer.
      pub sgfuzz: Option<SGFuzzConfig>,
@@ -538,7 +549,7 @@ index 036e283..c3c61df 100644
  }
  
  impl Config {
-@@ -1028,6 +1038,7 @@ impl ConfigBuilder {
+@@ -1028,6 +1040,7 @@ impl ConfigBuilder {
                  "sink-cov",
                  "source",
                  "afl-net",
@@ -546,7 +557,7 @@ index 036e283..c3c61df 100644
                  "state-afl",
                  "sgfuzz",
                  "vanilla",
-@@ -1290,6 +1301,22 @@ impl ConfigBuilder {
+@@ -1290,6 +1303,26 @@ impl ConfigBuilder {
          })
      }
  
@@ -555,21 +566,25 @@ index 036e283..c3c61df 100644
 +        let env: Option<Vec<(String, String)>> = self.get_attribute(yaml, "env")?;
 +        let env = env.unwrap_or_default();
 +        let src_dir = self.get_attribute(yaml, "src-dir")?;
++        let cwd = self.get_attribute(yaml, "cwd")?;
 +        let reporter = self.get_attribute(yaml, "reporter")?;
-+        ConfigBuilder::check_for_unparsed_keys(yaml, &["bin-path", "env", "src-dir", "reporter"])?;
++        let send_sigterm = self.get_attribute::<Option<bool>>(yaml, "send-sigterm")?;
++        ConfigBuilder::check_for_unparsed_keys(yaml, &["bin-path", "env", "src-dir", "reporter", "send-sigterm", "cwd"])?;
 +
 +        Ok(GcovConfig {
 +            bin_path,
 +            env,
 +            src_dir,
++            cwd,
 +            reporter,
++            send_sigterm: send_sigterm.unwrap_or(false),
 +        })
 +    }
 +
      fn parse_state_afl_section(&self, yaml: &Yaml) -> Result<StateAflConfig> {
          let bin_path = self.get_attribute(yaml, "bin-path")?;
          let env: Option<Vec<(String, String)>> = self.get_attribute(yaml, "env")?;
-@@ -1477,6 +1504,13 @@ impl ConfigBuilder {
+@@ -1477,6 +1510,13 @@ impl ConfigBuilder {
              Some(self.parse_afl_net_section(aflnet_section)?)
          };
  
@@ -583,7 +598,7 @@ index 036e283..c3c61df 100644
          let stateafl_section = &yaml["state-afl"];
          let stateafl_section = if stateafl_section.is_badvalue() {
              None
-@@ -1508,6 +1542,7 @@ impl ConfigBuilder {
+@@ -1508,6 +1548,7 @@ impl ConfigBuilder {
              sgfuzz: sgfuzz_section,
              sink_cov: sink_cov_config,
              vanilla: vanilla_config,
@@ -763,10 +778,10 @@ index bdedb83..b1e3e71 100644
  mod postprocess;
  pub use postprocess::postprocess_llvm_cov;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..3f51ce4 100644
+index 8886de7..4b5bdf3 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
-@@ -1,26 +1,41 @@
+@@ -1,26 +1,42 @@
  use std::{
      cell::RefCell,
 -    fs,
@@ -806,12 +821,13 @@ index 8886de7..3f51ce4 100644
 +use chrono::Local;
  use fuzztruction_shared::mutation_cache::MutationCache;
  use itertools::Itertools;
++use jail::jail::{internal_drop_privileges, Jail, JailBuilder};
 +use libc::{c_char, fork};
 +use nix::unistd::execve;
  
  unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()> {
      let mutations = entry.mutations();
-@@ -39,6 +54,249 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
+@@ -39,6 +55,252 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
      Ok(())
  }
  
@@ -835,7 +851,7 @@ index 8886de7..3f51ce4 100644
 +                "--ignore-not-existing",
 +                "-s",
 +                gcov_config.src_dir.to_str().unwrap(),
-+                gcov_config.src_dir.to_str().unwrap(),
++                gcov_config.cwd.to_str().unwrap(),
 +            ]
 +        }
 +        GrcovBinary::Gcovr => {
@@ -891,6 +907,9 @@ index 8886de7..3f51ce4 100644
 +                let ret = libc::setsid();
 +                assert!(ret >= 0);
 +            }
++
++            let (uid, gid) = config.general.jail_uid_gid().unwrap();
++            internal_drop_privileges(uid, gid, true).unwrap();
 +
 +            let dev_null_fd = unsafe {
 +                let path = CString::new("/dev/null".as_bytes()).unwrap();
@@ -963,7 +982,7 @@ index 8886de7..3f51ce4 100644
 +            argv.insert(0, bin.clone());
 +            println!("execve({}, {:#?})", bin_path, argv);
 +
-+            env::set_current_dir(config.gcov.as_ref().unwrap().src_dir.to_owned()).unwrap();
++            env::set_current_dir(config.gcov.as_ref().unwrap().cwd.to_owned()).unwrap();
 +
 +            let envs: Vec<CString> = config
 +                .gcov
@@ -1061,7 +1080,7 @@ index 8886de7..3f51ce4 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +441,68 @@ pub fn compute_llvm_cov(
+@@ -183,3 +445,68 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -1183,7 +1202,7 @@ index a4b0084..2cbb0e2 100644
          }
      }
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
-index 549ac57..a4a30c4 100644
+index 549ac57..335fc78 100644
 --- a/scheduler/src/source.rs
 +++ b/scheduler/src/source.rs
 @@ -1,6 +1,6 @@
@@ -1266,3 +1285,20 @@ index 549ac57..a4a30c4 100644
                              msgs: self.msg_buffer.take().unwrap(),
                          })
                          .into());
+@@ -2053,6 +2082,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
+     Ok(())
+ }
+ 
++fn send_sig_to_child(pid_msg: &ChildPid, sig: Signal) -> Result<()> {
++    let pid = nix::unistd::Pid::from_raw(pid_msg.pid.try_into().unwrap());
++    let ret = nix::sys::signal::kill(pid, sig);
++    if let Err(err) = ret {
++        log::trace!("Failed to send signal to child {pid:?}. However, this might just indicate that the child won the race and terminated itself. err={:#?}", err);
++        return Err(err.into());
++    }
++    Ok(())
++}
++
+ /// Check that some constraints hold for the patch points:
+ ///     - VMAs are unique
+ ///     - PatchPointIDs are unique
