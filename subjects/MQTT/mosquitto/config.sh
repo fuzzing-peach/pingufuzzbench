@@ -244,9 +244,9 @@ function build_gcov {
     cp -r repo/mosquitto target/gcov/consumer/mosquitto
     pushd target/gcov/consumer/mosquitto >/dev/null
 
-    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage"
+    export CFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
+    export CPPFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O0 -g -fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-g -fprofile-arcs -ftest-coverage"
 
     mkdir build && cd build
@@ -256,6 +256,84 @@ function build_gcov {
     popd >/dev/null
 }
 
+function build_ft_consumer {
+    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/ft-net.conf /etc/ld.so.conf.d/
+    sudo ldconfig
+
+    mkdir -p target/ft/consumer
+    rm -rf target/ft/consumer/*
+    cp -r repo/mosquitto target/ft/consumer/mosquitto
+    pushd target/ft/consumer/mosquitto >/dev/null
+
+    export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
+    export CC=${AFL_PATH}/afl-clang-fast
+    export CXX=${AFL_PATH}/afl-clang-fast++
+    export CFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+   
+    mkdir build
+    cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF ..
+    make ${MAKE_OPT}
+    
+    popd >/dev/null
+}
+
+function build_ft_generator {
+    mkdir -p target/ft/generator
+    rm -rf target/ft/generator/*
+    cp -r repo/mosquitto target/ft/generator/mosquitto
+    pushd target/ft/generator/mosquitto >/dev/null
+
+    export FT_CALL_INJECTION=1
+    export FT_HOOK_INS=call,branch,load,store,select,switch
+    export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
+    export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
+    export CFLAGS="-g -O0 -fno-omit-frame-pointer -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-g -O0 -fno-omit-frame-pointer -DFT_FUZZING -DFT_GENERATOR"
+    export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
+    export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+   
+    mkdir build
+    cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON -DWITH_TLS=OFF ..
+    make ${MAKE_OPT}
+    
+    popd >/dev/null
+}
+
+function run_ft {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    consumer="mosquitto"
+    generator=${GENERATOR:-$consumer}
+    work_dir=/tmp/fuzzing-output
+    pushd ${HOME}/target/ft/ >/dev/null
+
+    # synthesize the ft configuration yaml
+    temp_file=$(mktemp)
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    cat "$temp_file" >ft.yaml
+    printf "\n" >>ft.yaml
+    rm "$temp_file"
+    cat ${HOME}/profuzzbench/subjects/MQTT/${generator}/ft-source.yaml >>ft.yaml
+    cat ${HOME}/profuzzbench/subjects/MQTT/${consumer}/ft-sink.yaml >>ft.yaml
+
+    # running ft-net fuzzing
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+
+    # collecting coverage results
+    cd ${HOME}/target/gcov/consumer/mosquitto/build/src
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ${HOME}/target/ft/ft.yaml gcov -t 3s
+    sudo chmod -R 755 $work_dir
+    sudo chown -R $(id -u):$(id -g) $work_dir
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r ../.. --html --html-details -o ${work_dir}/cov_html/index.html
+
+    popd >/dev/null
+}
 
 function install_dependencies {
     sudo apt update

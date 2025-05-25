@@ -1,0 +1,23 @@
+sink:
+  bin-path: "/home/user/target/ft/consumer/mosquitto/build/src/mosquitto"
+  arguments:
+    - "-p"
+    - "7899"
+    - "-v"
+  input-type: Tcp
+  output-type: Tcp
+  is-server: true
+  server-port: "7899"
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+  server-ready-on: "Listen"
+  send-sigterm: true
+
+gcov:
+  bin-path: "/home/user/target/gcov/consumer/mosquitto/build/src/mosquitto"
+  env:
+    - LD_PRELOAD: "libgcov_preload.so"
+  cwd: "/home/user/target/gcov/consumer/mosquitto/build/src"
+  src-dir: "/home/user/target/gcov/consumer/mosquitto"
+  reporter: gcovr

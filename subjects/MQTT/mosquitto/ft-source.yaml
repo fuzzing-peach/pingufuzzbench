@@ -1,0 +1,26 @@
+source:
+  bin-path: "/home/user/target/ft/generator/mosquitto/build/client/mosquitto_pub"
+  arguments:
+    - "-h"
+    - "127.0.0.1"
+    - "-p"
+    - "7899"
+    - "-t"
+    - "TOPIC"
+    - "-m"
+    - "MyMESSAGE"
+    - "--will-topic"
+    - "the-will-topic"
+    - "--will-retain"
+    - "--will-payload"
+    - "will-payload"
+    - "--will-qos"
+    - "1"
+    - "--repeat"
+    - "10"
+    - "-r"
+  input-type: Tcp
+  output-type: Tcp
+  is-server: false
+  log-stdout: true
+  log-stderr: true
