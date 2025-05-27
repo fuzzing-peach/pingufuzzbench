@@ -15,7 +15,7 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 | ------------------ | --------- | -------- | ---------- | -------- | -------- | ----------- | ----------- | ----------- |
 | [DICOM/dcmtk]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |             |
 | [RTP/live555]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |             |
-| [MQTT/mosquitto]() |           | ✅        | ✅          | ✅        |          |             |             |             |
+| [MQTT/mosquitto]() |           | ✅        | ✅          | ✅        | ✅         |             |             |             |
 | [TLS/openssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |             |
 | [TLS/wolfssl]()    |           | ✅        |            |          | ✅        |             |             |             |
 | [TLS/libressl]()   |           |          |            |          |          |             |             |             |

@@ -336,6 +336,6 @@ function run_ft {
 }
 
 function install_dependencies {
-    sudo apt update
-    sudo apt install -y xsltproc libcjson-dev docbook-xsl
+    sudo -E apt update
+    sudo -E apt install -y xsltproc libcjson-dev docbook-xsl
 }
