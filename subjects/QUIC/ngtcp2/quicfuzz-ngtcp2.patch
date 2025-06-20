@@ -1,0 +1,89 @@
+diff --git a/crypto/shared.c b/crypto/shared.c
+index 604cb964..fc79107c 100644
+--- a/crypto/shared.c
++++ b/crypto/shared.c
+@@ -284,6 +284,26 @@ int ngtcp2_crypto_derive_and_install_rx_key(ngtcp2_conn *conn, uint8_t *key,
+   hp = &ctx->hp;
+   ivlen = ngtcp2_crypto_packet_protection_ivlen(aead);
+ 
++  // QUIC-Fuzz ADDED HERE
++  if(level == NGTCP2_ENCRYPTION_LEVEL_HANDSHAKE){
++    uint8_t handshake_secret[32] = {0x87, 0xbf, 0xf5, 0x41, 0x83, 0x10, 0x23, 0x8f,
++                                     0xe4, 0xff, 0x87, 0x57, 0x26, 0x20, 0xbb, 0x50,
++                                     0x4d, 0x79, 0x11, 0x1e, 0x54, 0x54, 0x4f, 0x37,
++                                     0x5d, 0x0d, 0xee, 0x58, 0x34, 0xee, 0x1f, 0x96};
++
++    memcpy(secret, handshake_secret, 32);
++    secretlen = 32;
++  }else if(level == NGTCP2_ENCRYPTION_LEVEL_1RTT){
++    uint8_t one_rtt_secret[32] = {0x2b, 0x4e, 0x6d, 0xd9, 0xdc, 0xa8, 0x1e, 0x8b,
++                                  0xf6, 0xc4, 0xb3, 0x7b, 0x48, 0x9a, 0x97, 0x02,
++                                  0xeb, 0x5c, 0xd1, 0xab, 0x20, 0x09, 0xcd, 0xad,
++                                  0x50, 0x0d, 0x09, 0xec, 0xf9, 0x22, 0x81, 0x09};
++
++    memcpy(secret, one_rtt_secret, 32);
++    secretlen = 32;
++  }
++  // QUIC-Fuzz ADDED END
++
+   if (ngtcp2_crypto_derive_packet_protection_key(key, iv, hp_key, version, aead,
+                                                  md, secret, secretlen) != 0) {
+     return -1;
+@@ -434,6 +454,26 @@ int ngtcp2_crypto_derive_and_install_tx_key(ngtcp2_conn *conn, uint8_t *key,
+   hp = &ctx->hp;
+   ivlen = ngtcp2_crypto_packet_protection_ivlen(aead);
+ 
++  // QUIC-Fuzz ADDED HERE
++  if(level == NGTCP2_ENCRYPTION_LEVEL_HANDSHAKE){
++    uint8_t handshake_secret[32] = {0x87, 0xbf, 0xf5, 0x41, 0x83, 0x10, 0x23, 0x8f,
++                                     0xe4, 0xff, 0x87, 0x57, 0x26, 0x20, 0xbb, 0x50,
++                                     0x4d, 0x79, 0x11, 0x1e, 0x54, 0x54, 0x4f, 0x37,
++                                     0x5d, 0x0d, 0xee, 0x58, 0x34, 0xee, 0x1f, 0x96};
++
++    memcpy(secret, handshake_secret, 32);
++    secretlen = 32;
++  }else if(level == NGTCP2_ENCRYPTION_LEVEL_1RTT){
++    uint8_t one_rtt_secret[32] = {0x2b, 0x4e, 0x6d, 0xd9, 0xdc, 0xa8, 0x1e, 0x8b,
++                                  0xf6, 0xc4, 0xb3, 0x7b, 0x48, 0x9a, 0x97, 0x02,
++                                  0xeb, 0x5c, 0xd1, 0xab, 0x20, 0x09, 0xcd, 0xad,
++                                  0x50, 0x0d, 0x09, 0xec, 0xf9, 0x22, 0x81, 0x09};
++
++    memcpy(secret, one_rtt_secret, 32);
++    secretlen = 32;
++  }
++  // QUIC-Fuzz ADDED END
++
+   if (ngtcp2_crypto_derive_packet_protection_key(key, iv, hp_key, version, aead,
+                                                  md, secret, secretlen) != 0) {
+     return -1;
+diff --git a/examples/util_wolfssl.cc b/examples/util_wolfssl.cc
+index 35b1cdb7..4268c1bd 100644
+--- a/examples/util_wolfssl.cc
++++ b/examples/util_wolfssl.cc
+@@ -42,10 +42,24 @@ namespace ngtcp2 {
+ namespace util {
+ 
+ int generate_secure_random(std::span<uint8_t> data) {
+-  if (wolfSSL_RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
+-    return -1;
++  // QUIC-Fuzz ADDED HERE
++  static uint8_t deterministic_random = 1;
++
++  for(int i=0; i<data.size(); i++){
++    data.data()[i] = deterministic_random;
++  }
++
++  deterministic_random += 1;
++
++  if(deterministic_random == 255){
++    deterministic_random = 1;
+   }
+ 
++  // if (wolfSSL_RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
++  //   return -1;
++  // }
++  // QUIC-Fuzz ADDED END
++
+   return 0;
+ }
+ 

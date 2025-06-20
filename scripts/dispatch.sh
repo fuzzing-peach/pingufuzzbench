@@ -13,6 +13,7 @@ source scripts/utils.sh
 
 function in_subshell() {
     (
+        set -eo pipefail
         BASE=${HOME}/profuzzbench
         cmd="$@"
         echo "[+] Running in subshell: $cmd"
@@ -147,11 +148,11 @@ sgfuzz)
     source $target_config
     in_subshell "$cmd"_sgfuzz "$@"
     ;;
-vanilla)
+quicfuzz)
     # Build vanilla version
     # Vanilla means the true original version, without any instrumentation, hooking and analysis.
     source $target_config
-    in_subshell build_vanilla "$@"
+    in_subshell "$cmd"_quicfuzz "$@"
     ;;
 gcov)
     # Build the gcov version, which is used to be computed coverage upon.

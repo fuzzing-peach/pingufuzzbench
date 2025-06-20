@@ -187,17 +187,10 @@ function build_pingu_generator {
 
     # now we have client.bc
     # instrument the whole program bitcode
-    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
-    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
-    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store -role=source \
-        client.bc -o _client_svf_useless.bc
-
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
-        -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store -role=source -dump-svf=0 -dump-pp=0 \
+        -ins=load,store,trampoline -role=source -svf=0 -dump-svf=0 \
+        -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
@@ -231,19 +224,11 @@ function build_pingu_consumer {
 
     # now we have server.bc
     # instrument the whole program bitcode
-    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
-    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
-    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink \
-        server.bc -o _server_svf_useless.bc
-
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
-        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
-        -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink -dump-svf=0 -dump-pp=0 \
+        -ins=load,store -role=sink -svf=0 -dump-svf=0 \
+        -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
     clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \

@@ -26,10 +26,10 @@ ENV GENERATOR=${GENERATOR}
 ENV TERM=xterm
 
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
-    bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build deps
+    /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build deps"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
-    bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} checkout ${VERSION}
+    /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} checkout ${VERSION}"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
-    bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build gcov
+    /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build gcov"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
-    bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build ${FUZZER}
+    /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build ${FUZZER}"

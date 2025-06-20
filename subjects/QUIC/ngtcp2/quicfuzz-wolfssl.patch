@@ -1,0 +1,20 @@
+diff --git a/src/tls13.c b/src/tls13.c
+index 9a2e240..59b1d84 100644
+--- a/src/tls13.c
++++ b/src/tls13.c
+@@ -10382,6 +10382,15 @@ int DoTls13Finished(WOLFSSL* ssl, const byte* input, word32* inOutIdx,
+ 
+     if (sniff == NO_SNIFF) {
+         /* Actually check verify data. */
++        // QUIC-Fuzz ADDED HERE
++        uint8_t verify_data[WC_MAX_DIGEST_SIZE] = {0x86, 0x97, 0x28, 0xf2, 0x83, 0x05, 0x98, 0x0c,
++                                                   0x69, 0x38, 0x53, 0x23, 0x75, 0xd1, 0xe7, 0xa2,
++                                                   0xeb, 0x34, 0x50, 0x33, 0xc2, 0x1e, 0x21, 0x5a,
++                                                   0xa7, 0x92, 0x0c, 0x53, 0xad, 0xf8, 0x2a, 0x96};
++        memcpy(mac, verify_data, 32);
++        size=32;
++        // QUIC-Fuzz ADDED END
++
+         if (size > WC_MAX_DIGEST_SIZE ||
+                 XMEMCMP(input + *inOutIdx, mac, size) != 0){
+             WOLFSSL_MSG("Verify finished error on hashes");
