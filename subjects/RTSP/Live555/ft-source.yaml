@@ -1,0 +1,8 @@
+source:
+  bin-path: "/home/user/target/ft/generator/live555/testProgs/testRTSPClient"
+  arguments: ["rtsp://127.0.0.1:8554/mp3AudioTest"]
+  input-type: Tcp
+  output-type: Tcp
+  is-server: false
+  log-stdout: true
+  log-stderr: true

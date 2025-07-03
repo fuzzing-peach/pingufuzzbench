@@ -1,5 +1,5 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index 04d5fae..6c4a4b0 100644
+index 04d5fae..2e81f33 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
 @@ -66,6 +66,7 @@
@@ -10,7 +10,64 @@ index 04d5fae..6c4a4b0 100644
  
  #include "aflnet.h"
  #include <graphviz/gvc.h>
-@@ -4807,7 +4808,7 @@ static void pivot_inputs(void) {
+@@ -110,14 +111,16 @@ EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
+ 					 "vanilla" binary                 */
+           *orig_cmdline;              /* Original command line            */
+ 
+-EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   */
++EXP_ST u32 exec_tmout = EXEC_TIMEOUT, /* Configurable exec timeout (ms)   */
++           cpu_to_bind = 0;           /* id of free CPU core to bind      */
+ static u32 hang_tmout = EXEC_TIMEOUT; /* Timeout used for hang det (ms)   */
+ 
+ EXP_ST u64 mem_limit  = MEM_LIMIT;    /* Memory cap for child (MB)        */
+ 
+ static u32 stats_update_freq = 1;     /* Stats update frequency (execs)   */
+ 
+-EXP_ST u8  skip_deterministic,        /* Skip deterministic stages?       */
++EXP_ST u8  cpu_to_bind_given,         /* Specified cpu_to_bind given?     */
++           skip_deterministic,        /* Skip deterministic stages?       */
+            force_deterministic,       /* Force deterministic stages?      */
+            use_splicing,              /* Recombine input files?           */
+            dumb_mode,                 /* Run in non-instrumented mode?    */
+@@ -1724,6 +1727,15 @@ static void bind_to_free_cpu(void) {
+ 
+   }
+ 
++if (getenv("PFB_CPU_CORE")) {
++int i=atoi(getenv("PFB_CPU_CORE"));
++cpu_aff = i;
++CPU_ZERO(&c);
++CPU_SET(i, &c);
++if (sched_setaffinity(0, sizeof(c), &c)) PFATAL("sched_setaffinity failed");
++return;
++}
++
+   d = opendir("/proc");
+ 
+   if (!d) {
+@@ -1788,7 +1800,20 @@ static void bind_to_free_cpu(void) {
+ 
+   closedir(d);
+ 
+-  for (i = 0; i < cpu_core_count; i++) if (!cpu_used[i]) break;
++  if (cpu_to_bind_given) {
++
++    if (cpu_to_bind >= cpu_core_count)
++      FATAL("The CPU core id to bind should be between 0 and %u", cpu_core_count - 1);
++    
++    if (cpu_used[cpu_to_bind])
++      FATAL("The CPU core #%u to bind is not free!", cpu_to_bind);
++
++    i = cpu_to_bind;
++    
++  } else {
++    for (i = 0; i < cpu_core_count; i++) if (!cpu_used[i]) break;
++  }
++  
+ 
+   if (i == cpu_core_count) {
+ 
+@@ -4807,7 +4832,7 @@ static void pivot_inputs(void) {
        u8* use_name = strstr(rsl, ",orig:");
  
        if (use_name) use_name += 6; else use_name = rsl;
@@ -19,7 +76,7 @@ index 04d5fae..6c4a4b0 100644
  
  #else
  
-@@ -4953,8 +4954,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -4953,8 +4978,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -30,7 +87,7 @@ index 04d5fae..6c4a4b0 100644
  
  #else
  
-@@ -5051,8 +5052,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -5051,8 +5076,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -41,7 +98,7 @@ index 04d5fae..6c4a4b0 100644
  
  #else
  
-@@ -5095,8 +5096,8 @@ keep_as_crash:
+@@ -5095,8 +5120,8 @@ keep_as_crash:
  
  #ifndef SIMPLE_FILES
  
@@ -52,7 +109,7 @@ index 04d5fae..6c4a4b0 100644
  
  #else
  
-@@ -8907,6 +8908,8 @@ static void sync_fuzzers(char** argv) {
+@@ -8907,6 +8932,8 @@ static void sync_fuzzers(char** argv) {
    struct dirent* sd_ent;
    u32 sync_cnt = 0;
  
@@ -61,7 +118,7 @@ index 04d5fae..6c4a4b0 100644
    sd = opendir(sync_dir);
    if (!sd) PFATAL("Unable to open '%s'", sync_dir);
  
-@@ -9845,8 +9848,8 @@ static void check_asan_opts(void) {
+@@ -9845,8 +9872,8 @@ static void check_asan_opts(void) {
      if (!strstr(x, "abort_on_error=1"))
        FATAL("Custom ASAN_OPTIONS set without abort_on_error=1 - please fix!");
  
@@ -72,10 +129,11 @@ index 04d5fae..6c4a4b0 100644
  
    }
  
-@@ -10083,6 +10086,18 @@ int main(int argc, char** argv) {
+@@ -10083,7 +10110,19 @@ int main(int argc, char** argv) {
    gettimeofday(&tv, &tz);
    srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
  
+-  while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:r:w:e:P:KEq:s:RFc:l:u:U:")) > 0)
 +  unsigned long persona = personality(0xffffffff);
 +    if (persona == -1) {
 +        perror("Failed to get personality");
@@ -88,10 +146,28 @@ index 04d5fae..6c4a4b0 100644
 +    }
 +    printf("ASLR disabled for this process\n");
 +
-   while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:QN:D:W:r:w:e:P:KEq:s:RFc:l:u:U:")) > 0)
++  while ((opt = getopt(argc, argv, "+i:b:o:f:m:t:T:dnCB:S:M:x:QN:D:W:r:w:e:P:KEq:s:RFc:l:u:U:")) > 0)
  
      switch (opt) {
-@@ -10420,6 +10435,7 @@ int main(int argc, char** argv) {
+ 
+@@ -10204,6 +10243,16 @@ int main(int argc, char** argv) {
+         use_splicing = 1;
+         break;
+ 
++      case 'b':  /* bind CPU core */
++
++          if (cpu_to_bind_given) FATAL("Multiple -b options not supported");
++          cpu_to_bind_given = 1;
++
++          if (sscanf(optarg, "%u", &cpu_to_bind) < 1 ||
++              optarg[0] == '-') FATAL("Bad syntax used for -b");
++
++          break;
++
+       case 'B': /* load bitmap */
+ 
+         /* This is a secret undocumented option! It is useful if you find
+@@ -10420,6 +10469,7 @@ int main(int argc, char** argv) {
  
    //if (!protocol_selected) FATAL("Please specify the protocol to be tested using the -P option");
  
@@ -99,7 +175,7 @@ index 04d5fae..6c4a4b0 100644
    setup_signal_handlers();
    check_asan_opts();
  
-@@ -10470,7 +10486,7 @@ int main(int argc, char** argv) {
+@@ -10470,7 +10520,7 @@ int main(int argc, char** argv) {
  #endif /* HAVE_AFFINITY */
  
    check_crash_handling();
@@ -108,7 +184,7 @@ index 04d5fae..6c4a4b0 100644
    check_cpu_governor();
  
    setup_post();
-@@ -10495,8 +10511,6 @@ int main(int argc, char** argv) {
+@@ -10495,8 +10545,6 @@ int main(int argc, char** argv) {
  
    check_binary(argv[optind]);
  
@@ -874,6 +950,7 @@ index 65290a9..4b56f2a 100644
  
  end_analysis:
  
+
 diff --git a/llvm_mode/tlsh b/llvm_mode/tlsh
 --- a/llvm_mode/tlsh
 +++ b/llvm_mode/tlsh

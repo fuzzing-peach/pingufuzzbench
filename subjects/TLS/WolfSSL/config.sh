@@ -4,7 +4,7 @@ function checkout {
     mkdir -p repo
     git clone https://gitee.com/zzroot/wolfssl.git repo/wolfssl
     pushd repo/wolfssl >/dev/null
-    
+
     git checkout "$@"
     ./autogen.sh
 
@@ -14,7 +14,7 @@ function checkout {
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-    timeout -k 1s 3s ./examples/server/server \
+        timeout -k 1s 3s ./examples/server/server \
         -c ${HOME}/profuzzbench/test.fullchain.pem \
         -k ${HOME}/profuzzbench/test.key.pem \
         -e -p 4433
@@ -45,7 +45,6 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/wolfssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -141,7 +140,6 @@ function run_ft {
     timeout=$1
     consumer="WolfSSL"
     generator=${GENERATOR:-$consumer}
-    ts=$(date +%s)
     work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/ft/ >/dev/null
 
@@ -172,18 +170,39 @@ function build_pingu_generator {
     mkdir -p target/pingu/generator
     rm -rf target/pingu/generator/*
     cp -r repo/wolfssl target/pingu/generator/wolfssl
-    pushd target/pingu/generator/wolfssl >/dev/null 
+    pushd target/pingu/generator/wolfssl >/dev/null
 
-    export FT_HOOK_INS=load,store
-    export CC=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast
-    export CXX=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    export GENERATOR_AGENT_SO_DIR="${HOME}/pingu/fuzztruction/target/debug/"
-    export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
-
-    ./configure --enable-static --enable-shared=no
+    # get the whole program bitcode
+    # build the whole program using wllvm
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CCAS=wllvm
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/client/client ${MAKE_OPT}
+    cd examples/client
+    extract-bc client
+
+    # now we have client.bc
+    # instrument the whole program bitcode
+    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
+    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
+    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+        -passes="pingu-source" -debug-pass-manager \
+        -ins=load,store -role=source \
+        client.bc -o _client_svf_useless.bc
+
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+        -passes="pingu-source" -debug-pass-manager \
+        -ins=load,store -role=source -dump-svf=0 -dump-pp=0 \
+        client.bc -o client_opt.bc
+
+    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+        -lpingu_agent -fsanitize=address \
+        client_opt.bc -o client
 
     rm -rf .git
 
@@ -191,24 +210,47 @@ function build_pingu_generator {
 }
 
 function build_pingu_consumer {
-    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/pingu.conf /etc/ld.so.conf.d/
-    sudo ldconfig
-
     mkdir -p target/pingu/consumer
     rm -rf target/pingu/consumer/*
     cp -r repo/wolfssl target/pingu/consumer/wolfssl
     pushd target/pingu/consumer/wolfssl >/dev/null
 
-    export CC="${HOME}/pingu/target/debug/libafl_cc"
-    export CXX="${HOME}/pingu/target/debug/libafl_cxx"
-    export CFLAGS="-O3 -g -fsanitize=address"
-    export CXXFLAGS="-O3 -g -fsanitize=address"
-
-    ./configure --enable-static --enable-shared=no
+    # get the whole program bitcode
+    # build the whole program using wllvm
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CCAS=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/server/server ${MAKE_OPT}
+    cd examples/server
+    extract-bc server
+
+    # now we have server.bc
+    # instrument the whole program bitcode
+    export FT_BLACKLIST_FILES="wolfcrypt/src/poly1305.c"
+    export LLVM_PASS_DIR=${HOME}/pingu/pingu-agent/pass
+    export PINGU_AGENT_SO_DIR=${HOME}/pingu/target/debug
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+        -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -ins=load,store -role=sink \
+        server.bc -o _server_svf_useless.bc
+
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+        -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -ins=load,store -role=sink -dump-svf=0 -dump-pp=0 \
+        server.bc -o server_opt.bc
+
+    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+        -lpingu_agent -fsanitize=address \
+        server_opt.bc -o server
 
     rm -rf .git
-
     popd >/dev/null
 }
 
@@ -262,5 +304,6 @@ function build_gcov {
 }
 
 function install_dependencies {
-    echo "Not implemented"
+    sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/pingu.conf /etc/ld.so.conf.d/
+    sudo ldconfig
 }

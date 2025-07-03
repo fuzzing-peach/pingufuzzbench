@@ -315,7 +315,7 @@ index 131c21e..86b3f15 100644
 -      = ServerMediaSession::createNew(*env, streamName, streamName,
 -				      descriptionString);
 +    char const *streamName = "mp3AudioTest";
-+    char const *inputFileName = "/home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/live555/inputs/test.mp3";
++    char const *inputFileName = "/home/user/profuzzbench/subjects/RTSP/Live555/in-ft/test.mp3";
 +    ServerMediaSession *sms = ServerMediaSession::createNew(*env, streamName, streamName,
 +                                                            descriptionString);
      Boolean useADUs = False;

@@ -1,0 +1,3 @@
+[submodule "fuzztruction-llvm"]
+	path = fuzztruction-llvm
+	url = https://github.com/fuzzing-peach/fuzztruction-llvm.git

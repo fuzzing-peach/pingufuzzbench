@@ -1,3 +1,49 @@
+diff --git a/fuzztruction-experiments b/fuzztruction-experiments
+index ffaaeaf..d1c7d1f 160000
+--- a/fuzztruction-experiments
++++ b/fuzztruction-experiments
+@@ -1 +1 @@
+-Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8
++Subproject commit d1c7d1f25ec6cd1456e1bb6fe4cfa9257eaea159
+diff --git a/fuzztruction_shared/src/constants.rs b/fuzztruction_shared/src/constants.rs
+index 92f1bce..be052dc 100644
+--- a/fuzztruction_shared/src/constants.rs
++++ b/fuzztruction_shared/src/constants.rs
+@@ -1,4 +1,4 @@
+-pub const MAX_MUTATION_CACHE_ENTRIES: usize = 200000;
++pub const MAX_MUTATION_CACHE_ENTRIES: usize = 2000000;
+ pub const PATCH_POINT_SIZE: usize = 32;
+ pub const ENV_SHM_NAME: &str = "FT_SHM_NAME";
+ pub const ENV_LOG_LEVEL: &str = "FT_LOG_LEVEL";
+diff --git a/fuzztruction_shared/src/mutation_cache_content.rs b/fuzztruction_shared/src/mutation_cache_content.rs
+index 2b40d69..f095e05 100644
+--- a/fuzztruction_shared/src/mutation_cache_content.rs
++++ b/fuzztruction_shared/src/mutation_cache_content.rs
+@@ -139,6 +139,7 @@ impl MutationCacheContent {
+         assert!(self.next_free_slot < self.entry_decriptor_tbl.len());
+ 
+         if entry.size() > self.space_left() {
++            log::error!("Not enough space left in the cache to push entry");
+             return None;
+         }
+ 
+@@ -151,6 +152,7 @@ impl MutationCacheContent {
+             *slot = descriptor;
+             self.next_free_slot = min(self.next_free_slot + 1, max_slot_idx);
+         } else {
++            log::error!("entry_decriptor_tbl[{}] is not None", self.next_free_slot);
+             return None;
+         }
+ 
+@@ -168,7 +170,7 @@ impl MutationCacheContent {
+                 return Some(&*(dst_addr as *const MutationCacheEntry));
+             };
+         } else {
+-            warn!("Not enough descriptor entries available");
++            log::error!("Not enough descriptor entries available");
+             return None;
+         }
+     }
 diff --git a/fuzztruction_shared/src/util.rs b/fuzztruction_shared/src/util.rs
 index 0d07540..f2989a8 100644
 --- a/fuzztruction_shared/src/util.rs
@@ -123,11 +169,92 @@ index 47294d0..45bd76d 100644
      self->argv[self->argc++] = "-lgenerator_agent";
      self->argv[self->argc++] = "-DNDEBUG";
  
+diff --git a/generator/pass/fuzztruction-source-llvm-pass.cc b/generator/pass/fuzztruction-source-llvm-pass.cc
+index f275c54..27fef89 100644
+--- a/generator/pass/fuzztruction-source-llvm-pass.cc
++++ b/generator/pass/fuzztruction-source-llvm-pass.cc
+@@ -281,7 +281,9 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
+ 
+ 
+ /*
+-Delete call if one of the functions specified by name is called
++Delete call if one of the functions specified by name is called.
++
++In fact, the FT_NOP_FN is not used in FT-Net experiments. So no functions will be deleted~
+ */
+ bool FuzztructionSourcePass::maybeDeleteFunctionCall(Module &M, CallInst *call_ins, std::set<std::string> &target_functions) {
+     Function *callee = call_ins->getCalledFunction();
+@@ -351,7 +353,12 @@ uint64_t get_alloction_size_in_bits(AllocaInst *ins, Value *target) {
+     }
+ }
+ 
+-
++/***
++ * Instrument custom patch points.
++ * 
++ * Randomly mutate the byte returns by the __ft_get_byte, using patchpoint.
++ * But actually, the __ft_get_byte(s) is not used in FT-Net
++ */
+ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *stackmap_intr) {
+     auto custom_patch_points_enables = env_var_set("FT_CUSTOM_PATCH_POINTS");
+ 
+@@ -387,7 +394,9 @@ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *st
+     return true;
+ }
+ 
+-
++/**
++ * Instrument the entry block of a function to randomly select a target function and inject it.
++ */
+ bool FuzztructionSourcePass::instrumentFunctionEntry(Function &instrumented_function, Function *stackmap_intr) {
+     auto call_injection_enabled = env_var_set("FT_CALL_INJECTION");
+     if (!call_injection_enabled || instrumented_function.isVarArg()) {
+@@ -620,6 +629,21 @@ bool FuzztructionSourcePass::instrumentInsArg(Module &M, Function *stackmap_intr
+     return true;
+ }
+ 
++/***
++ * Instrument a call instruction.
++ * 
++ * Insert a patchpoint before the call instruction to decide whether the call should be executed or not.
++ *  Head
++ * cond = alloca
++ * store cond, true
++ * patchpoint(cond, 1)
++ * mutated_cond = load cond
++    if (mutated_cond)
++    {
++        Original Call Instruction
++    }
++    Tail
++ */
+ bool FuzztructionSourcePass::instrumentCall(Module &M, Function *stackmap_intr, CallInst *call) {
+     if (!call->user_empty())
+         return false;
+@@ -741,6 +765,9 @@ bool FuzztructionSourcePass::injectPatchPoints(Module &M) {
+             }
+     }
+ 
++    /**
++     * may delete calls to abort() like termination function specified in abort_fn_callees.
++     */
+     for (auto call_ins: abort_fn_callees) {
+         dbgs() << "Deleting call to abort " << *call_ins << "\n";
+         auto bb = call_ins->getParent();
 diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
-index 3aa7cd0..12b8758 100644
+index 3aa7cd0..d5105be 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
-@@ -118,12 +118,14 @@ impl Jail {
+@@ -39,7 +39,7 @@ where
+     }
+ }
+ 
+-fn internal_drop_privileges(uid: u32, gid: u32, permanent: bool) -> Result<()> {
++pub fn internal_drop_privileges(uid: u32, gid: u32, permanent: bool) -> Result<()> {
+     if permanent {
+         unsafe {
+             wrap_libc(|| libc::setgid(gid))?;
+@@ -118,12 +118,13 @@ impl Jail {
          // Mount the bear minimum to allow execution of software.
  
          // Mount / into our new root
@@ -139,12 +266,11 @@ index 3aa7cd0..12b8758 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
-+            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",
              "/etc/resolv.conf",
-@@ -134,8 +136,8 @@ impl Jail {
+@@ -134,8 +135,8 @@ impl Jail {
              Jail::remount_bind_mount_ro(&dst).context("Failed to remount as ro")?;
          }
  
@@ -178,10 +304,10 @@ index 2689dde..68c2bd8 100644
  }
  
 diff --git a/scheduler/src/cli/fuzztruction.rs b/scheduler/src/cli/fuzztruction.rs
-index eb8c21d..443e910 100644
+index eb8c21d..499e9e9 100644
 --- a/scheduler/src/cli/fuzztruction.rs
 +++ b/scheduler/src/cli/fuzztruction.rs
-@@ -358,6 +358,24 @@ fn parse_args() -> ArgMatches {
+@@ -358,6 +358,38 @@ fn parse_args() -> ArgMatches {
              Command::new("dump-stackmap")
                  .about("Dump the LLVM stackmap (e.g., locations and sizes)")
          )
@@ -201,12 +327,26 @@ index eb8c21d..443e910 100644
 +                    .short('d')
 +                    .help("Rerun the coverage computation and delete previous results, if any")
 +                    .action(clap::ArgAction::SetTrue)
++                ).arg(
++                    Arg::new("replay-step")
++                        .help("Replay the inputs found in the given step. If $i % $replay_step == 0, the input is replayed.")
++                        .short('r')
++                        .long("replay-step")
++                        .takes_value(true)
++                        .default_value("1"),
++                ).arg(
++                    Arg::new("gcov-step")
++                        .help("Run gcov for each insteresting input found in the given step. If $i % $gcov_step == 0, gcov is run.")
++                        .short('g')
++                        .long("gcov-step")
++                        .takes_value(true)
++                        .default_value("1"),
 +                )
 +        )
          .subcommand(
              Command::new("test-patchpoints")
              .about("Test the patchpoints of the source application (for debugging)")
-@@ -387,10 +405,18 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
+@@ -387,10 +419,18 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
      // Purge the working directory if requested.
      if config.general.work_dir.exists() && expects_empty_dir {
          if purge_flag {
@@ -228,7 +368,7 @@ index eb8c21d..443e910 100644
          } else {
              return Err(anyhow!(
                  "Workdir {:?} exists and --purge was not provided!",
-@@ -507,6 +533,10 @@ fn real_main() -> Result<()> {
+@@ -507,6 +547,10 @@ fn real_main() -> Result<()> {
              handler::handle_cli_llvm_cov_subcommand(llvm_cov_matches, &config)
                  .expect("Failed to run llvm-cov subcommand");
          }
@@ -240,18 +380,18 @@ index eb8c21d..443e910 100644
              handler::handle_cli_aflnet_subcommand(matches, &config)
                  .expect("Failed to run AFLNet mode");
 diff --git a/scheduler/src/cli/handler.rs b/scheduler/src/cli/handler.rs
-index e98c37a..ee979a7 100644
+index e98c37a..84ccd01 100644
 --- a/scheduler/src/cli/handler.rs
 +++ b/scheduler/src/cli/handler.rs
-@@ -1,6 +1,5 @@
+@@ -1,4 +1,7 @@
  use std::{
--    sync::{self, atomic::AtomicBool, Arc},
--    time::{Duration, Instant},
-+    fs, path::Path, process::{Command, Stdio}, sync::{self, atomic::AtomicBool, Arc}, time::{Duration, Instant}
++    fs,
++    path::Path,
++    process::{Command, Stdio},
+     sync::{self, atomic::AtomicBool, Arc},
+     time::{Duration, Instant},
  };
- 
- use anyhow::Result;
-@@ -271,6 +270,50 @@ pub(crate) fn handle_cli_sgfuzz_subcommand(matches: &ArgMatches, config: &Config
+@@ -271,6 +274,64 @@ pub(crate) fn handle_cli_sgfuzz_subcommand(matches: &ArgMatches, config: &Config
      Ok(())
  }
  
@@ -287,10 +427,24 @@ index e98c37a..ee979a7 100644
 +    if trace_matches.get_flag("delete") {
 +        cleanup_gcda(config.gcov.as_ref().unwrap().src_dir.as_ref())?;
 +    }
++    let replay_step: u32 = trace_matches
++        .value_of("replay-step")
++        .map(|v| v.parse().unwrap())
++        .unwrap_or(1);
++    let gcov_step: u32 = trace_matches
++        .value_of("gcov-step")
++        .map(|v| v.parse().unwrap())
++        .unwrap_or(1);
 +
 +    log::info!("Timeout is set to {timeout:?}");
 +
-+    coverage::networked::compute_gcov(config, termination_flag.clone(), timeout)?;
++    coverage::networked::compute_gcov(
++        config,
++        termination_flag.clone(),
++        timeout,
++        replay_step,
++        gcov_step,
++    )?;
 +
 +    if termination_flag.load(std::sync::atomic::Ordering::SeqCst) {
 +        return Ok(());
@@ -302,11 +456,74 @@ index e98c37a..ee979a7 100644
  pub(crate) fn handle_cli_llvm_cov_subcommand(
      trace_matches: &ArgMatches,
      config: &Config,
+diff --git a/scheduler/src/competitors/stateafl.rs b/scheduler/src/competitors/stateafl.rs
+index 2a2727a..cb7cf69 100644
+--- a/scheduler/src/competitors/stateafl.rs
++++ b/scheduler/src/competitors/stateafl.rs
+@@ -47,13 +47,14 @@ impl StateAflWorker {
+ 
+     fn _loop(self, init_finished: mpsc::Sender<()>) {
+         let stateafl_config = self
+-            .config
+-            .stateafl
+-            .as_ref()
+-            .expect("Target has no StateAfl config");
+-
+-        let seed_dir = stateafl_config.input_dir.clone();
+-        let workdir = self.config.general.stateafl_workdir();
++        .config
++        .stateafl
++        .as_ref()
++        .expect("Target has no StateAfl config");
++    
++    let seed_dir = stateafl_config.input_dir.clone();
++    let workdir = self.config.general.stateafl_workdir();
++    println!("workdir: {:?}", workdir);
+         fs::create_dir_all(&workdir).unwrap();
+ 
+         let mut log_path = workdir.clone();
+@@ -70,7 +71,7 @@ impl StateAflWorker {
+             .unwrap();
+         let log_fd = log_file.into_raw_fd();
+ 
+-        let mut cmd = Command::new("/competitors/stateafl/afl-fuzz");
++        let mut cmd = Command::new("/home/user/stateafl/afl-fuzz");
+ 
+         unsafe {
+             cmd.stdout(Stdio::from_raw_fd(log_fd));
+@@ -211,12 +212,12 @@ impl StateAflWorker {
+             cmd.gid(jail_uid_gid.1);
+         }
+ 
+-        OpenOptions::new()
+-            .write(true)
+-            .open("/proc/sys/kernel/randomize_va_space")
+-            .unwrap()
+-            .write_all("0".as_bytes())
+-            .unwrap();
++        // OpenOptions::new()
++        //     .write(true)
++        //     .open("/proc/sys/kernel/randomize_va_space")
++        //     .unwrap()
++        //     .write_all("0".as_bytes())
++        //     .unwrap();
+ 
+         let mut child = None;
+         for try_idx in 0..6 {
+@@ -263,7 +264,7 @@ impl StateAflWorker {
+     pub fn run(self) -> WorkerProxy {
+         let (init_finshied_sender, init_finshied_receiver) = mpsc::channel::<()>();
+         let handle = thread::spawn(|| {
+-            unshare_network_namespace(&self.config);
++            // unshare_network_namespace(&self.config);
+             self._loop(init_finshied_sender)
+         });
+         init_finshied_receiver
 diff --git a/scheduler/src/config.rs b/scheduler/src/config.rs
-index 036e283..c3c61df 100644
+index 036e283..44653b6 100644
 --- a/scheduler/src/config.rs
 +++ b/scheduler/src/config.rs
-@@ -289,6 +289,14 @@ pub struct StateAflConfig {
+@@ -289,6 +289,16 @@ pub struct StateAflConfig {
      pub enable_state_aware_mode: bool,
  }
  
@@ -315,13 +532,15 @@ index 036e283..c3c61df 100644
 +    pub bin_path: PathBuf,
 +    pub env: Vec<(String, String)>,
 +    pub src_dir: PathBuf,
++    pub cwd: PathBuf,
 +    pub reporter: String,
++    pub send_sigterm: bool
 +}
 +
  #[derive(Debug, Clone, Serialize)]
  pub struct VanillaConfig {
      /// Environment used during binary
-@@ -444,6 +452,8 @@ pub struct Config {
+@@ -444,6 +454,8 @@ pub struct Config {
      pub stateafl: Option<StateAflConfig>,
      /// Config for the SGFuzz fuzzer.
      pub sgfuzz: Option<SGFuzzConfig>,
@@ -330,7 +549,7 @@ index 036e283..c3c61df 100644
  }
  
  impl Config {
-@@ -1028,6 +1038,7 @@ impl ConfigBuilder {
+@@ -1028,6 +1040,7 @@ impl ConfigBuilder {
                  "sink-cov",
                  "source",
                  "afl-net",
@@ -338,7 +557,7 @@ index 036e283..c3c61df 100644
                  "state-afl",
                  "sgfuzz",
                  "vanilla",
-@@ -1290,6 +1301,22 @@ impl ConfigBuilder {
+@@ -1290,6 +1303,26 @@ impl ConfigBuilder {
          })
      }
  
@@ -347,21 +566,25 @@ index 036e283..c3c61df 100644
 +        let env: Option<Vec<(String, String)>> = self.get_attribute(yaml, "env")?;
 +        let env = env.unwrap_or_default();
 +        let src_dir = self.get_attribute(yaml, "src-dir")?;
++        let cwd = self.get_attribute(yaml, "cwd")?;
 +        let reporter = self.get_attribute(yaml, "reporter")?;
-+        ConfigBuilder::check_for_unparsed_keys(yaml, &["bin-path", "env", "src-dir", "reporter"])?;
++        let send_sigterm = self.get_attribute::<Option<bool>>(yaml, "send-sigterm")?;
++        ConfigBuilder::check_for_unparsed_keys(yaml, &["bin-path", "env", "src-dir", "reporter", "send-sigterm", "cwd"])?;
 +
 +        Ok(GcovConfig {
 +            bin_path,
 +            env,
 +            src_dir,
++            cwd,
 +            reporter,
++            send_sigterm: send_sigterm.unwrap_or(false),
 +        })
 +    }
 +
      fn parse_state_afl_section(&self, yaml: &Yaml) -> Result<StateAflConfig> {
          let bin_path = self.get_attribute(yaml, "bin-path")?;
          let env: Option<Vec<(String, String)>> = self.get_attribute(yaml, "env")?;
-@@ -1477,6 +1504,13 @@ impl ConfigBuilder {
+@@ -1477,6 +1510,13 @@ impl ConfigBuilder {
              Some(self.parse_afl_net_section(aflnet_section)?)
          };
  
@@ -375,7 +598,7 @@ index 036e283..c3c61df 100644
          let stateafl_section = &yaml["state-afl"];
          let stateafl_section = if stateafl_section.is_badvalue() {
              None
-@@ -1508,6 +1542,7 @@ impl ConfigBuilder {
+@@ -1508,6 +1548,7 @@ impl ConfigBuilder {
              sgfuzz: sgfuzz_section,
              sink_cov: sink_cov_config,
              vanilla: vanilla_config,
@@ -383,6 +606,19 @@ index 036e283..c3c61df 100644
          };
          config.validate()?;
          Ok(config)
+diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
+index 463594a..6e57a20 100644
+--- a/scheduler/src/constants.rs
++++ b/scheduler/src/constants.rs
+@@ -5,7 +5,7 @@ use std::time::Duration;
+ /// Programmes containing more than this limit, will raise an assertion.
+ /// In this case, the limit might simply be raised to the desired value, however,
+ /// mind that this will increase the overall memory footprint.
+-pub const MAX_PATCHPOINT_CNT: usize = 400_000;
++pub const MAX_PATCHPOINT_CNT: usize = 600_000;
+ pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
+ pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
+ pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
 diff --git a/scheduler/src/coverage/grcov.rs b/scheduler/src/coverage/grcov.rs
 new file mode 100644
 index 0000000..2d0c728
@@ -542,10 +778,10 @@ index bdedb83..b1e3e71 100644
  mod postprocess;
  pub use postprocess::postprocess_llvm_cov;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..a09a7da 100644
+index 8886de7..4b5bdf3 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
-@@ -1,26 +1,41 @@
+@@ -1,26 +1,42 @@
  use std::{
      cell::RefCell,
 -    fs,
@@ -585,12 +821,13 @@ index 8886de7..a09a7da 100644
 +use chrono::Local;
  use fuzztruction_shared::mutation_cache::MutationCache;
  use itertools::Itertools;
++use jail::jail::{internal_drop_privileges, Jail, JailBuilder};
 +use libc::{c_char, fork};
 +use nix::unistd::execve;
  
  unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()> {
      let mutations = entry.mutations();
-@@ -39,6 +54,239 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
+@@ -39,6 +55,252 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
      Ok(())
  }
  
@@ -598,6 +835,8 @@ index 8886de7..a09a7da 100644
 +    config: &Config,
 +    exit_requested: Arc<AtomicBool>,
 +    timeout: Duration,
++    replay_step: u32,
++    gcov_step: u32,
 +) -> Result<()> {
 +    let gcov_config = config.gcov.as_ref().unwrap();
 +
@@ -612,7 +851,7 @@ index 8886de7..a09a7da 100644
 +                "--ignore-not-existing",
 +                "-s",
 +                gcov_config.src_dir.to_str().unwrap(),
-+                gcov_config.src_dir.to_str().unwrap(),
++                gcov_config.cwd.to_str().unwrap(),
 +            ]
 +        }
 +        GrcovBinary::Gcovr => {
@@ -646,6 +885,10 @@ index 8886de7..a09a7da 100644
 +    let mock_time = Local::now();
 +
 +    for (idx, entry) in queue.iter().sorted_by_key(|q| q.id().0).enumerate() {
++        if idx % replay_step as usize != 0 {
++            continue;
++        }
++
 +        if exit_requested.load(atomic::Ordering::SeqCst) {
 +            break;
 +        }
@@ -664,6 +907,9 @@ index 8886de7..a09a7da 100644
 +                let ret = libc::setsid();
 +                assert!(ret >= 0);
 +            }
++
++            let (uid, gid) = config.general.jail_uid_gid().unwrap();
++            internal_drop_privileges(uid, gid, true).unwrap();
 +
 +            let dev_null_fd = unsafe {
 +                let path = CString::new("/dev/null".as_bytes()).unwrap();
@@ -736,7 +982,7 @@ index 8886de7..a09a7da 100644
 +            argv.insert(0, bin.clone());
 +            println!("execve({}, {:#?})", bin_path, argv);
 +
-+            env::set_current_dir(config.gcov.as_ref().unwrap().src_dir.to_owned()).unwrap();
++            env::set_current_dir(config.gcov.as_ref().unwrap().cwd.to_owned()).unwrap();
 +
 +            let envs: Vec<CString> = config
 +                .gcov
@@ -787,6 +1033,10 @@ index 8886de7..a09a7da 100644
 +        let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::SIGTERM);
 +        source.wait_for_child_termination(timeout, true)?;
 +
++        if idx % gcov_step as usize != 0 {
++            continue;
++        }
++
 +        let coverage = grcov.spawn()?;
 +
 +        // Compute line coverage ratio
@@ -830,7 +1080,7 @@ index 8886de7..a09a7da 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +431,68 @@ pub fn compute_llvm_cov(
+@@ -183,3 +445,68 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -899,6 +1149,23 @@ index 8886de7..a09a7da 100644
 +    }
 +    Ok(false)
 +}
+diff --git a/scheduler/src/fuzzer/common.rs b/scheduler/src/fuzzer/common.rs
+index 934c860..2f6fa0f 100644
+--- a/scheduler/src/fuzzer/common.rs
++++ b/scheduler/src/fuzzer/common.rs
+@@ -201,9 +201,9 @@ pub fn common_calibrate(
+         .unwrap_or(DEFAULT_CALIBRATION_TIMEOUT);
+ 
+     let mut exec_durations = Vec::with_capacity(CALIBRATION_MEASURE_CYCLES.try_into().unwrap());
+-    if config.sink.send_sigterm {
+-        default_timeout *= 2;
+-    }
++    // if config.sink.send_sigterm {
++    //     default_timeout *= 2;
++    // }
+ 
+     let mut crash_did_not_crash_ctr = 0;
+ 
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
 index 728d127..a2d288b 100644
 --- a/scheduler/src/fuzzer/worker_impl/init.rs
@@ -935,7 +1202,7 @@ index a4b0084..2cbb0e2 100644
          }
      }
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
-index 549ac57..d95ef13 100644
+index 549ac57..335fc78 100644
 --- a/scheduler/src/source.rs
 +++ b/scheduler/src/source.rs
 @@ -1,6 +1,6 @@
@@ -946,6 +1213,19 @@ index 549ac57..d95ef13 100644
  use fuzztruction_shared::{
      aux_messages::{AuxStreamMessage, AuxStreamType},
      aux_stream::AuxStreamAssembler,
+@@ -61,9 +61,9 @@ use crate::{networked::ServerReadySignalKind, trace::Trace};
+ 
+ use crate::io_channels::*;
+ 
+-const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(120);
+-const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(120);
+-const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
++const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(240);
++const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(240);
++const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(240);
+ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+ const MAX_OUTPUT_SIZE: u64 = n_mib_bytes!(1) as u64;
+ 
 @@ -465,7 +465,8 @@ impl Source {
                  // This is an own mount in our mount namespace, thus we need
                  // to explicitly mount it.
@@ -1005,3 +1285,20 @@ index 549ac57..d95ef13 100644
                              msgs: self.msg_buffer.take().unwrap(),
                          })
                          .into());
+@@ -2053,6 +2082,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
+     Ok(())
+ }
+ 
++fn send_sig_to_child(pid_msg: &ChildPid, sig: Signal) -> Result<()> {
++    let pid = nix::unistd::Pid::from_raw(pid_msg.pid.try_into().unwrap());
++    let ret = nix::sys::signal::kill(pid, sig);
++    if let Err(err) = ret {
++        log::trace!("Failed to send signal to child {pid:?}. However, this might just indicate that the child won the race and terminated itself. err={:#?}", err);
++        return Err(err.into());
++    }
++    Ok(())
++}
++
+ /// Check that some constraints hold for the patch points:
+ ///     - VMAs are unique
+ ///     - PatchPointIDs are unique

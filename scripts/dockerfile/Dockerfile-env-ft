@@ -1,0 +1,173 @@
+# https://github.com/fuzzing-peach/pingufuzzbench
+FROM ghcr.io/fuzzing-peach/fuzztruction-llvm_debug:llvmorg-17.0.6 AS llvm
+
+FROM ubuntu:24.04
+
+ARG ZH_CN
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy=${HTTP_PROXY}    
+ARG https_proxy=${HTTP_PROXY}
+ARG MAKE_OPT="-j4"
+
+ENV ZH_CN=${ZH_CN}
+
+ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+ENV NO_PROXY=${no_proxy}
+
+ARG CARGO_BUILD_JOBS="4"
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+
+# Change the Ubuntu package mirror
+RUN apt update && apt install -y apt-transport-https ca-certificates
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        apt clean; \
+    fi
+
+# LLVM-17
+RUN apt update && apt install -y --no-install-recommends wget gnupg2 && rm -rf /var/lib/apt/lists
+RUN echo deb http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
+RUN echo deb-src http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+
+# TODO: 精简安装包
+# Install common dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
+    apt update -y && yes | unminimize && apt-mark hold "llvm-*" && apt-mark hold "clang-*" && \
+    apt install -y \
+    apt-utils git build-essential mold curl libc++-dev sudo libtool libtool-bin libz-dev libglib2.0-dev graphviz-dev bison flex automake libpixman-1-dev cgroup-tools \
+    cmake bear autoconf pkg-config gdb strace \
+    openssh-server openssl libssl-dev libgnutls28-dev \
+    libcap-dev libpcap-dev tcpdump \
+    rsync autopoint gperf texinfo gettext \
+    vim nano screen htop man wget httpie bash-completion ripgrep iputils-ping iproute2 telnet net-tools ncat netcat-traditional \
+    zsh autojump fzf \
+    && rm -rf /var/lib/apt/lists
+
+RUN ln -sf /usr/bin/clang-17 /usr/bin/clang && \
+    ln -sf /usr/bin/clang++-17 /usr/bin/clang++ && \
+    ln -sf /usr/bin/llvm-config-17 /usr/bin/llvm-config
+
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple gcovr; \
+    else \
+        pip3 install --break-system-packages gcovr; \
+    fi
+
+# Copy prebuilt custom LLVM version
+COPY --from=llvm /llvm/* /usr
+
+RUN chmod 777 /tmp
+
+# Users
+##############
+# Add a new user
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+ENV USER_ID=${USER_ID}
+ENV GROUP_ID=${GROUP_ID}
+
+RUN userdel $(getent passwd ${USER_ID} | cut -d: -f1) || true
+RUN groupdel $(getent group ${GROUP_ID} | cut -d: -f1) || true
+RUN groupadd -g ${GROUP_ID} user && \
+    useradd -u ${USER_ID} -rm -d /home/user -s /usr/bin/zsh -g user -G sudo user -p "$(openssl passwd -1 user)" && \
+    echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Use user AS default username
+USER user
+WORKDIR /home/user
+ENV HOME=/home/user
+
+RUN git config --global http.version HTTP/1.1 && \
+    git config --global user.name Kherrisan && \
+    git config --global user.email zdkscope@qq.com
+
+# Rust
+ENV RUSTUP_DIST_SERVER=https://rsproxy.cn
+ENV RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain stable
+    
+COPY --chown=${USER_ID}:${GROUP_ID} scripts/cargo.toml ${HOME}/.cargo/
+
+##############
+# End of user setup
+
+# Code
+##############
+
+# Environments and fuzzer tools
+##############
+
+COPY patches /tmp/patches
+
+# AFLNet
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git clone https://gitee.com/kherrisan/aflnet.git aflnet; \
+    else \
+        git clone https://github.com/AFLNet/AFLNet.git aflnet; \
+    fi && \
+    cd aflnet && \
+    git checkout 6d86ca0cf6852cfa7a776a77fb7886d8bee46c14 && \
+    git apply /tmp/patches/aflnet.patch && \
+    make clean all ${MAKE_OPT} && \
+    cd llvm_mode && make ${MAKE_OPT}
+
+# Some cargo dependencies are downloaded via github, so we need to configure the mirror
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git config --global url."https://github.moeyy.xyz/https://github.com/".insteadOf https://github.com/; \
+    fi
+
+# FT-Net
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git clone https://gitee.com/kherrisan/fuzztruction-net.git fuzztruction-net; \
+    else \
+        git clone https://github.com/fuzztruction/fuzztruction-net.git fuzztruction-net; \
+    fi && \
+    cd fuzztruction-net && \
+    git checkout c34408b && \
+    git apply /tmp/patches/ft.patch && \
+    echo "nightly-2023-10-10" >> rust-toolchain && \
+    ${HOME}/.cargo/bin/cargo build --workspace --release
+    
+RUN cd fuzztruction-net/generator/pass && \
+    make all && \
+    cd ../.. && \
+    git submodule update --init && \
+    cd consumer/aflpp-consumer && \ 
+    make clean && \ 
+    make all ${MAKE_OPT}
+
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git clone https://gitee.com/kherrisan/libfaketime.git; \
+    else \
+        git clone https://github.com/wolfcw/libfaketime.git; \
+    fi && \
+    cd libfaketime && \
+    make -j
+
+RUN sudo ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" | sudo tee /etc/timezone
+
+RUN sudo touch /etc/ld.so.conf.d/ft-net.conf && \
+    echo "${HOME}/fuzztruction-net/generator/pass" | sudo tee "/etc/ld.so.conf.d/ft-net.conf" && \
+    sudo ldconfig
+
+# Build libgcov_preload.so
+COPY scripts/gcov_preload.c gcov_preload.c
+RUN gcc -shared -fpic gcov_preload.c -o libgcov_preload.so && \
+    sudo touch "/etc/ld.so.conf.d/gcov.conf" && \
+    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/gcov.conf" && \
+    sudo ldconfig
+
+COPY scripts/fake_random.c fake_random.c
+RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so && \
+    sudo touch "/etc/ld.so.conf.d/fake_random.conf" && \
+    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/fake_random.conf" && \
+    sudo ldconfig
+
+# Disable ASLR
+RUN echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/01-disable-aslr.conf && \
+    sudo sysctl -p /etc/sysctl.d/01-disable-aslr.conf

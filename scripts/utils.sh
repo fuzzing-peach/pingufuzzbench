@@ -26,25 +26,39 @@ function use_prebuilt {
   return 1
 }
 
-function get_args_after_double_dash {
-  local args=()
-
-  while [[ "$1" != "--" ]]; do
-    if [[ -z $1 ]]; then
-      echo ""
-      return
+function check_aslr_disabled {
+    local aslr_value=$(cat /proc/sys/kernel/randomize_va_space)
+    if [ "$aslr_value" != "0" ]; then
+        log_error "ASLR is enabled (value: $aslr_value). Please disable it by running:"
+        log_error "    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space"
+        exit 1
     fi
+}
+
+function get_args_after_double_dash {
+    local args=()
+
+    # 跳过 -- 之前的参数
+    while [[ "$1" != "--" ]]; do
+        if [[ -z $1 ]]; then
+            echo ""
+            return
+        fi
+        shift
+    done
+
+    # 跳过 -- 本身
     shift
-  done
 
-  shift
+    # 收集所有剩余参数，保持原始形式
+    while [[ -n "$1" ]]; do
+        # 保留每个参数的原始形式，包括 -e 标志
+        args+=("$1")
+        shift
+    done
 
-  while [[ -n "$1" ]]; do
-    args+=("$1")
-    shift
-  done
-
-  echo -n "${args[@]}"
+    # 使用引号打印所有参数，保持完整的参数结构
+    printf '%s ' "${args[@]}"
 }
 
 function get_args_before_double_dash() {
@@ -77,10 +91,19 @@ function compute_coverage {
   step=$3
   covfile=$4
   cov_cmd=$5
+<<<<<<< HEAD
   
+=======
+  clean_cmd=$6
+
+>>>>>>> origin/main
   # delete the existing coverage file
   rm $covfile || true
   touch $covfile
+
+  if [ -n "$clean_cmd" ]; then
+    eval "$clean_cmd"     
+  fi
 
   # output the header of the coverage file which is in the CSV format
   # Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
@@ -92,7 +115,6 @@ function compute_coverage {
   for f in $testcases; do
     echo $f
     time=$(stat -c %Y $f)
-
     "$replayer" "$f" || true
 
     count=$((count + 1))
@@ -112,6 +134,10 @@ function compute_coverage {
     b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
     echo "$time,$l_abs,$l_per,$b_abs,$b_per"
     echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>$covfile
+
+    if [ -n "$clean_cmd" ]; then
+        eval "$clean_cmd"        
+    fi
   done
 
   # output cov data for the last testcase(s) if step > 1
@@ -172,4 +198,34 @@ check_port_listening() {
 
         sleep_ms_perl $interval
     done
+}
+
+get_lowest_load_cpus() {
+    local N=${1:-1}
+    local cpu_count=$(grep -c "^processor" /proc/cpuinfo)
+    
+    if [[ ! $N =~ ^[0-9]+$ ]] || (( N > cpu_count )); then
+        echo "错误：参数必须为整数且不超过 CPU 核心数（当前为 $cpu_count）" >&2
+        return 1
+    fi
+
+    # 关键修复：动态查找 "id" 字段的位置，避免因 top 输出格式变化导致错误
+    local cpu_list
+    cpu_list=$(top -b -n1 -1 | awk -F, -v OFS=',' '
+        /^%Cpu[0-9]+/ {
+            cpu_id = substr($1, 5, index($1, ":") - 5);  # 提取核心编号（如 "0"）
+            idle = 0
+            # 遍历字段，寻找包含 "id" 的列（如 "0.0 id"）
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ / id/) {
+                    split($i, parts, " ");
+                    idle = parts[1];  # 提取数值部分（如 "0.0"）
+                    break;
+                }
+            }
+            print cpu_id, idle
+        }' | sort -t',' -k2,2nr | head -n "$N" | cut -d',' -f1
+    )
+
+    echo "$cpu_list" | tr '\n' ' ' | sed 's/ $//'
 }

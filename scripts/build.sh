@@ -78,9 +78,20 @@ log_success "[+] Building docker image: ${image_name}, from ${env_image_name}"
 log_success "[+] Docker build args: ${docker_args}"
 # If http proxy is required, passing:
 # --build-arg HTTP_PROXY=http://172.17.0.1:7890 --build-arg HTTPS_PROXY=http://172.17.0.1:7890
-# If needs to add dns server, passing:
+# If needs to add dns server, passing: --build-arg DNS_SERVER=9.9.9.9
 # --build-arg DNS_SERVER=9.9.9.9
-DOCKER_BUILDKIT=1 docker build --build-arg FUZZER=$fuzzer --build-arg TARGET=$target --build-arg VERSION=$version --build-arg GENERATOR=$generator --build-arg USER_UID="$(id -u)" --build-arg USER_GID="$(id -g)" -f scripts/Dockerfile $docker_args . -t $image_name
+cmd="docker build \
+    --build-arg FUZZER=$fuzzer \
+    --build-arg TARGET=$target \
+    --build-arg VERSION=$version \
+    --build-arg GENERATOR=$generator \
+    --build-arg USER_UID="$(id -u)" \
+    --build-arg USER_GID="$(id -g)" \
+    -f scripts/Dockerfile \
+    $docker_args . \
+    -t $image_name"
+log_success "[+] Running command: ${cmd}"
+DOCKER_BUILDKIT=1 ${cmd}
 if [[ $? -ne 0 ]]; then
     log_error "[!] Error while building the docker image: $image_name"
     exit 1
