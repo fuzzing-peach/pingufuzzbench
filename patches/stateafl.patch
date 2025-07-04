@@ -1,5 +1,5 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index 04d5fae..2e81f33 100644
+index 04d5fae..8daa0be 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
 @@ -66,6 +66,7 @@
@@ -167,7 +167,17 @@ index 04d5fae..2e81f33 100644
        case 'B': /* load bitmap */
  
          /* This is a secret undocumented option! It is useful if you find
-@@ -10420,6 +10469,7 @@ int main(int argc, char** argv) {
+@@ -10329,6 +10378,9 @@ int main(int argc, char** argv) {
+         } else if (!strcmp(optarg, "IPP")) {
+           extract_requests = &extract_requests_ipp;
+           extract_response_codes = &extract_response_codes_ipp;
++        } else if (!strcmp(optarg, "MQTT")) {
++          extract_requests = &extract_requests_mqtt;
++          extract_response_codes = &extract_response_codes_mqtt;
+         } else {
+           FATAL("%s protocol is not supported yet!", optarg);
+         }
+@@ -10420,6 +10472,7 @@ int main(int argc, char** argv) {
  
    //if (!protocol_selected) FATAL("Please specify the protocol to be tested using the -P option");
  
@@ -175,7 +185,7 @@ index 04d5fae..2e81f33 100644
    setup_signal_handlers();
    check_asan_opts();
  
-@@ -10470,7 +10520,7 @@ int main(int argc, char** argv) {
+@@ -10470,7 +10523,7 @@ int main(int argc, char** argv) {
  #endif /* HAVE_AFFINITY */
  
    check_crash_handling();
@@ -184,7 +194,7 @@ index 04d5fae..2e81f33 100644
    check_cpu_governor();
  
    setup_post();
-@@ -10495,8 +10545,6 @@ int main(int argc, char** argv) {
+@@ -10495,8 +10548,6 @@ int main(int argc, char** argv) {
  
    check_binary(argv[optind]);
  
