@@ -115,10 +115,9 @@ function run_stateafl {
     export AFL_NO_AFFINITY=1
 
     timeout -k 0 --preserve-status $timeout \
-        ${HOME}/stateafl/afl-fuzz -m none -i $indir \
-        -o $outdir \
-        -N tcp://127.0.0.1/7899 \
-        -q 3 -s 3 -R -E -K \
+        ${HOME}/stateafl/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/7899 \
+        -P MQTT -D 10000 -q 3 -s 3 -R -E -K -W 50 -m none \
         ./mosquitto -p 7899
 
     cd ${HOME}/target/gcov/consumer/mosquitto/build/src

@@ -100,8 +100,8 @@ function build_ft_generator {
     export FT_HOOK_INS=branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O3 -g"
-    export CXXFLAGS="-O3 -g"
+    export CFLAGS="-O0 -g"
+    export CXXFLAGS="-O0 -g"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -197,10 +197,10 @@ function build_pingu_generator {
 
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store -role=source -dump-svf=0 -dump-pp=0 \
+        -ins=load,store -role=source -svf=0 -dump-svf=0 -dump-pp=0 \
         client.bc -o client_opt.bc
 
-    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
         client_opt.bc -o client
 
@@ -237,8 +237,8 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink \
-        server.bc -o _server_svf_useless.bc
+        -ins=load,store -role=sink -svf=0 -dump-svf=0 \
+        server.bc -o server_opt.bc
 
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
@@ -246,7 +246,7 @@ function build_pingu_consumer {
         -ins=load,store -role=sink -dump-svf=0 -dump-pp=0 \
         server.bc -o server_opt.bc
 
-    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
         server_opt.bc -o server
 
