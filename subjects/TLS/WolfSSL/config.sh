@@ -100,8 +100,8 @@ function build_ft_generator {
     export FT_HOOK_INS=branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O3 -g"
-    export CXXFLAGS="-O3 -g"
+    export CFLAGS="-O0 -g"
+    export CXXFLAGS="-O0 -g"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -193,7 +193,7 @@ function build_pingu_generator {
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
-    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
         client_opt.bc -o client
 
@@ -231,7 +231,7 @@ function build_pingu_consumer {
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
-    clang -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
         server_opt.bc -o server
 

@@ -353,7 +353,7 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/DICOM/${consumer}/ft-sink.yaml >>ft.yaml
 
     # running ft-net fuzzing
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz --log-level debug -t ${timeout}s
 
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
