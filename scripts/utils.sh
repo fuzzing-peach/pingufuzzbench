@@ -91,12 +91,8 @@ function compute_coverage {
   step=$3
   covfile=$4
   cov_cmd=$5
-<<<<<<< HEAD
-  
-=======
   clean_cmd=$6
 
->>>>>>> origin/main
   # delete the existing coverage file
   rm $covfile || true
   touch $covfile

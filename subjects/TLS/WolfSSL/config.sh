@@ -74,17 +74,63 @@ function run_aflnet {
 }
 
 function build_stateafl {
-    mkdir -p stateafl
-    rm -rf stateafl/*
-    cp -r src/wolfssl stateafl/
-    pushd stateafl/wolfssl >/dev/null
+    mkdir -p target/stateafl
+    rm -rf target/stateafl/*
+    cp -r repo/wolfssl target/stateafl/wolfssl
+    pushd target/stateafl/wolfssl >/dev/null
 
-    # TODO:
+    export CC=$HOME/stateafl/afl-clang-fast
+    export AFL_USE_ASAN=1
+
+    ./configure --enable-static --enable-shared=no
+    make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
 
     popd >/dev/null
 }
+
+
+function run_stateafl {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    # indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls-replay
+    pushd ${HOME}/target/stateafl/wolfssl >/dev/null
+
+    mkdir -p $outdir
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    timeout -k 0 --preserve-status $timeout \
+        $HOME/stateafl/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/4433 \
+        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
+        ./examples/server/server \
+        -c ${HOME}/profuzzbench/test.fullchain.pem \
+        -k ${HOME}/profuzzbench/test.key.pem \
+        -e -p 4433
+
+    
+    cd ${HOME}/target/gcov/consumer/wolfssl
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
+}
+
+
+
+
 
 function build_sgfuzz {
     echo "Not implemented"

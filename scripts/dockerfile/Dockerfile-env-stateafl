@@ -102,11 +102,6 @@ RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
     cd llvm_mode && make ${MAKE_OPT}
 
 # StateAFL
-<<<<<<< HEAD:scripts/Dockerfile-env-stateafl
-# ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
-RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark && sudo pip3 install --proxy=${HTTP_PROXY} --break-system-packages -i https://mirrors.aliyun.com/pypi/simple pyshark
-RUN git clone https://gitee.com/zhangadiu/stateafl.git --depth=1 && \
-=======
 ENV STATEAFL_CFLAGS="-DENABLE_TRACE_GLOBAL_DATA -DBLACKLIST_ALLOC_SITES -DBLACKLIST_GLOBALS"
 RUN sudo apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y tshark
 RUN if [ "${HTTP_PROXY}" != "" ]; then \
@@ -118,18 +113,8 @@ RUN if [ "${HTTP_PROXY}" != "" ]; then \
     fi
 
 RUN git clone https://github.com/stateafl/stateafl.git --depth=1 && \
->>>>>>> origin/main:scripts/dockerfile/Dockerfile-env-stateafl
     cd stateafl && \
     git checkout d923e22f7b2688db45b08f3fa3a29a566e7ff3a4 && \
-    rm afl-fuzz.c aflnet.c aflnet.h aflnet-replay.c
-
-COPY stateafl/afl-fuzz.c ${HOME}/stateafl
-COPY stateafl/aflnet.c ${HOME}/stateafl
-COPY stateafl/aflnet.h ${HOME}/stateafl
-COPY stateafl/aflnet-replay.c ${HOME}/stateafl
-
-    
-RUN cd stateafl && \
     git submodule init && \
     git submodule update && \
     git apply /tmp/patches/stateafl.patch && \
