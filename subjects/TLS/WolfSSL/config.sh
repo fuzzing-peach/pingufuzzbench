@@ -177,8 +177,8 @@ function build_pingu_generator {
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CCAS=wllvm
-    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
-    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CFLAGS="-g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/client/client ${MAKE_OPT}
@@ -189,7 +189,7 @@ function build_pingu_generator {
     # instrument the whole program bitcode
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store,trampoline -role=source -svf=0 -dump-svf=0 \
+        -ins=load,store,trampoline -role=source \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
