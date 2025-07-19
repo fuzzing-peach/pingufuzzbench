@@ -121,16 +121,11 @@ function run_stateafl {
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
-
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
 }
-
-
-
-
 
 function build_sgfuzz {
     echo "Not implemented"
