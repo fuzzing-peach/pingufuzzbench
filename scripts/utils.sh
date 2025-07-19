@@ -116,12 +116,14 @@ function compute_coverage {
     count=$((count + 1))
     rem=$((count % step))
     if [ "$rem" != "0" ]; then continue; fi
+
     # Run the coverage command if provided, otherwise use default gcovr command
     if [ -n "$cov_cmd" ]; then
         cov_data=$(eval "$cov_cmd")
     else
         cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
     fi
+
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
@@ -137,12 +139,14 @@ function compute_coverage {
   # output cov data for the last testcase(s) if step > 1
   if [[ $step -gt 1 ]]; then
     time=$(stat -c %Y $f)
+
     # Run the coverage command if provided, otherwise use default gcovr command
     if [ -n "$cov_cmd" ]; then
         cov_data=$(eval "$cov_cmd")
     else
         cov_data=$(gcovr -r . -s | grep "[lb][a-z]*:")
     fi
+
     l_per=$(echo "$cov_data" | grep lines | cut -d" " -f2 | rev | cut -c2- | rev)
     l_abs=$(echo "$cov_data" | grep lines | cut -d" " -f3 | cut -c2-)
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)

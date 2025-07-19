@@ -1,0 +1,193 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 088e9a92..0adb8ab4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -33,6 +33,7 @@ option(WITH_TLS_PSK
+ option(WITH_EC
+ 	"Include Elliptic Curve support (requires WITH_TLS)?" ON)
+ if (WITH_TLS)
++    set(OPENSSL_USE_STATIC_LIBS TRUE)
+ 	find_package(OpenSSL REQUIRED)
+ 	add_definitions("-DWITH_TLS")
+ 
+diff --git a/client/CMakeLists.txt b/client/CMakeLists.txt
+index e81d59cb..280bd91b 100644
+--- a/client/CMakeLists.txt
++++ b/client/CMakeLists.txt
+@@ -20,31 +20,38 @@ include_directories(${CLIENT_INC})
+ link_directories(${CLIENT_DIR})
+ 
+ add_executable(mosquitto_pub pub_client.c pub_shared.c ${shared_src})
++add_executable(ft_client ft_client.c pub_shared.c ${shared_src})
++
+ add_executable(mosquitto_sub sub_client.c sub_client_output.c ${shared_src})
+ add_executable(mosquitto_rr rr_client.c pub_shared.c sub_client_output.c ${shared_src})
+ 
+ if (CJSON_FOUND)
++target_link_libraries(ft_client ${CJSON_LIBRARIES})
+ 	target_link_libraries(mosquitto_pub ${CJSON_LIBRARIES})
+ 	target_link_libraries(mosquitto_sub ${CJSON_LIBRARIES})
+ 	target_link_libraries(mosquitto_rr ${CJSON_LIBRARIES})
+ endif()
+ 
+ if (WITH_STATIC_LIBRARIES)
+-	target_link_libraries(mosquitto_pub libmosquitto_static)
++    target_link_libraries(ft_client libmosquitto_static)
++    target_link_libraries(mosquitto_pub libmosquitto_static)
+ 	target_link_libraries(mosquitto_sub libmosquitto_static)
+ 	target_link_libraries(mosquitto_rr libmosquitto_static)
+ else()
+-	target_link_libraries(mosquitto_pub libmosquitto)
++    target_link_libraries(ft_client libmosquitto)
++    target_link_libraries(mosquitto_pub libmosquitto)
+ 	target_link_libraries(mosquitto_sub libmosquitto)
+ 	target_link_libraries(mosquitto_rr libmosquitto)
+ endif()
+ 
+ if (QNX)
++    target_link_libraries(ft_client socket)
+     target_link_libraries(mosquitto_pub socket)
+     target_link_libraries(mosquitto_sub socket)
+     target_link_libraries(mosquitto_rr socket)
+ endif()
+ 
++install(TARGETS ft_client RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+ install(TARGETS mosquitto_pub RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+ install(TARGETS mosquitto_sub RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+ install(TARGETS mosquitto_rr RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+diff --git a/client/Makefile b/client/Makefile
+index a951488b..494efa9a 100644
+--- a/client/Makefile
++++ b/client/Makefile
+@@ -7,7 +7,7 @@ SHARED_DEP:=../lib/libmosquitto.so.${SOVERSION}
+ endif
+ 
+ ifeq ($(WITH_SHARED_LIBRARIES),yes)
+-ALL_DEPS:= mosquitto_pub mosquitto_sub mosquitto_rr
++ALL_DEPS:= mosquitto_pub mosquitto_sub mosquitto_rr ft_pub
+ else
+ ifeq ($(WITH_STATIC_LIBRARIES),yes)
+ ALL_DEPS:= static_pub static_sub static_rr
+@@ -32,6 +32,9 @@ static_rr : rr_client.o client_props.o client_shared.o pub_shared.o sub_client_o
+ mosquitto_pub : pub_client.o pub_shared.o client_shared.o client_props.o
+ 	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD)
+ 
++ft_pub : ft_client.o pub_shared.o client_shared.o client_props.o
++	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD)
++
+ mosquitto_sub : sub_client.o sub_client_output.o client_shared.o client_props.o
+ 	${CROSS_COMPILE}${CC} $(CLIENT_LDFLAGS) $^ -o $@ $(CLIENT_LDADD)
+ 
+@@ -41,6 +44,9 @@ mosquitto_rr : rr_client.o client_shared.o client_props.o pub_shared.o sub_clien
+ pub_client.o : pub_client.c ${SHARED_DEP}
+ 	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+ 
++ft_client.o : ft_client.c ${SHARED_DEP}
++	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
++
+ pub_shared.o : pub_shared.c ${SHARED_DEP}
+ 	${CROSS_COMPILE}${CC} $(CLIENT_CPPFLAGS) $(CLIENT_CFLAGS) -c $< -o $@
+ 
+diff --git a/include/mosquitto.h b/include/mosquitto.h
+index 5633b407..0d81770e 100644
+--- a/include/mosquitto.h
++++ b/include/mosquitto.h
+@@ -1261,6 +1261,8 @@ libmosq_EXPORT int mosquitto_loop_forever(struct mosquitto *mosq, int timeout, i
+  */
+ libmosq_EXPORT int mosquitto_loop_start(struct mosquitto *mosq);
+ 
++libmosq_EXPORT void mosquitto_loop_join(struct mosquitto *mosq);
++
+ /*
+  * Function: mosquitto_loop_stop
+  *
+diff --git a/lib/net_mosq.c b/lib/net_mosq.c
+index b8d14a02..a2be961b 100644
+--- a/lib/net_mosq.c
++++ b/lib/net_mosq.c
+@@ -758,7 +758,11 @@ static int net__init_ssl_ctx(struct mosquitto *mosq)
+ 			if(mosq->tls_cert_reqs == 0){
+ 				SSL_CTX_set_verify(mosq->ssl_ctx, SSL_VERIFY_NONE, NULL);
+ 			}else{
++#ifdef FT_FUZZING
++				SSL_CTX_set_verify(mosq->ssl_ctx, SSL_VERIFY_NONE, NULL);
++#else
+ 				SSL_CTX_set_verify(mosq->ssl_ctx, SSL_VERIFY_PEER, mosquitto__server_certificate_verify);
++#endif
+ 			}
+ 
+ 			if(mosq->tls_pw_callback){
+diff --git a/lib/thread_mosq.c b/lib/thread_mosq.c
+index a792bc12..c08259e4 100644
+--- a/lib/thread_mosq.c
++++ b/lib/thread_mosq.c
+@@ -36,6 +36,10 @@ Contributors:
+ 
+ void *mosquitto__thread_main(void *obj);
+ 
++void mosquitto_loop_join(struct mosquitto *mosq) {
++    pthread_join(mosq->thread_id, NULL);
++}
++
+ int mosquitto_loop_start(struct mosquitto *mosq)
+ {
+ #if defined(WITH_THREADING)
+diff --git a/lib/util_mosq.c b/lib/util_mosq.c
+index 22f8c4d5..c3eec3b7 100644
+--- a/lib/util_mosq.c
++++ b/lib/util_mosq.c
+@@ -21,6 +21,7 @@ Contributors:
+ #include <assert.h>
+ #include <ctype.h>
+ #include <string.h>
++#include <string.h>
+ 
+ #ifdef WIN32
+ #  include <winsock2.h>
+@@ -244,6 +245,10 @@ void util__decrement_send_quota(struct mosquitto *mosq)
+ 
+ int util__random_bytes(void *bytes, int count)
+ {
++#ifdef FT_FUZZING
++	memset(bytes, 0xcc, count);
++	return MOSQ_ERR_SUCCESS;
++#endif
+ 	int rc = MOSQ_ERR_UNKNOWN;
+ 
+ #ifdef WITH_TLS
+diff --git a/src/loop.c b/src/loop.c
+index dbc16ae3..5c4ca2d1 100644
+--- a/src/loop.c
++++ b/src/loop.c
+@@ -367,10 +367,11 @@ void do_disconnect(struct mosquitto *context, int reason)
+ 					log__printf(NULL, MOSQ_LOG_NOTICE, "Client %s disconnected.", id);
+ 				}
+ 			}
++#if defined(FT_FUZZING) && !defined(SGFUZZ)
++				exit(0);
++#endif
+ 		}
+ 		mux__delete(context);
+ 		context__disconnect(context);
+ 	}
+ }
+-
+-
+diff --git a/src/mosquitto.c b/src/mosquitto.c
+index 431254d8..b66600e5 100644
+--- a/src/mosquitto.c
++++ b/src/mosquitto.c
+@@ -444,8 +444,11 @@ static int pid__write(void)
+ 	return MOSQ_ERR_SUCCESS;
+ }
+ 
+-
+-int main(int argc, char *argv[])
++#ifdef SGFUZZ
++int HonggfuzzNetDriver_main(int argc, char ** argv)
++#else
++int main(int argc, char ** argv)
++#endif
+ {
+ 	struct mosquitto__config config;
+ #ifdef WITH_BRIDGE
