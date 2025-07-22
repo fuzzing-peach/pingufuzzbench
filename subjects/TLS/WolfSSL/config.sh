@@ -2,7 +2,7 @@
 
 function checkout {
     mkdir -p repo
-    git clone https://gitee.com/zzroot/wolfssl.git repo/wolfssl
+    git clone https://github.com/wolfssl/wolfssl.git repo/wolfssl
     pushd repo/wolfssl >/dev/null
 
     git checkout "$@"
