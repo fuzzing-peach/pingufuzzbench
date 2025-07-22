@@ -181,7 +181,10 @@ function build_sgfuzz {
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager dcmqrscp.bc -o dcmqrscp_opt.bc
 
-    clang dcmqrscp_opt.bc -o dcmqrscp \
+    llvm-dis-17 dcmqrscp_opt.bc -o dcmqrscp_opt.ll
+    sed -i 's/optnone //g' dcmqrscp_opt.ll
+
+    clang dcmqrscp_opt.ll -o dcmqrscp \
         -lsFuzzer \
         -lhfnetdriver \
         -lhfcommon \

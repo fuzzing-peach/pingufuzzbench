@@ -43,7 +43,8 @@ RUN ln -sf /usr/bin/clang-17 /usr/bin/clang && \
     ln -sf /usr/bin/clang++-17 /usr/bin/clang++ && \
     ln -sf /usr/bin/llvm-config-17 /usr/bin/llvm-config && \
     ln -sf /usr/bin/llvm-link-17 /usr/bin/llvm-link && \
-    ln -sf /usr/bin/opt-17 /usr/bin/opt
+    ln -sf /usr/bin/opt-17 /usr/bin/opt && \
+    ln -sf /usr/bin/llvm-dis-17 /usr/bin/llvm-dis
 
 RUN if [ "${ZH_CN}" = "true" ]; then \
         pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple gcovr wllvm; \
