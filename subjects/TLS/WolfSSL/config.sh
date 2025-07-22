@@ -2,10 +2,11 @@
 
 function checkout {
     mkdir -p repo
-    git clone https://gitee.com/zzroot/wolfssl.git repo/wolfssl
+    git clone https://github.com/wolfssl/wolfssl.git repo/wolfssl
     pushd repo/wolfssl >/dev/null
 
     git checkout "$@"
+    git apply ${HOME}/profuzzbench/subjects/TLS/WolfSSL/sgfuzz.patch
     ./autogen.sh
 
     popd >/dev/null
@@ -82,7 +83,7 @@ function build_stateafl {
     export CC=$HOME/stateafl/afl-clang-fast
     export AFL_USE_ASAN=1
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -115,7 +116,6 @@ function run_stateafl {
         -c ${HOME}/profuzzbench/test.fullchain.pem \
         -k ${HOME}/profuzzbench/test.key.pem \
         -e -p 4433
-
     
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -128,7 +128,118 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
-    echo "Not implemented"
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/wolfssl target/sgfuzz/wolfssl
+    pushd target/sgfuzz/wolfssl >/dev/null
+
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+
+    # export FT_BLOCK_PATH_POSTFIXES="src/internal.c"
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
+
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/server/server ${MAKE_OPT}
+    cd examples/server
+    extract-bc server
+
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/wolfssl/enum_types.txt
+    export SGFUZZ_BLOCKING_TYPE_FILE=${HOME}/profuzzbench/subjects/TLS/WolfSSL/blocking-types.txt
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager server.bc -o server_opt.bc
+
+    llvm-dis-17 server_opt.bc -o server_opt.ll
+    sed -i 's/optnone//g' server_opt.ll
+
+    clang server_opt.ll -o server \
+        -lsFuzzer \
+        -lhfnetdriver \
+        -lhfcommon \
+        -lz \
+        -lm \
+        -lstdc++ \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DSGFUZZ \
+        ../../src/.libs/libwolfssl.a
+
+    rm -rf .git
+
+    popd >/dev/null
+}
+
+function run_sgfuzz {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+    pushd ${HOME}/target/sgfuzz/wolfssl >/dev/null
+
+    mkdir -p $outdir/replayable-queue
+    rm -rf $outdir/replayable-queue/*
+    mkdir -p $outdir/crash
+    rm -rf $outdir/crash/*
+
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export HFND_TCP_PORT=4433
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        -artifact_prefix="${outdir}/crash/"
+        "${outdir}/replayable-queue"
+        "${indir}"
+    )
+
+    WOLFSSL_ARGS=(
+        -c ${HOME}/profuzzbench/test.fullchain.pem
+        -k ${HOME}/profuzzbench/test.key.pem
+        -e
+        -p 4433
+        -i
+        -x
+        -H freeAfterErrRet
+    )
+
+    ./examples/server/server "${SGFuzz_ARGS[@]}" -- "${WOLFSSL_ARGS[@]}"
+
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    cd ${HOME}/target/gcov/consumer/wolfssl
+    
+    function replay {
+        ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 1s 3s ./examples/server/server \
+            -c ${HOME}/profuzzbench/test.fullchain.pem \
+            -k ${HOME}/profuzzbench/test.key.pem \
+            -e -p 4433
+
+        wait
+        pkill -f testOnDemandRTSPServer
+    }
+    
+    gcovr -r . -s -d >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" ""
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+    
+    cd ${HOME}/target/gcov/consumer/wolfssl
+    grcov --branch --threads 2 -s . -t html -o ${outdir}/cov_html .
+
+    popd >/dev/null
 }
 
 function build_ft_generator {

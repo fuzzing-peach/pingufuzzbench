@@ -161,7 +161,10 @@ function build_sgfuzz {
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager mosquitto.bc -o mosquitto_opt.bc
 
-    clang mosquitto_opt.bc -o mosquitto \
+    llvm-dis-17 mosquitto_opt.bc -o mosquitto_opt.ll
+    sed -i 's/optnone //g' mosquitto_opt.ll
+
+    clang mosquitto_opt.ll -o mosquitto \
         -lsFuzzer \
         -lhfnetdriver \
         -lhfcommon \

@@ -173,7 +173,10 @@ function build_sgfuzz {
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager testOnDemandRTSPServer.bc -o testOnDemandRTSPServer_opt.bc
 
-    clang++ testOnDemandRTSPServer_opt.bc -o testOnDemandRTSPServer \
+    llvm-dis-17 testOnDemandRTSPServer_opt.bc -o testOnDemandRTSPServer_opt.ll
+    sed -i 's/optnone //g' testOnDemandRTSPServer_opt.ll
+
+    clang++ testOnDemandRTSPServer_opt.ll -o testOnDemandRTSPServer \
         -L. \
         -lsFuzzer \
         -lhfnetdriver \
