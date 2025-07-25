@@ -24,8 +24,8 @@ function replay {
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./src/gnutls-serv \
         -a -d 1000 --earlydata \
-        --x509certfile=${HOME}/profuzzbench/subjects/TLS/OpenSSL/cert.pem \
-        --x509keyfile=${HOME}/profuzzbench/subjects/TLS/OpenSSL/key.pem \
+        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
+        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
         -b -p 5555
     wait
 }
