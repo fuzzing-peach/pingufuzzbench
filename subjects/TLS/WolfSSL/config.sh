@@ -31,7 +31,7 @@ function build_aflnet {
     export CC=$HOME/aflnet/afl-clang-fast
     export AFL_USE_ASAN=1
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -40,7 +40,9 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/aflnet/wolfssl >/dev/null
@@ -61,14 +63,11 @@ function run_aflnet {
         -k ${HOME}/profuzzbench/test.key.pem \
         -e -p 4433
 
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/wolfssl
-
-    # clear the gcov data before computing coverage
-    gcovr -r . -s -d >/dev/null 2>&1
-
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv "$cov_cmd"
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
+    mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
