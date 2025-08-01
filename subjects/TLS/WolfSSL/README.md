@@ -8,8 +8,8 @@ Please carefully read the [main README.md](../../../README.md), which is stored 
 
 ## Supported target version
 
-| Date       | Tag | Commit                                                                                      |
-| ---------- | --- | ------------------------------------------------------------------------------------------- |
+| Date       | Tag | Commit     |
+| ---------- | --- | ---------- |
 | 2023-06-15 | -   | [66596a]() |
 
 ## Target
