@@ -329,8 +329,8 @@ function build_pingu_generator {
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CCAS=wllvm
-    export CFLAGS="-g -fno-inline-functions -fno-inline -fno-discard-value-names"
-    export CXXFLAGS="-g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/client/client ${MAKE_OPT}
@@ -339,15 +339,18 @@ function build_pingu_generator {
 
     # now we have client.bc
     # instrument the whole program bitcode
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store,trampoline -role=source \
+        -ins=load,store,memcall,trampoline -role=source -svf=0 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
+    llvm-dis client_opt.bc -o client_opt.ll
+    sed -i 's/optnone //g' client_opt.ll
+
     clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
-        client_opt.bc -o client
+        client_opt.ll -o client
 
     rm -rf .git
 
@@ -376,16 +379,19 @@ function build_pingu_consumer {
 
     # now we have server.bc
     # instrument the whole program bitcode
-    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/pingu-source-pass.so \
-        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/afl-llvm-pass.so \
+    opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
+        -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store -role=sink -svf=0 -dump-svf=0 \
+        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
+    llvm-dis server_opt.bc -o server_opt.ll
+    sed -i 's/optnone //g' server_opt.ll
+
     clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
         -lpingu_agent -fsanitize=address \
-        server_opt.bc -o server
+        server_opt.ll -o server
 
     rm -rf .git
     popd >/dev/null
