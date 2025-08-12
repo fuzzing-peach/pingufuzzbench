@@ -13,10 +13,11 @@ source scripts/utils.sh
 
 function in_subshell() {
     (
+        set -eo pipefail
         BASE=${HOME}/profuzzbench
         cmd="$@"
         echo "[+] Running in subshell: $cmd"
-        if [[ -n "$PFB_CPU_CORE" ]]; then
+        if [[ -n "$PFB_CPU_CORE" && "$PFB_CPU_CORE" != "x" ]]; then
             echo "[+] Running in cpu core: $PFB_CPU_CORE"
             taskset -c $PFB_CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         else
@@ -147,11 +148,11 @@ sgfuzz)
     source $target_config
     in_subshell "$cmd"_sgfuzz "$@"
     ;;
-vanilla)
+quicfuzz)
     # Build vanilla version
     # Vanilla means the true original version, without any instrumentation, hooking and analysis.
     source $target_config
-    in_subshell build_vanilla "$@"
+    in_subshell "$cmd"_quicfuzz "$@"
     ;;
 gcov)
     # Build the gcov version, which is used to be computed coverage upon.

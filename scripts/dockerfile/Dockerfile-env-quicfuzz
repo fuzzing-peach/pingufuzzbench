@@ -1,6 +1,5 @@
 FROM ubuntu:24.04
 
-# ---------- ARG/ENV/PROXY/中文源 ----------
 ARG ZH_CN
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
@@ -9,6 +8,9 @@ ARG https_proxy=${HTTP_PROXY}
 ARG MAKE_OPT="-j4"
 
 ENV ZH_CN=${ZH_CN}
+
+ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+ENV NO_PROXY=${no_proxy}
 
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
@@ -87,14 +89,22 @@ COPY patches /tmp/patches
 
 RUN git clone https://github.com/QUICTester/QUIC-Fuzz.git quic-fuzz
 RUN cd quic-fuzz/aflnet && \
+    wget https://www.openssl.org/source/openssl-3.0.2.tar.gz && \
+    tar xzvf openssl-3.0.2.tar.gz && \
+    cd openssl-3.0.2 && \
+    ./Configure linux-x86_64 no-shared && \
+    make ${MAKE_OPT} && \
+    cd .. && \
     make clean all && \
     cd llvm_mode && \
     make ${MAKE_OPT}
-RUN cd quic-fuzz/SnapFuzz/SaBRe/plugins && \
+RUN cd quic-fuzz/aflnet/SnapFuzz/SaBRe/plugins && \
     ln -sf ../../snapfuzz snapfuzz && \
     cd ../ && \
     mkdir -p build && \
     cd build && \
+    CFLAGS="-Wno-error=nonnull -Wno-error=array-bounds" \
+    CXXFLAGS="-Wno-error=nonnull -Wno-error=array-bounds" \
     cmake -DCMAKE_BUILD_TYPE=RELEASE -DSF_MEMFS=OFF -DSF_STDIO=ON -DSF_SLEEP=ON -DSF_SMARTDEFER=OFF .. && \ 
     make ${MAKE_OPT} && \
     mv plugins/snapfuzz/libsnapfuzz.so plugins/snapfuzz/libsnapfuzz_no_snap.so && \

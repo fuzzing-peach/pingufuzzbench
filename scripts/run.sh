@@ -20,7 +20,7 @@ log_success "[+] kernel.core_pattern is correctly set to 'core'"
 args=($(get_args_before_double_dash "$@"))
 fuzzer_args=$(get_args_after_double_dash "$@")
 
-opt_args=$(getopt -o o:f:t:v: -l output:,fuzzer:,generator:,target:,version:,times:,timeout:,cleanup,detached,dry-run,replay-step:,gcov-step: -- "${args[@]}")
+opt_args=$(getopt -o o:f:t:v: -l output:,fuzzer:,generator:,target:,version:,times:,timeout:,cleanup,detached,dry-run,replay-step:,gcov-step:,cpu-affinity:,no-cpu -- "${args[@]}")
 if [ $? != 0 ]; then
     log_error "[!] Error in parsing shell arguments."
     exit 1
@@ -77,6 +77,22 @@ while true; do
         gcov_step="$2"
         shift 2
         ;;
+    --cpu-affinity)
+        if [[ -z "$no_cpu_affinity" ]]; then
+            log_error "[!] --cpu-affinity and --no-cpu cannot be used together"
+            exit 1
+        fi
+        cpu_affinity="$2"
+        shift 2
+        ;;
+    --no-cpu)
+        if [[ -n "$cpu_affinity" ]]; then
+            log_error "[!] --cpu-affinity and --no-cpu cannot be used together"
+            exit 1
+        fi
+        no_cpu_affinity=1
+        shift 1
+        ;;
     *)
         # echo "Usage: run.sh -t TARGET -f FUZZER -v VERSION [--times TIMES, --timeout TIMEOUT]"
         break
@@ -130,7 +146,14 @@ cids=()
 for i in $(seq 1 $times); do
     # use current ms timestamp as the id
     ts=$(date +%s%3N)
-    idle_core=${idle_cores_array[$((i-1))]}
+    if [[ -n "$no_cpu_affinity" ]]; then
+        idle_core="x"
+    else
+        idle_core=${idle_cores_array[$((i-1))]}
+    fi
+    if [[ -n "$cpu_affinity" ]]; then
+        idle_core=${cpu_affinity}
+    fi
     # 将 CPU ID 加入到容器名称中: name-index-cpuid-timestamp
     cname="${container_name}-${i}-cpu${idle_core}-${ts}"
     mkdir -p ${output}/${cname}

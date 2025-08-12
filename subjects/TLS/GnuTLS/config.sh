@@ -89,6 +89,10 @@ function build_stateafl {
     popd >/dev/null
 }
 
+function run_stateafl {
+    exit 1
+}
+
 function build_sgfuzz {
     echo "Not implemented"
 }
