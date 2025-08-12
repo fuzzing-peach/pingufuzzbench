@@ -1,3 +1,3 @@
 #!/bin/bash
 
-rm -f $WORKDIR/dcmtk/build/bin/ACME_STORE/*
+rm -f ${HOME}/target/aflnet/dcmtk/build/bin/ACME_STORE/*

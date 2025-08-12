@@ -1,8 +1,28 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index 3b0ed0a..1279383 100644
+index f08b941..586b623 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
-@@ -2929,11 +2929,11 @@ EXP_ST void init_forkserver(char** argv) {
+@@ -1214,6 +1214,19 @@ static void bind_to_free_cpu(void) {
+ 
+   }
+ 
++  if (getenv("PFB_CPU_CORE")) {
++	  int i=atoi(getenv("PFB_CPU_CORE"));
++	 cpu_aff = i;
++
++  CPU_ZERO(&c);
++  CPU_SET(i, &c);
++
++  if (sched_setaffinity(0, sizeof(c), &c))
++    PFATAL("sched_setaffinity failed");
++
++  return;
++  }
++
+   d = opendir("/proc");
+ 
+   if (!d) {
+@@ -2929,11 +2942,11 @@ EXP_ST void init_forkserver(char** argv) {
  
      if (out_file) {
  
@@ -16,7 +36,7 @@ index 3b0ed0a..1279383 100644
        close(out_fd);
  
      }
-@@ -3861,7 +3861,7 @@ static void pivot_inputs(void) {
+@@ -3861,7 +3874,7 @@ static void pivot_inputs(void) {
        u8* use_name = strstr(rsl, ",orig:");
  
        if (use_name) use_name += 6; else use_name = rsl;
@@ -25,7 +45,7 @@ index 3b0ed0a..1279383 100644
  
  #else
  
-@@ -4005,8 +4005,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -4005,8 +4018,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -36,7 +56,7 @@ index 3b0ed0a..1279383 100644
  
  #else
  
-@@ -4099,8 +4099,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -4099,8 +4112,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -47,7 +67,7 @@ index 3b0ed0a..1279383 100644
  
  #else
  
-@@ -4143,8 +4143,8 @@ keep_as_crash:
+@@ -4143,8 +4156,8 @@ keep_as_crash:
  
  #ifndef SIMPLE_FILES
  
@@ -58,7 +78,7 @@ index 3b0ed0a..1279383 100644
  
  #else
  
-@@ -9085,6 +9085,9 @@ int main(int argc, char** argv) {
+@@ -9088,6 +9101,9 @@ int main(int argc, char** argv) {
          }else if (!strcmp(optarg, "SNMP")) {
            extract_requests = &extract_requests_SNMP;
            extract_response_codes = &extract_response_codes_SNMP;
@@ -68,7 +88,7 @@ index 3b0ed0a..1279383 100644
          } else {
            FATAL("%s protocol is not supported yet!", optarg);
          }
-@@ -9156,6 +9159,7 @@ int main(int argc, char** argv) {
+@@ -9159,6 +9175,7 @@ int main(int argc, char** argv) {
              "afl-fuzz with sudo or by \"$ setcap cap_sys_admin+ep /path/to/afl-fuzz\".", netns_name);
    }
  
@@ -76,7 +96,7 @@ index 3b0ed0a..1279383 100644
    setup_signal_handlers();
    check_asan_opts();
  
-@@ -9230,8 +9234,6 @@ int main(int argc, char** argv) {
+@@ -9233,8 +9250,6 @@ int main(int argc, char** argv) {
  
    check_binary(argv[optind]);
  
@@ -98,11 +118,23 @@ index f0e4d85..5bfae06 100644
  
    }
  
+diff --git a/afl-replay.c b/afl-replay.c
+index 9179234..29496a7 100644
+--- a/afl-replay.c
++++ b/afl-replay.c
+@@ -65,6 +65,7 @@ int main(int argc, char* argv[])
+   else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
+   else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
+   else if (!strcmp(argv[2], "IPP")) extract_response_codes = &extract_response_codes_ipp;
++  else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
+   else {fprintf(stderr, "[AFL-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
+ 
+   portno = atoi(argv[3]);
 diff --git a/aflnet.c b/aflnet.c
-index a527b7e..b4fef7e 100644
+index 4f78ac6..81a0f0b 100644
 --- a/aflnet.c
 +++ b/aflnet.c
-@@ -1105,6 +1105,27 @@ region_t* extract_requests_http(unsigned char* buf, unsigned int buf_size, unsig
+@@ -1162,6 +1162,27 @@ region_t* extract_requests_http(unsigned char* buf, unsigned int buf_size, unsig
    return regions;
  }
  
@@ -130,7 +162,7 @@ index a527b7e..b4fef7e 100644
  region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
  {
    char *mem;
-@@ -2137,6 +2158,16 @@ unsigned int* extract_response_codes_http(unsigned char* buf, unsigned int buf_s
+@@ -2256,6 +2277,16 @@ unsigned int* extract_response_codes_http(unsigned char* buf, unsigned int buf_s
    return state_sequence;
  }
  
@@ -148,10 +180,10 @@ index a527b7e..b4fef7e 100644
  {
    char *mem;
 diff --git a/aflnet.h b/aflnet.h
-index d4a0fdc..10aab79 100644
+index dda35d5..f2a1aeb 100644
 --- a/aflnet.h
 +++ b/aflnet.h
-@@ -74,6 +74,7 @@ unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_s
+@@ -75,6 +75,7 @@ unsigned int* extract_response_codes_tftp(unsigned char* buf, unsigned int buf_s
  unsigned int* extract_response_codes_SNTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  unsigned int* extract_response_codes_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  unsigned int* extract_response_codes_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
@@ -159,7 +191,7 @@ index d4a0fdc..10aab79 100644
  extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  
  region_t* extract_requests_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
-@@ -92,6 +93,7 @@ region_t* extract_requests_dhcp(unsigned char* buf, unsigned int buf_size, unsig
+@@ -94,6 +95,7 @@ region_t* extract_requests_dhcp(unsigned char* buf, unsigned int buf_size, unsig
  region_t* extract_requests_SNTP(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
  region_t* extract_requests_NTP(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
  region_t* extract_requests_SNMP(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);

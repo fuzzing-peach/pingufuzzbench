@@ -1,0 +1,47 @@
+FROM ubuntu:24.04
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG http_proxy=${HTTP_PROXY}    
+ARG https_proxy=${HTTP_PROXY}
+
+ARG ZH_CN
+ENV ZH_CN=${ZH_CN}
+
+# Change the Ubuntu package mirror
+RUN apt update && apt install -y apt-transport-https ca-certificates
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        apt clean; \
+    fi
+  
+# 设置非交互模式
+ARG DEBIAN_FRONTEND=noninteractive
+
+# 更新和安装必要的包
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    rustc \
+    cargo \
+    && apt-get install -y nix \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载 tlspuffin 最新源代码
+RUN git clone https://github.com/tlspuffin/tlspuffin /tlspuffin
+
+# 设置工作目录
+WORKDIR /tlspuffin
+
+# 在 docker 的非交互环境中运行命令
+RUN nix-shell --run "./tools/mk_vendor make openssl:openssl312-asan"
+
+# 构建模糊测试目标
+RUN nix-shell --run "cargo build --release --bin=tlspuffin --features=cputs"
+
+RUN mkdir -p /logs

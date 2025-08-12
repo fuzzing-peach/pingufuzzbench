@@ -2,7 +2,7 @@
 
 function checkout {
     mkdir -p repo
-    git clone https://gitee.com/sz_abundance/openssl.git repo/openssl
+    git clone https://github.com/openssl/openssl.git repo/openssl
     pushd repo/openssl >/dev/null
     git checkout "$@"
     git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch
@@ -44,13 +44,11 @@ function build_aflnet {
 
 function run_aflnet {
     timeout=$1
-    #outdir=/tmp/fuzzing-output
-    outdir=~/fuzzing-output
+    outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/aflnet/openssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -107,16 +105,15 @@ function run_stateafl {
     pushd ${HOME}/target/stateafl/openssl >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
-    if [ ! -z "${CPU_CORE}" ]; then
-        fuzzer_args="-b ${CPU_CORE}"
-    fi
+    # if [ ! -z "${CPU_CORE}" ]; then
+    #     fuzzer_args="-b ${CPU_CORE}"
+    # fi
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
@@ -148,7 +145,7 @@ function build_sgfuzz {
 
     pushd $HOME/target/sgfuzz/openssl > /dev/null
 
-    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py . # -b <(echo "type")
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
     ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
@@ -158,7 +155,7 @@ function build_sgfuzz {
     sed -i 's@-Wl,-z,defs@@g' Makefile
 
     set +e
-    bear -- make ${MAKE_OPT}
+    make ${MAKE_OPT}
     set -e
 
     clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
@@ -313,6 +310,8 @@ function build_ft_consumer {
 
 function run_ft {
     timeout=$1
+    replay_step=$2
+    gcov_step=$3
     consumer="OpenSSL"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
@@ -435,4 +434,8 @@ function build_gcov {
 
 function install_dependencies {
     echo "No dependencies"
+}
+
+function cleanup_artifacts {
+    echo "No artifacts"
 }

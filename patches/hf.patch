@@ -1,13 +1,95 @@
 diff --git a/libhfnetdriver/netdriver.c b/libhfnetdriver/netdriver.c
-index 3e11f71..6d73585 100644
+index b4230c31..422b1427 100644
 --- a/libhfnetdriver/netdriver.c
 +++ b/libhfnetdriver/netdriver.c
-@@ -387,7 +387,7 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
+@@ -32,9 +32,12 @@
+ __attribute__((visibility("default"))) __attribute__((used))
+ const char *const LIBHFNETDRIVER_module_netdriver = _HF_NETDRIVER_SIG;
+ 
+-#define HFND_TCP_PORT_ENV     "HFND_TCP_PORT"
+-#define HFND_SOCK_PATH_ENV    "HFND_SOCK_PATH"
+-#define HFND_SKIP_FUZZING_ENV "HFND_SKIP_FUZZING"
++#define HFND_TCP_PORT_ENV        "HFND_TCP_PORT"
++#define HFND_SOCK_PATH_ENV       "HFND_SOCK_PATH"
++#define HFND_SKIP_FUZZING_ENV    "HFND_SKIP_FUZZING"
++#define HFND_FORK_MODE_ENV       "HFND_FORK_MODE"
++#define HFND_FORK_MODE_ARGS_ENV  "HFND_FORK_MODE_ARGS"
++#define HFND_FORK_MODE_CHILD_ENV "HFND_FORK_MODE_CHILD"
+ 
+ /* Define this to use receiving timeouts
+ #define HFND_RECVTIME 10
+@@ -63,6 +66,21 @@ static struct {
+ extern int HonggfuzzNetDriver_main(int argc, char **argv);
+ 
+ static void *netDriver_mainProgram(void *unused HF_ATTR_UNUSED) {
++    if (getenv(HFND_FORK_MODE_ENV) && getenv(HFND_FORK_MODE_CHILD_ENV)) {
++        // Fork mode is enabled, and we are in the child process
++        // Get the server arguments from the environment variable
++        char *cmd = getenv(HFND_FORK_MODE_ARGS_ENV);
++        LOG_I("HFND_FORK_MODE_ARGS_ENV = %s", cmd);
++        char *argv_copy[128];
++        int   argc_copy = 0;
++        char *token     = strtok(cmd, " ");
++        while (token != NULL && argc_copy < 128) {
++            argv_copy[argc_copy++] = token;
++            token                  = strtok(NULL, " ");
++        }
++        hfnd_globals.argc_server = argc_copy;
++        hfnd_globals.argv_server = argv_copy;
++    }
+     int ret = HonggfuzzNetDriver_main(hfnd_globals.argc_server, hfnd_globals.argv_server);
+     LOG_I("Honggfuzz Net Driver (pid=%d): HonggfuzzNetDriver_main() function exited with: %d",
+         (int)getpid(), ret);
+@@ -174,7 +192,7 @@ static int netDriver_sockConnAddr(
+ #endif /* defined(SOL_TCP) && defined(TCP_QUICKACK) */
+     }
+ 
+-    netDriver_bindToRndLoopback(sock, addr->sa_family);
++    // netDriver_bindToRndLoopback(sock, addr->sa_family);
+ 
+     LOG_D("Connecting to '%s'", files_sockAddrToStr(addr, socklen));
+     if (TEMP_FAILURE_RETRY(connect(sock, addr, socklen)) == -1) {
+@@ -225,6 +243,18 @@ __attribute__((weak)) int HonggfuzzNetDriverArgsForServer(
+             argv[i]      = argv[0];
+             *server_argc = argc - i;
+             *server_argv = &argv[i];
++            if (getenv(HFND_FORK_MODE_ENV) && !getenv(HFND_FORK_MODE_CHILD_ENV)) {
++                // Fork mode is enabled, and we are not in the child process
++                // Combine argv[0] and args after -- into a command string
++                char cmd[4096] = {0};
++                strcat(cmd, argv[0]);
++                for (int j = i + 1; j < argc; j++) {
++                    strcat(cmd, " ");
++                    strcat(cmd, argv[j]);
++                }
++                LOG_I("HFND_FORK_MODE_ARGS_ENV = %s", cmd);
++                setenv(HFND_FORK_MODE_ARGS_ENV, cmd, 1);
++            }
+             return i;
+         }
+     }
+@@ -387,7 +417,14 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
      *argc = HonggfuzzNetDriverArgsForServer(
          *argc, *argv, &hfnd_globals.argc_server, &hfnd_globals.argv_server);
  
 -    netDriver_initNsIfNeeded();
++    if (getenv(HFND_FORK_MODE_ENV) && !getenv(HFND_FORK_MODE_CHILD_ENV)) {
++        // If the fork mode is enabled, and we are not in the child process,
++        // set the FORK_MODE_CHILD_ENV flag to true, leaving it to the child process
++        setenv(HFND_FORK_MODE_CHILD_ENV, "1", 1);
++        return 0;
++    }
++
 +    // netDriver_initNsIfNeeded();
      netDriver_startOriginalProgramInThread();
      for (;;) {
          if (netDriver_checkIfServerReady(*argc, *argv)) {
+@@ -470,7 +507,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
+         }
+ #endif
+         if (ret == -1) {
+-            PLOG_W("Honggfuzz Net Driver (pid=%d): Connection to the server (sock=%d) closed with "
++            PLOG_D("Honggfuzz Net Driver (pid=%d): Connection to the server (sock=%d) closed with "
+                    "error",
+                 (int)getpid(), sock);
+             break;

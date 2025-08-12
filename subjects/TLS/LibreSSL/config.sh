@@ -2,10 +2,10 @@
 
 function checkout {
     mkdir -p repo
-    git clone https://gitee.com/kherrisan/portable.git repo/libressl
+    git clone https://github.com/libressl/portable.git repo/libressl
     pushd repo/libressl >/dev/null
     git checkout "$@"
-    git apply ${HOME}/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/libressl/fuzzing.patch
+    git apply ${HOME}/profuzzbench/subjects/TLS/LibreSSL/ft.patch
     ./autogen.sh
     
     popd >/dev/null

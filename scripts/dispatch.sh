@@ -13,10 +13,17 @@ source scripts/utils.sh
 
 function in_subshell() {
     (
-        cd "$HOME"
-        echo "[+] Running in subshell: $@"
-        $@
-    )
+        BASE=${HOME}/profuzzbench
+        cmd="$@"
+        echo "[+] Running in subshell: $cmd"
+        if [[ -n "$PFB_CPU_CORE" ]]; then
+            echo "[+] Running in cpu core: $PFB_CPU_CORE"
+            taskset -c $PFB_CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
+        else
+            echo "[+] CPU_CORE is not set, running in any core"
+            bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
+        fi
+    ) || exit 1
 }
 
 if [[ $# -lt 1 ]]; then
@@ -63,8 +70,6 @@ deps)
         echo "source $(pwd)/$target_config" >> ~/.bashrc
         echo "source $(pwd)/scripts/utils.sh" >> ~/.bashrc
     fi
-
-    sed -i '11i setup_proxy 172.17.0.1:9870' ~/.zshrc
 
     source $target_config
     in_subshell install_dependencies "$@"

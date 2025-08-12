@@ -23,6 +23,12 @@ RUN apt-get -y update && \
     strace \
     wget
 
+
+
+
+RUN apt-get install libssl-dev libwebsockets-dev uuid-dev docbook-xsl docbook xsltproc
+
+
 # Add a new user ubuntu, pass: ubuntu
 RUN groupadd ubuntu && \
     useradd -rm -d /home/ubuntu -s /bin/bash -g ubuntu -G sudo -u 1000 ubuntu -p "$(openssl passwd -1 ubuntu)"

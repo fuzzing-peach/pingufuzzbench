@@ -39,16 +39,14 @@ echo "container_name: ${container_name}"
 echo "image_name: ${image_name}"
 
 if ! docker image inspect ${image_name} >/dev/null 2>&1; then
-    echo "[+] ${image_name} image is not existed, start building..."
-    echo "[+] Executing: ./scripts/build-env.sh -f ${fuzzer} -- ${docker_args}"
-    ./scripts/build-env.sh -f ${fuzzer} -- ${docker_args}
+    echo "[+] ${image_name} image is not existed, please build it using ./scripts/build-env.sh first"
+    exit 1
 fi
 
 echo "[+] Checking if pingu-dev container exists"
 if ! docker ps -a | grep -q ${container_name}; then
     echo "[+] ${container_name} container is not existed, start running container..."
     cmd="docker run -it -d \
-            --network=host \
             --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
             --security-opt seccomp=unconfined \
             --security-opt apparmor=unconfined \
@@ -57,11 +55,12 @@ if ! docker ps -a | grep -q ${container_name}; then
             --ulimit msgqueue=2097152000 \
             --shm-size=64G \
             --name ${container_name} \
-            ${container_name} tail -f /dev/null"
+            ${docker_args}
+            ${image_name} tail -f /dev/null"
     echo "[+] Executing: $cmd"
     eval $cmd
     exit 0
 else
     echo "[+] ${container_name} is running, enter container..."
-    docker exec -it ${container_name} /bin/zsh
+    docker exec -it ${container_name} /bin/bash
 fi

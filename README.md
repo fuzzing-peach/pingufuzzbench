@@ -94,16 +94,27 @@ ProFuzzBench provides automation scripts for fuzzing the targets with three fuzz
 
 In the following tutorial, you can find instructions to run AFLnwe and AFLnet (the first two fuzzers supported by ProFuzzBench). For more information about StateAFL, please check out [README-StateAFL.md](README-StateAFL.md).
 
-
 # Tutorial - Fuzzing TLS/OpenSSL server with [AFLNet](https://github.com/aflnet/aflnet)
+
 Follow the steps below to run and collect experimental results for TLS/OpenSSL. The similar steps should be followed to run experiments on other subjects. Each subject program comes with a README.md file showing subject-specific commands to run experiments.#
 
 ## Prerequisites
 
 - **Docker**: Make sure you have docker installed on your machine. If not, please refer to [Docker installation](https://docs.docker.com/get-docker/). The docker-engine that supports DOCKER_BUILDKIT=1 would be better, but it is not required.
-- **Storage**: Also make sure you have enough storage space for the built images and the fuzzing results. Usually, the pingu-env image is around 3.3GB and the fuzzing runtime image is around 4.3GB, depending on the target program.
+- **Storage**: Also make sure you have enough storage space for the built images and the fuzzing results. Usually, the pingu-env image is over 1GB and the fuzzing runtime image is over 2GB, depending on the target program and the fuzzer.
 
 For development purpose, you can build and launch a dedicated development environment for the fuzzing runtime. The container contains all the built fuzzing tool binaries. Note that the fuzzing target programs are not included. 
+
+## Common Environments and build args
+
+When doing docker stuff, including building and running, there are some common environments and build args that may be useful, especially when you are behind a proxy or in ZH_CN.
+
+- **ZH_CN**: Whether to use the Chinese mirror. When you are in a network that could access the public network(e.g. China mainland), setting this environment variable would be enough to speed up the build process. When set to **true**, following mirrors will be used:
+  - https://mirrors.ustc.edu.cn/ for apt
+  - https://mirrors.aliyun.com/pypi/simple for pip
+  - https://gitclone.com/github.com/ for github
+- **HTTP_PROXY**: The proxy for HTTP. When you are behind a proxy(e.g. Company proxy), you can set this environment variable.
+- **HTTPS_PROXY**: The proxy for HTTPS.
 
 ## Step-1. Build the base image
 
@@ -116,7 +127,7 @@ First change the working directory to the root directory of the repository.
 Arguments:
 - ***-f*** : name of the fuzzer. Supports aflnet, stateafl, sgfuzz, ft, puffin, pingu.
 
-The parameters specified after the **--** are the build arguments passed directly for the docker build command. You can specify sth like `--network=host --build-arg HTTP_PROXY=xxx`. Check the [Dockerfile-env](scripts/Dockerfile-env) to see the available build arguments.
+The parameters specified after the **--** are the build arguments passed directly for the docker build command. You can specify sth like `--network=host --build-arg HTTP_PROXY=xxx`. Check the [Dockerfile-env-aflnet](scripts/Dockerfile-env-aflnet) to see the available build arguments.
 
 ### CI status of the base images
 
@@ -138,7 +149,7 @@ The parameters specified after the **--** are the build arguments passed directl
 ## Step-2. Build the fuzzing runtime image
 
 ```sh
-./scripts/build.sh -t TLS/OpenSSL -f ft -v 7b649c7 -- --network=host
+./scripts/build.sh -t TLS/OpenSSL -f ft -v 7b649c7
 ```
 
 The parameters specified after the **--** are the build arguments passed directly for the docker build command. You can specify sth like `--network=host --build-arg HTTP_PROXY=xxx`. Check the [Dockerfile](scripts/Dockerfile) to see the available build arguments.
