@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 
 function checkout {
-    mkdir -p repo
-    if [ ! -d "repo/gnutls" ]; then
-        git clone https://gitee.com/kherrisan/gnutls.git repo/gnutls
+    if [ ! -d ".git-cache/gnutls" ]; then
+        git clone https://gitee.com/kherrisan/gnutls.git .git-cache/gnutls
     fi
+    mkdir -p repo
+    cp -r .git-cache/gnutls repo/gnutls
     pushd repo/gnutls >/dev/null
     # Check if the checkout changed the commit
     current_commit=$(git rev-parse HEAD)
-    if [[ ! "${current_commit}" == "$@"* ]]; then
-        echo "Checkout will result in a different commit than requested."
-        echo "Requested: $@"
-        echo "Current: ${current_commit:0:8}"
-        git checkout "$@"
-        git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
-        ./bootstrap
-    fi
+    echo "Checkout will result in a different commit than requested."
+    echo "Requested: $@"
+    echo "Current: ${current_commit:0:8}"
+    git checkout "$@"
+    git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    ./bootstrap
     popd >/dev/null
 }
 
@@ -327,9 +326,10 @@ function build_gcov {
 }
 
 function install_dependencies {
-    sudo apt-get install -y dash git-core autoconf libtool gettext autopoint lcov
-    sudo apt-get install -y automake python3 nettle-dev libp11-kit-dev libtspi-dev libunistring-dev
-    sudo apt-get install -y libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf
-    sudo apt-get install -y libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools
-    sudo apt-get install -y texinfo texlive texlive-plain-generic texlive-extra-utils libprotobuf-c1 libev4 libev-dev
+    sudo apt-get install -y dash git-core autoconf libtool gettext autopoint lcov \
+                            nettle-dev libp11-kit-dev libtspi-dev libunistring-dev \
+                            libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf \
+                            libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools \
+                            libprotobuf-c1 libev4 libev-dev
+    # sudo apt-get install -y texinfo texlive texlive-plain-generic texlive-extra-utils
 }
