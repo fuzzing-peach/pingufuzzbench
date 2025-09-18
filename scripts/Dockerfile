@@ -13,6 +13,9 @@ ARG https_proxy=${HTTP_PROXY}
 ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
 ENV NO_PROXY=${no_proxy}
 
+ARG USER_UID
+ARG USER_GID
+
 ARG FUZZER
 ARG TARGET
 ARG VERSION
@@ -28,6 +31,7 @@ ENV TERM=xterm
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build deps"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
+    --mount=type=cache,target=/home/user/.git-cache,uid=${USER_UID},gid=${USER_GID} \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} checkout ${VERSION}"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build gcov"

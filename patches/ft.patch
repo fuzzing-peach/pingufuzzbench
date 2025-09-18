@@ -1,5 +1,4 @@
 diff --git a/fuzztruction-experiments b/fuzztruction-experiments
-index ffaaeaf..d1c7d1f 160000
 --- a/fuzztruction-experiments
 +++ b/fuzztruction-experiments
 @@ -1 +1 @@
@@ -266,6 +265,7 @@ index 3aa7cd0..d5105be 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
++            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",

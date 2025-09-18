@@ -12,8 +12,8 @@ ENV ZH_CN=${ZH_CN}
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirror.nyist.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirror.nyist.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
         apt clean; \
     fi
 
@@ -73,9 +73,9 @@ USER user
 WORKDIR /home/user
 ENV HOME=/home/user
 
-RUN if [ "${ZH_CN}" = "true" ]; then \
-        git config --global url."https://gh-proxy.com/github.com/".insteadOf "https://github.com/"; \
-    fi
+# RUN if [ "${ZH_CN}" = "true" ]; then \
+#         git config --global url."https://gh-proxy.com/github.com/".insteadOf "https://github.com/"; \
+#     fi
 
 RUN git config --global http.version HTTP/1.1 && \
     git config --global user.name Kherrisan && \
