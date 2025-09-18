@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/wolfssl" ]; then
+        git clone https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
+    fi
+    
     mkdir -p repo
-    git clone https://github.com/wolfssl/wolfssl.git repo/wolfssl
+    cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
 
     git checkout "$@"

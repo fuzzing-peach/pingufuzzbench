@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/openssl" ]; then
+        git clone https://github.com/openssl/openssl.git .git-cache/openssl
+    fi
     mkdir -p repo
-    git clone https://github.com/openssl/openssl.git repo/openssl
+    cp -r .git-cache/openssl repo/openssl
     pushd repo/openssl >/dev/null
     git checkout "$@"
     git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch
