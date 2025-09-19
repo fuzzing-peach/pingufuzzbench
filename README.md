@@ -20,7 +20,7 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 | [TLS/wolfssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/libressl]()   |           |          |            |          |          |             |             |            |
 | [TLS/boringssl]()  |           |          |            |          |          |             |             |            |
-| [TLS/gnutls]()     |           |          |            |          | ✅        |             |             |            |
+| [TLS/gnutls]()     |           |          | ✅          |          | ✅        |             |             |            |
 | [TLS/s2n]()        |           |          |            |          |          |             |             |            |
 | [SSH/openssh]()    |           |          |            |          |          |             |             |            |
 | [SSH/wolfssh]()    |           |          |            |          |          |             |             |            |
@@ -44,6 +44,7 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 [tlspuffin]: https://github.com/tlspuffin/tlspuffin
 [tlsfuzzer]: https://github.com/aflnet/aflnet
 [tls-anvil]: https://github.com/aflnet/aflnet
+[quicfuzz]: https://github.com/aflnet/aflnet
 
 ## Todo
 
