@@ -5,6 +5,8 @@
 
 PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols. It is a specialized version of ProFuzzbench, which has removed some of the plaintext transmission network protocols from ProFuzzbench and added multiple encrypted network protocols (including TLS, SSH, QUIC, DTLS).
 
+For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
+
 # Progress
 ***
 
