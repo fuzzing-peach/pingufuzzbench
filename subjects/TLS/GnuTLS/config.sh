@@ -30,19 +30,21 @@ function replay {
 }
 
 function build_aflnet {
-    exit 1
-
     mkdir -p target/aflnet
     rm -rf target/aflnet/*
-    cp -r repo/wolfssl target/aflnet/
-    pushd target/aflnet/wolfssl >/dev/null
+    cp -r repo/gnutls target/aflnet/gnutls
+    pushd target/aflnet/gnutls >/dev/null
 
-    export CC=$HOME/aflnet/afl-clang-fast
     export AFL_USE_ASAN=1
+    export ASAN_OPTIONS=detect_leaks=0
+    export CC=${HOME}/aflnet/afl-clang-fast
+    export CXX=${HOME}/aflnet/afl-clang-fast++
+    export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
 
-    ./autogen.sh
     ./configure --enable-static --enable-shared=no
-    make examples/server/server ${MAKE_OPT}
+    make -j ${MAKE_OPT}
 
     rm -rf .git
 
@@ -50,15 +52,15 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    exit 1
-
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
-    pushd ${HOME}/target/aflnet/wolfssl >/dev/null
+
+    pushd ${HOME}/target/aflnet/gnutls >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -66,18 +68,21 @@ function run_aflnet {
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
-        $HOME/aflnet/afl-fuzz -d -i $indir \
-        -o $outdir -N tcp://127.0.0.1/4433 \
+        ${HOME}/aflnet/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/5555 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
-        ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
-        -e -p 4433
+        ./src/gnutls-serv \
+        -a -d 1000 --earlydata \
+        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
+        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+        -b -p 5555
 
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    cd ${HOME}/target/gcov/consumer/wolfssl
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
-    grcov --threads 2 -s . -t html . -o ${outdir}/cov_html
+    cd ${HOME}/target/gcov/consumer/gnutls
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
 }
@@ -326,7 +331,8 @@ function build_gcov {
 }
 
 function install_dependencies {
-    sudo apt-get install -y dash git-core autoconf libtool gettext autopoint lcov \
+    sudo -E apt update
+    sudo -E apt install -y dash git-core autoconf libtool gettext autopoint lcov \
                             nettle-dev libp11-kit-dev libtspi-dev libunistring-dev \
                             libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf \
                             libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools \
