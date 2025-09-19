@@ -19,7 +19,7 @@ For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
 | [RTP/live555]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [MQTT/mosquitto]() |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/openssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
-| [TLS/wolfssl]()    |           |          | ✅          | ✅        | ✅        |             |             |            |
+| [TLS/wolfssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/libressl]()   |           |          |            |          |          |             |             |            |
 | [TLS/boringssl]()  |           |          |            |          |          |             |             |            |
 | [TLS/gnutls]()     |           |          |            |          | ✅        |             |             |            |
