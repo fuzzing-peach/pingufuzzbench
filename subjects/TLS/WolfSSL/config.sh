@@ -344,7 +344,7 @@ function build_pingu_generator {
     # instrument the whole program bitcode
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=1 \
+        -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
@@ -385,7 +385,7 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=1 \
+        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 

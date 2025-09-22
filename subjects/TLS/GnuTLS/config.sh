@@ -158,7 +158,7 @@ function build_sgfuzz {
     export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
-    
+
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
     ./configure --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140
