@@ -62,6 +62,7 @@ function run_aflnet {
 
     mkdir -p $outdir
 
+    export AFL_NO_AFFINITY=1
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
@@ -70,7 +71,7 @@ function run_aflnet {
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/5555 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
+        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none -t 2000 \
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
         --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
@@ -118,6 +119,7 @@ function run_stateafl {
 
     mkdir -p $outdir
 
+    export AFL_NO_AFFINITY=1
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1

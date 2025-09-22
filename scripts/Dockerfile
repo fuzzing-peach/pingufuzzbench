@@ -31,7 +31,7 @@ ENV TERM=xterm
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build deps"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
-    --mount=type=cache,target=/home/user/.git-cache,uid=${USER_UID},gid=${USER_GID} \
+    --mount=type=cache,target=/home/user/.git-cache,uid=1002,gid=1002 \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} checkout ${VERSION}"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build gcov"
