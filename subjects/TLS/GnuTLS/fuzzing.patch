@@ -58,16 +58,3 @@ index c5f807d03..4ff3cc482 100644
  }
  
  static void check_alert(gnutls_session_t session, int ret)
-@@ -1164,7 +1171,11 @@ static void tls_audit_log_func(gnutls_session_t session, const char *str)
- 	fprintf(stderr, "|<%p>| %s", session, str);
- }
- 
--int main(int argc, char **argv)
-+#ifdef SGFUZZ
-+int HonggfuzzNetDriver_main(int argc, char ** argv)
-+#else
-+int main(int argc, char ** argv)
-+#endif
- {
- 	int ret, mtu, port, timeout;
- 	char name[256];

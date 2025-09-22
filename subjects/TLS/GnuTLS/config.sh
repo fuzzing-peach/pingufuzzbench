@@ -134,7 +134,6 @@ function run_stateafl {
         --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
         --x509keyfile=${HOME}/profuzzbench/test.key.pem \
         -b -p 5555
-
     
     cd ${HOME}/target/gcov/consumer/gnutls
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -151,7 +150,118 @@ function run_stateafl {
 
 
 function build_sgfuzz {
-    echo "Not implemented"
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/gnutls target/sgfuzz/gnutls
+    pushd target/sgfuzz/gnutls >/dev/null
+
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
+
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
+
+    ./configure --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140
+    make ${MAKE_OPT}
+
+    pushd src >/dev/null
+    extract-bc gnutls-serv
+
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/gnutls/enum_types.txt
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager gnutls-serv.bc -o gnutls-serv_opt.bc
+
+    llvm-dis-17 gnutls-serv_opt.bc -o gnutls-serv_opt.ll
+    sed -i 's/optnone //g' gnutls-serv_opt.ll
+
+    clang gnutls-serv_opt.ll -o gnutls-serv \
+        -Wl,--no-whole-archive ../lib/.libs/libgnutls.a \
+        -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ \
+        -fsanitize=address -fsanitize=fuzzer \
+        -lzstd -lz -lp11-kit -lidn2 -lunistring -ldl -ltasn1 -lnettle -lhogweed -lgmp -lpthread -lrt -lm -ldl -lresolv -lc -lgcc -lgcc_s 
+
+    popd >/dev/null
+    rm -rf .git
+
+    popd >/dev/null
+}
+
+function run_sgfuzz {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    queue=${outdir}/replayable-queue
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+
+    pushd ${HOME}/target/sgfuzz/gnutls/src >/dev/null
+
+    mkdir -p $queue
+    rm -rf $queue/*
+    mkdir -p ${outdir}/crash
+    rm -rf ${outdir}/crash/*
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export HFND_TCP_PORT=5555
+    export HFND_FORK_MODE=1
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reduce_inputs=1
+        -reload=30
+        -fork=1
+        -print_full_coverage=1
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        -artifact_prefix="${outdir}/crash/"
+        "${queue}"
+        "${indir}"
+    )
+
+    GNUTLS_ARGS=(
+        -a
+        -d 1000
+        --earlydata
+        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem
+        --x509keyfile=${HOME}/profuzzbench/test.key.pem
+        -b
+        -p 5555
+    )
+
+    ./gnutls-serv "${SGFuzz_ARGS[@]}" -- "${GNUTLS_ARGS[@]}"
+
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
+
+    list_cmd="ls -1 ${queue}/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    cd ${HOME}/target/gcov/consumer/gnutls
+
+    function replay {
+        ${HOME}/aflnet/afl-replay $1 TLS 5555 100 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 1s 3s ./src/gnutls-serv \
+            -a -d 1000 --earlydata \
+            --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
+            --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+            -b -p 5555
+        wait
+    }
+
+    gcovr -r . -s -d >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
 }
 
 function build_ft_generator {
@@ -338,6 +448,6 @@ function install_dependencies {
                             nettle-dev libp11-kit-dev libtspi-dev libunistring-dev \
                             libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf \
                             libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools \
-                            libprotobuf-c1 libev4 libev-dev
+                            libprotobuf-c1 libev4 libev-dev libzstd-dev
     # sudo apt-get install -y texinfo texlive texlive-plain-generic texlive-extra-utils
 }
