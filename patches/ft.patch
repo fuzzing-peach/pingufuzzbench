@@ -1,9 +1,3 @@
-diff --git a/fuzztruction-experiments b/fuzztruction-experiments
---- a/fuzztruction-experiments
-+++ b/fuzztruction-experiments
-@@ -1 +1 @@
--Subproject commit ffaaeaf8ce9d6c34dd9b8f3e6c065c97e9baf1d8
-+Subproject commit d1c7d1f25ec6cd1456e1bb6fe4cfa9257eaea159
 diff --git a/fuzztruction_shared/src/constants.rs b/fuzztruction_shared/src/constants.rs
 index 92f1bce..be052dc 100644
 --- a/fuzztruction_shared/src/constants.rs
@@ -265,7 +259,6 @@ index 3aa7cd0..d5105be 100644
          let default_ro_source_dirs = [
 -            "/home/user/fuzztruction",
 +            "/home/user/profuzzbench",
-+            "/home/user/pingu",
 +            "/home/user/fuzztruction-net",
              "/etc/hosts",
              "/etc/hostname",

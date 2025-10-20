@@ -22,7 +22,7 @@ For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
 | [TLS/wolfssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/libressl]()   |           |          |            |          |          |             |             |            |
 | [TLS/boringssl]()  |           |          |            |          |          |             |             |            |
-| [TLS/gnutls]()     |           |          | ✅          |          | ✅        |             |             |            |
+| [TLS/gnutls]()     |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/s2n]()        |           |          |            |          |          |             |             |            |
 | [SSH/openssh]()    |           |          |            |          |          |             |             |            |
 | [SSH/wolfssh]()    |           |          |            |          |          |             |             |            |
