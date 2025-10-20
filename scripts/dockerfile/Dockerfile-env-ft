@@ -21,8 +21,8 @@ ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirror.nyist.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirror.nyist.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
         apt clean; \
     fi
 
@@ -115,10 +115,10 @@ RUN if [ "${ZH_CN}" = "true" ]; then \
     make clean all ${MAKE_OPT} && \
     cd llvm_mode && make ${MAKE_OPT}
 
-# Some cargo dependencies are downloaded via github, so we need to configure the mirror
-RUN if [ "${ZH_CN}" = "true" ]; then \
-        git config --global url."https://github.moeyy.xyz/https://github.com/".insteadOf https://github.com/; \
-    fi
+# # Some cargo dependencies are downloaded via github, so we need to configure the mirror
+# RUN if [ "${ZH_CN}" = "true" ]; then \
+#         git config --global url."https://github.moeyy.xyz/https://github.com/".insteadOf https://github.com/; \
+#     fi
 
 # FT-Net
 RUN if [ "${ZH_CN}" = "true" ]; then \
