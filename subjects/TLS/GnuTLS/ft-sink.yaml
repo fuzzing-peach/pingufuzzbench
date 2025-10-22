@@ -7,9 +7,9 @@ sink:
     [
       "-a",
       "--earlydata",
+      "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
       "--x509keyfile=/home/user/profuzzbench/cert/server.key",
       "--x509certfile=/home/user/profuzzbench/cert/server.crt",
-      "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
       "-p",
       "4433",
       "-b",
