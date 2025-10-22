@@ -46,6 +46,7 @@ For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
 [tlspuffin]: https://github.com/tlspuffin/tlspuffin
 [tlsfuzzer]: https://github.com/aflnet/aflnet
 [tls-anvil]: https://github.com/aflnet/aflnet
+[quicfuzz]: https://github.com/aflnet/aflnet
 
 ## Todo
 

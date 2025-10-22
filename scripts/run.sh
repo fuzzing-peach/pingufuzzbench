@@ -158,6 +158,8 @@ for i in $(seq 1 $times); do
     cname="${container_name}-${i}-cpu${idle_core}-${ts}"
     mkdir -p ${output}/${cname}
 
+    #         # -e PFB_CPU_CORE=${idle_core} \
+
     container_fuzzing_args="${fuzzer_args}"
     cmd="docker run -it -d \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
@@ -169,7 +171,6 @@ for i in $(seq 1 $times); do
         -v /etc/timezone:/etc/timezone:ro \
         -v $(pwd):/home/user/profuzzbench \
         -v ${output}/${cname}:/tmp/fuzzing-output:rw \
-        -e PFB_CPU_CORE=${idle_core} \
         --mount type=tmpfs,destination=/tmp,tmpfs-mode=777 \
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \
