@@ -25,7 +25,7 @@ sink:
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/gnutls/src/gnutls-serv"
-  cwd: "/home/user/target/gcov/consumer/gnutls/src/"
+  cwd: "/home/user/target/gcov/consumer/gnutls/"
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
