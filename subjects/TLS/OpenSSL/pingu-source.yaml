@@ -1,6 +1,6 @@
 source:
   bin-path: "/home/user/target/pingu/generator/openssl/apps/openssl"
-  arguments: ["s_client", "-connect", "localhost:4433", "-4"]
+  arguments: ["s_client", "-connect", "localhost:4433", "-4", "-CAfile", "/home/user/profuzzbench/cert/ca.crt"]
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"

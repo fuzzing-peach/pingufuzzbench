@@ -7,9 +7,11 @@ sink:
     [
       "s_server",
       "-cert",
-      "/home/user/profuzzbench/test.fullchain.pem",
+      "/home/user/profuzzbench/cert/server.crt",
       "-key",
-      "/home/user/profuzzbench/test.key.pem",
+      "/home/user/profuzzbench/cert/server.key",
+      "-CAfile",
+      "/home/user/profuzzbench/cert/ca.crt",
       "-accept",
       "4433",
       "-naccept",

@@ -7,8 +7,9 @@ sink:
     [
       "-a",
       "--earlydata",
-      "--x509keyfile=/home/user/profuzzbench/test.key.pem",
-      "--x509certfile=/home/user/profuzzbench/test.fullchain.pem",
+      "--x509keyfile=/home/user/profuzzbench/cert/server.key",
+      "--x509certfile=/home/user/profuzzbench/cert/server.crt",
+      "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
       "-p",
       "4433",
       "-b",
@@ -24,6 +25,7 @@ sink:
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/gnutls/src/gnutls-serv"
+  cwd: "/home/user/target/gcov/consumer/gnutls/src/"
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"

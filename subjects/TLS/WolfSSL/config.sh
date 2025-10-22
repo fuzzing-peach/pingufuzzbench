@@ -20,8 +20,8 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
     wait
 }
@@ -63,8 +63,8 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
 
     cd ${HOME}/target/gcov/consumer/wolfssl
@@ -116,8 +116,8 @@ function run_stateafl {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
     
     cd ${HOME}/target/gcov/consumer/wolfssl
@@ -207,8 +207,8 @@ function run_sgfuzz {
     )
 
     WOLFSSL_ARGS=(
-        -c ${HOME}/profuzzbench/test.fullchain.pem
-        -k ${HOME}/profuzzbench/test.key.pem
+        -c ${HOME}/profuzzbench/cert/fullchain.crt
+        -k ${HOME}/profuzzbench/cert/server.key
         -e
         -p 4433
         -i
@@ -226,8 +226,8 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./examples/server/server \
-            -c ${HOME}/profuzzbench/test.fullchain.pem \
-            -k ${HOME}/profuzzbench/test.key.pem \
+            -c ${HOME}/profuzzbench/cert/fullchain.crt \
+            -k ${HOME}/profuzzbench/cert/server.key \
             -e -p 4433
 
         wait
@@ -315,7 +315,7 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/wolfssl
+    cd ${HOME}/target/gcov/consumer/wolf ssl
     grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
 
     popd >/dev/null
