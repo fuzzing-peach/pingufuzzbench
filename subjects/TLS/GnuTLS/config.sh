@@ -2,7 +2,7 @@
 
 function checkout {
     if [ ! -d ".git-cache/gnutls" ]; then
-        git clone https://gitee.com/kherrisan/gnutls.git .git-cache/gnutls
+        git clone https://github.com/gnutls/gnutls .git-cache/gnutls
     fi
     mkdir -p repo
     cp -r .git-cache/gnutls repo/gnutls
@@ -23,8 +23,9 @@ function replay {
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./src/gnutls-serv \
         -a -d 1000 --earlydata \
-        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
-        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key \
         -b -p 5555
     wait
 }
@@ -74,8 +75,9 @@ function run_aflnet {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none -t 2000 \
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
-        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
-        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key \
         -b -p 5555
 
     cd ${HOME}/target/gcov/consumer/gnutls
@@ -131,7 +133,8 @@ function run_stateafl {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
-        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/test.key.pem \
         -b -p 5555
     
@@ -231,8 +234,9 @@ function run_sgfuzz {
         -a
         -d 1000
         --earlydata
-        --x509certfile=${HOME}/profuzzbench/test.fullchain.pem
-        --x509keyfile=${HOME}/profuzzbench/test.key.pem
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key
         -b
         -p 5555
     )
@@ -249,7 +253,8 @@ function run_sgfuzz {
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./src/gnutls-serv \
             -a -d 1000 --earlydata \
-            --x509certfile=${HOME}/profuzzbench/test.fullchain.pem \
+            --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+            --x509certfile=${HOME}/profuzzbench/cert/server.crt \
             --x509keyfile=${HOME}/profuzzbench/test.key.pem \
             -b -p 5555
         wait

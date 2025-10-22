@@ -8,7 +8,7 @@ source:
     "--rehandshake", 
     "--starttls", 
     "-b",
-    "--x509cafile=/home/user/profuzzbench/crt/ca.crt",
+    "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
     ]
   working-dir: "/home/user/target/ft/generator/gnutls"
   input-type: Tcp

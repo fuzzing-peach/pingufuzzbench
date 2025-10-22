@@ -17,8 +17,9 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
         -accept 4433 -4
     wait
 }
@@ -63,8 +64,9 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
         -accept 4433 -4
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
@@ -123,8 +125,9 @@ function run_stateafl {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none -t 1000 $fuzzer_args \
         ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
         -accept 4433 -4 > /tmp/fuzzing-output/stateafl.log 2>&1
 
     cd ${HOME}/target/gcov/consumer/openssl
@@ -227,8 +230,9 @@ function run_sgfuzz {
 
     OPENSSL_ARGS=(
         s_server
-        -key "${HOME}/profuzzbench/test.key.pem"
-        -cert "${HOME}/profuzzbench/test.fullchain.pem"
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -key "${HOME}/profuzzbench/cert/server.key"
+        -cert "${HOME}/profuzzbench/cert/server.crt"
         -accept "4433"
         -4
     )
@@ -248,8 +252,9 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./apps/openssl s_server \
-            -cert ${HOME}/profuzzbench/test.fullchain.pem \
-            -key ${HOME}/profuzzbench/test.key.pem \
+            -cert ${HOME}/profuzzbench/cert/server.crt \
+            -key ${HOME}/profuzzbench/cert/server.key \
+            -CAfile ${HOME}/profuzzbench/cert/ca.crt \
             -accept 4433 -4
         wait
     }
