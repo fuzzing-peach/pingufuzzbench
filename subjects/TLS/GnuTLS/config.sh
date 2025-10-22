@@ -309,7 +309,9 @@ function build_ft_consumer {
 }
 
 function run_ft {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="GnuTLS"
     generator=${GENERATOR:-$consumer}
     ts=$(date +%s)
@@ -328,10 +330,14 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/ft-sink.yaml >>ft-gnutls.yaml
 
     # running ft-net
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft-gnutls.yaml fuzz -t ${timeout}s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction \
+        --purge ft-gnutls.yaml fuzz \
+        -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft-gnutls.yaml gcov -t 3s --delete
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft-gnutls.yaml gcov \
+        -t 3s --delete \
+        --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/gnutls
