@@ -275,14 +275,16 @@ index 3aa7cd0..d5105be 100644
          // Mount /proc, /sys and /dev. These are shared since they are also marked as shared in the "parent" namespace.
          Jail::mount(&["-o", "bind", "/proc", &format!("{}/proc", self.new_root)])
 diff --git a/scheduler/src/checks.rs b/scheduler/src/checks.rs
-index 2689dde..68c2bd8 100644
+index 2689dde..bb399e9 100644
 --- a/scheduler/src/checks.rs
 +++ b/scheduler/src/checks.rs
-@@ -132,12 +132,12 @@ fn check_mqueue_queues_max() -> Result<()> {
+@@ -131,13 +131,13 @@ fn check_mqueue_queues_max() -> Result<()> {
+ /// Check if all requirements to run this software are satisfied.
  pub fn check_system() -> Result<()> {
      check_core_pattern_is_core()?;
-     check_fs_suid_dumpable()?;
+-    check_fs_suid_dumpable()?;
 -    check_if_tmp_is_tmpfs()?;
++    // check_fs_suid_dumpable()?;
 +    // check_if_tmp_is_tmpfs()?;
      check_if_agent_is_in_path()?;
 -    check_scaling_governor()?;
@@ -600,7 +602,7 @@ index 036e283..44653b6 100644
          config.validate()?;
          Ok(config)
 diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
-index 463594a..6e57a20 100644
+index 463594a..7533d43 100644
 --- a/scheduler/src/constants.rs
 +++ b/scheduler/src/constants.rs
 @@ -5,7 +5,7 @@ use std::time::Duration;
@@ -612,6 +614,15 @@ index 463594a..6e57a20 100644
  pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
  pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
  pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
+@@ -18,7 +18,7 @@ pub const FUZZING_LOOP_UPDATE_INTERVAL: Duration = Duration::from_secs(20);
+ /// Sites executed more often than this are ignored.
+ pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
+ pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
+-pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(1);
++pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(10);
+ 
+ pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
+ pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;
 diff --git a/scheduler/src/coverage/grcov.rs b/scheduler/src/coverage/grcov.rs
 new file mode 100644
 index 0000000..2d0c728
