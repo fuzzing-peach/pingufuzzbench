@@ -385,7 +385,7 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store,memcall,icmp -role=sink -svf=1 -dump-svf=1 \
+        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
