@@ -7,13 +7,21 @@ function checkout {
     mkdir -p repo
     cp -r .git-cache/gnutls repo/gnutls
     pushd repo/gnutls >/dev/null
-    # Check if the checkout changed the commit
-    current_commit=$(git rev-parse HEAD)
-    echo "Checkout will result in a different commit than requested."
-    echo "Requested: $@"
-    echo "Current: ${current_commit:0:8}"
-    git checkout "$@"
+
+    git checkout e840a07
     git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    git add .
+    git commit -m "apply sgfuzz patch"
+    git rebase master
+
+    # # Check if the checkout changed the commit
+    # current_commit=$(git rev-parse HEAD)
+    # echo "Checkout will result in a different commit than requested."
+    # echo "Requested: $@"
+    # echo "Current: ${current_commit:0:8}"
+    # git checkout "$@"
+    # git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    
     ./bootstrap
     popd >/dev/null
 }
