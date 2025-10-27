@@ -8,9 +8,9 @@ sink:
       "-p",
       "4433",
       "-c",
-      "/home/user/profuzzbench/test.fullchain.pem",
+      "/home/user/profuzzbench/cert/fullchain.crt",
       "-k",
-      "/home/user/profuzzbench/test.key.pem",
+      "/home/user/profuzzbench/cert/server.key",
       "-e",
     ]
   working-dir: "/home/user/target/ft/consumer/wolfssl/"
@@ -20,10 +20,11 @@ sink:
   server-port: "4433"
   log-stdout: true
   log-stderr: true
-  allow-unstable-sink: false
+  allow-unstable-sink: true
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
+  cwd: "/home/user/target/gcov/consumer/wolfssl/"
   env:
     - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
     - FAKE_RANDOM: "1"

@@ -56,8 +56,9 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/server.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
+        -a ${HOME}/profuzzbench/cert/ca.crt \
         -e -p 4433
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"

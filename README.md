@@ -5,6 +5,8 @@
 
 PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols. It is a specialized version of ProFuzzbench, which has removed some of the plaintext transmission network protocols from ProFuzzbench and added multiple encrypted network protocols (including TLS, SSH, QUIC, DTLS).
 
+For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
+
 # Progress
 ***
 
@@ -17,10 +19,10 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 | [RTP/live555]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [MQTT/mosquitto]() |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/openssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
-| [TLS/wolfssl]()    |           |          | ✅          | ✅        | ✅        |             |             |            |
+| [TLS/wolfssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/libressl]()   |           |          |            |          |          |             |             |            |
 | [TLS/boringssl]()  |           |          |            |          |          |             |             |            |
-| [TLS/gnutls]()     |           |          |            |          | ✅        |             |             |            |
+| [TLS/gnutls]()     |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/s2n]()        |           |          |            |          |          |             |             |            |
 | [SSH/openssh]()    |           |          |            |          |          |             |             |            |
 | [SSH/wolfssh]()    |           |          |            |          |          |             |             |            |
@@ -44,6 +46,7 @@ PinguFuzzBench is a benchmark for the fuzzing of cryptographic network protocols
 [tlspuffin]: https://github.com/tlspuffin/tlspuffin
 [tlsfuzzer]: https://github.com/aflnet/aflnet
 [tls-anvil]: https://github.com/aflnet/aflnet
+[quicfuzz]: https://github.com/aflnet/aflnet
 
 ## Todo
 

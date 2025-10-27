@@ -1,6 +1,6 @@
 source:
   bin-path: "/home/user/target/ft/generator/openssl/apps/openssl"
-  arguments: ["s_client", "-connect", "127.0.0.1:4433", "-4"]
+  arguments: ["s_client", "-connect", "127.0.0.1:4433", "-4", "-CAfile", "/home/user/profuzzbench/cert/ca.crt"]
   input-type: Tcp
   output-type: Tcp
   is-server: false

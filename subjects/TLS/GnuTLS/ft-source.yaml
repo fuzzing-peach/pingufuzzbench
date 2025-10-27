@@ -3,7 +3,13 @@ source:
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
-  arguments: ["127.0.0.1:4433", "--rehandshake", "--starttls", "-b"]
+  arguments: [
+    "localhost:4433", 
+    "--rehandshake", 
+    "--starttls", 
+    "-b",
+    "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
+    ]
   working-dir: "/home/user/target/ft/generator/gnutls"
   input-type: Tcp
   output-type: Tcp

@@ -4,9 +4,9 @@ sink:
     [
       "s_server",
       "-key",
-      "/home/user/profuzzbench/test.key.pem",
+      "/home/user/profuzzbench/cert/server.key",
       "-cert",
-      "/home/user/profuzzbench/test.fullchain.pem",
+      "/home/user/profuzzbench/cert/server.crt",
       "-accept",
       "4433",
       "-naccept",

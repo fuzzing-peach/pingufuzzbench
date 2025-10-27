@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/wolfssl" ]; then
+        git clone https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
+    fi
+    
     mkdir -p repo
-    git clone https://github.com/wolfssl/wolfssl.git repo/wolfssl
+    cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
 
-    git checkout "$@"
+    git checkout 66596ad
     git apply ${HOME}/profuzzbench/subjects/TLS/WolfSSL/sgfuzz.patch
+    git add .
+    git commit -m "apply sgfuzz patch"
+    git rebase master
+
     ./autogen.sh
 
     popd >/dev/null
@@ -16,8 +24,8 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
     wait
 }
@@ -59,8 +67,8 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
 
     cd ${HOME}/target/gcov/consumer/wolfssl
@@ -112,8 +120,8 @@ function run_stateafl {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
+        -c ${HOME}/profuzzbench/cert/fullchain.crt \
+        -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
     
     cd ${HOME}/target/gcov/consumer/wolfssl
@@ -203,8 +211,8 @@ function run_sgfuzz {
     )
 
     WOLFSSL_ARGS=(
-        -c ${HOME}/profuzzbench/test.fullchain.pem
-        -k ${HOME}/profuzzbench/test.key.pem
+        -c ${HOME}/profuzzbench/cert/fullchain.crt
+        -k ${HOME}/profuzzbench/cert/server.key
         -e
         -p 4433
         -i
@@ -222,8 +230,8 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./examples/server/server \
-            -c ${HOME}/profuzzbench/test.fullchain.pem \
-            -k ${HOME}/profuzzbench/test.key.pem \
+            -c ${HOME}/profuzzbench/cert/fullchain.crt \
+            -k ${HOME}/profuzzbench/cert/server.key \
             -e -p 4433
 
         wait
@@ -288,7 +296,9 @@ function build_ft_consumer {
 }
 
 function run_ft {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="WolfSSL"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
@@ -308,10 +318,10 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/wolfssl
+    cd ${HOME}/target/gcov/consumer/wolf ssl
     grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
 
     popd >/dev/null
@@ -340,7 +350,7 @@ function build_pingu_generator {
     # instrument the whole program bitcode
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=0 \
+        -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
@@ -381,7 +391,7 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=0 \
+        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 

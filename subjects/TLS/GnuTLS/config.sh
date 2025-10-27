@@ -1,42 +1,59 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/gnutls" ]; then
+        git clone https://github.com/gnutls/gnutls .git-cache/gnutls
+    fi
     mkdir -p repo
-    if [ ! -d "repo/gnutls" ]; then
-        git clone https://gitee.com/kherrisan/gnutls.git repo/gnutls
-    fi
+    cp -r .git-cache/gnutls repo/gnutls
     pushd repo/gnutls >/dev/null
-    # Check if the checkout changed the commit
-    current_commit=$(git rev-parse HEAD)
-    if [[ ! "${current_commit}" == "$@"* ]]; then
-        echo "Checkout will result in a different commit than requested."
-        echo "Requested: $@"
-        echo "Current: ${current_commit:0:8}"
-        git checkout "$@"
-        git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
-        ./bootstrap
-    fi
+
+    git checkout e840a07
+    git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    git add .
+    git commit -m "apply sgfuzz patch"
+    git rebase master
+
+    # # Check if the checkout changed the commit
+    # current_commit=$(git rev-parse HEAD)
+    # echo "Checkout will result in a different commit than requested."
+    # echo "Requested: $@"
+    # echo "Current: ${current_commit:0:8}"
+    # git checkout "$@"
+    # git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    
+    ./bootstrap
     popd >/dev/null
 }
 
 function replay {
-    exit 1
+    ${HOME}/aflnet/aflnet-replay $1 TLS 5555 100 &
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        timeout -k 1s 3s ./src/gnutls-serv \
+        -a -d 1000 --earlydata \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key \
+        -b -p 5555
+    wait
 }
 
 function build_aflnet {
-    exit 1
-
     mkdir -p target/aflnet
     rm -rf target/aflnet/*
-    cp -r repo/wolfssl target/aflnet/
-    pushd target/aflnet/wolfssl >/dev/null
+    cp -r repo/gnutls target/aflnet/gnutls
+    pushd target/aflnet/gnutls >/dev/null
 
-    export CC=$HOME/aflnet/afl-clang-fast
     export AFL_USE_ASAN=1
+    export ASAN_OPTIONS=detect_leaks=0
+    export CC=${HOME}/aflnet/afl-clang-fast
+    export CXX=${HOME}/aflnet/afl-clang-fast++
+    export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
 
-    ./autogen.sh
     ./configure --enable-static --enable-shared=no
-    make examples/server/server ${MAKE_OPT}
+    make -j ${MAKE_OPT}
 
     rm -rf .git
 
@@ -44,45 +61,58 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    exit 1
-
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
-    pushd ${HOME}/target/aflnet/wolfssl >/dev/null
+
+    pushd ${HOME}/target/aflnet/gnutls >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
+    export AFL_NO_AFFINITY=1
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
-        $HOME/aflnet/afl-fuzz -d -i $indir \
-        -o $outdir -N tcp://127.0.0.1/4433 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
-        ./examples/server/server \
-        -c ${HOME}/profuzzbench/test.fullchain.pem \
-        -k ${HOME}/profuzzbench/test.key.pem \
-        -e -p 4433
+        ${HOME}/aflnet/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/5555 \
+        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none -t 2000 \
+        ./src/gnutls-serv \
+        -a -d 1000 --earlydata \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key \
+        -b -p 5555
 
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    cd ${HOME}/target/gcov/consumer/wolfssl
-    compute_coverage replay "$list_cmd" 1 ${outdir}/coverage.csv
-    grcov --threads 2 -s . -t html . -o ${outdir}/cov_html
+    cd ${HOME}/target/gcov/consumer/gnutls
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
     popd >/dev/null
 }
 
 function build_stateafl {
-    mkdir -p stateafl
-    rm -rf stateafl/*
-    cp -r src/wolfssl stateafl/
-    pushd stateafl/wolfssl >/dev/null
+    mkdir -p target/stateafl
+    rm -rf target/stateafl/*
+    cp -r repo/gnutls target/stateafl/gnutls
+    pushd target/stateafl/gnutls >/dev/null
 
-    # TODO:
+    export ASAN_OPTIONS=detect_leaks=0
+    export CC=$HOME/stateafl/afl-clang-fast
+    export CXX=$HOME/stateafl/afl-clang-fast++
+    export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+
+    ./configure --enable-static --enable-shared=no
+    make -j ${MAKE_OPT}
 
     rm -rf .git
 
@@ -90,11 +120,161 @@ function build_stateafl {
 }
 
 function run_stateafl {
-    exit 1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls-replay
+    pushd ${HOME}/target/stateafl/gnutls >/dev/null
+
+    mkdir -p $outdir
+
+    export AFL_NO_AFFINITY=1
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    timeout -k 0 --preserve-status $timeout \
+        $HOME/stateafl/afl-fuzz -d -i $indir \
+        -o $outdir -N tcp://127.0.0.1/5555 \
+        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
+        ./src/gnutls-serv \
+        -a -d 1000 --earlydata \
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+        -b -p 5555
+    
+    cd ${HOME}/target/gcov/consumer/gnutls
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    # clean_cmd="rm -f ${HOME}/target/gcov/consumer/gnutls/build/bin/ACME_STORE/*"
+    # compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
+
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
 }
 
+
 function build_sgfuzz {
-    echo "Not implemented"
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/gnutls target/sgfuzz/gnutls
+    pushd target/sgfuzz/gnutls >/dev/null
+
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -v -Wno-int-conversion"
+
+    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
+
+    ./configure --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140
+    make ${MAKE_OPT}
+
+    pushd src >/dev/null
+    extract-bc gnutls-serv
+
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/gnutls/enum_types.txt
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager gnutls-serv.bc -o gnutls-serv_opt.bc
+
+    llvm-dis-17 gnutls-serv_opt.bc -o gnutls-serv_opt.ll
+    sed -i 's/optnone //g' gnutls-serv_opt.ll
+
+    clang gnutls-serv_opt.ll -o gnutls-serv \
+        -Wl,--no-whole-archive ../lib/.libs/libgnutls.a \
+        -lsFuzzer -lhfnetdriver -lhfcommon -lstdc++ \
+        -fsanitize=address -fsanitize=fuzzer \
+        -lzstd -lz -lp11-kit -lidn2 -lunistring -ldl -ltasn1 -lnettle -lhogweed -lgmp -lpthread -lrt -lm -ldl -lresolv -lc -lgcc -lgcc_s 
+
+    popd >/dev/null
+    rm -rf .git
+
+    popd >/dev/null
+}
+
+function run_sgfuzz {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    queue=${outdir}/replayable-queue
+    indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+
+    pushd ${HOME}/target/sgfuzz/gnutls/src >/dev/null
+
+    mkdir -p $queue
+    rm -rf $queue/*
+    mkdir -p ${outdir}/crash
+    rm -rf ${outdir}/crash/*
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export HFND_TCP_PORT=5555
+    export HFND_FORK_MODE=1
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reduce_inputs=1
+        -reload=30
+        -fork=1
+        -print_full_coverage=1
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=$timeout
+        -artifact_prefix="${outdir}/crash/"
+        "${queue}"
+        "${indir}"
+    )
+
+    GNUTLS_ARGS=(
+        -a
+        -d 1000
+        --earlydata
+        --x509cafile=${HOME}/profuzzbench/cert/ca.crt
+        --x509certfile=${HOME}/profuzzbench/cert/server.crt
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key
+        -b
+        -p 5555
+    )
+
+    ./gnutls-serv "${SGFuzz_ARGS[@]}" -- "${GNUTLS_ARGS[@]}"
+
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
+
+    list_cmd="ls -1 ${queue}/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    cd ${HOME}/target/gcov/consumer/gnutls
+
+    function replay {
+        ${HOME}/aflnet/afl-replay $1 TLS 5555 100 &
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+            timeout -k 1s 3s ./src/gnutls-serv \
+            -a -d 1000 --earlydata \
+            --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
+            --x509certfile=${HOME}/profuzzbench/cert/server.crt \
+            --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+            -b -p 5555
+        wait
+    }
+
+    gcovr -r . -s -d >/dev/null 2>&1
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
+
+    mkdir -p ${outdir}/cov_html
+    gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    popd >/dev/null
 }
 
 function build_ft_generator {
@@ -144,7 +324,9 @@ function build_ft_consumer {
 }
 
 function run_ft {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="GnuTLS"
     generator=${GENERATOR:-$consumer}
     ts=$(date +%s)
@@ -163,10 +345,14 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/ft-sink.yaml >>ft-gnutls.yaml
 
     # running ft-net
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft-gnutls.yaml fuzz -t ${timeout}s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction \
+        --purge ft-gnutls.yaml fuzz \
+        -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft-gnutls.yaml gcov -t 3s --delete
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft-gnutls.yaml gcov \
+        -t 3s --delete \
+        --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/gnutls
@@ -276,9 +462,11 @@ function build_gcov {
 }
 
 function install_dependencies {
-    sudo apt-get install -y dash git-core autoconf libtool gettext autopoint lcov
-    sudo apt-get install -y automake python3 nettle-dev libp11-kit-dev libtspi-dev libunistring-dev
-    sudo apt-get install -y libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf
-    sudo apt-get install -y libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools
-    sudo apt-get install -y texinfo texlive texlive-plain-generic texlive-extra-utils libprotobuf-c1 libev4 libev-dev
+    sudo -E apt update
+    sudo -E apt install -y dash git-core autoconf libtool gettext autopoint lcov \
+                            nettle-dev libp11-kit-dev libtspi-dev libunistring-dev \
+                            libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf \
+                            libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools \
+                            libprotobuf-c1 libev4 libev-dev libzstd-dev
+    # sudo apt-get install -y texinfo texlive texlive-plain-generic texlive-extra-utils
 }

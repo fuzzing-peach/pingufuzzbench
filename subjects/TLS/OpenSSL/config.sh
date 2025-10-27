@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/openssl" ]; then
+        git clone https://github.com/openssl/openssl.git .git-cache/openssl
+    fi
     mkdir -p repo
-    git clone https://github.com/openssl/openssl.git repo/openssl
+    cp -r .git-cache/openssl repo/openssl
     pushd repo/openssl >/dev/null
     git checkout "$@"
     git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch
@@ -14,8 +17,9 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
         -accept 4433 -4
     wait
 }
@@ -31,8 +35,9 @@ function build_aflnet {
     # --with-rand-seed=none only will raise: entropy source strength too weak
     # mentioned by: https://github.com/openssl/openssl/issues/20841
     # see https://github.com/openssl/openssl/blob/master/INSTALL.md#seeding-the-random-generator for selectable options for --with-rand-seed=X
-    export CFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER"
+    # -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION is removed
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
 
     ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async
     bear -- make ${MAKE_OPT}
@@ -43,7 +48,9 @@ function build_aflnet {
 }
 
 function run_aflnet {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/aflnet/openssl >/dev/null
@@ -60,8 +67,9 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
         -accept 4433 -4
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
@@ -87,8 +95,8 @@ function build_stateafl {
     export AFL_SKIP_CPUFREQ=1
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
-    export CFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
 
     ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async enable-asan
     bear -- make ${MAKE_OPT}
@@ -99,7 +107,9 @@ function build_stateafl {
 }
 
 function run_stateafl {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls-replay
     pushd ${HOME}/target/stateafl/openssl >/dev/null
@@ -120,8 +130,9 @@ function run_stateafl {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none -t 1000 $fuzzer_args \
         ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/test.fullchain.pem \
-        -key ${HOME}/profuzzbench/test.key.pem \
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -cert ${HOME}/profuzzbench/cert/server.crt \
+        -key ${HOME}/profuzzbench/cert/server.key \
         -accept 4433 -4 > /tmp/fuzzing-output/stateafl.log 2>&1
 
     cd ${HOME}/target/gcov/consumer/openssl
@@ -150,15 +161,15 @@ function build_sgfuzz {
     ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
     sed -i 's@CXX=$(CROSS_COMPILE)g++.*@CXX=clang++@g' Makefile
-    sed -i 's/CFLAGS=.*/CFLAGS=-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
-    sed -i 's/CXXFLAGS=.*/CXXFLAGS=-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
+    sed -i 's/CFLAGS=.*/CFLAGS=-O3 -g -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
+    sed -i 's/CXXFLAGS=.*/CXXFLAGS=-O3 -g -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
     sed -i 's@-Wl,-z,defs@@g' Makefile
 
     set +e
     make ${MAKE_OPT}
     set -e
 
-    clang -O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
+    clang -O3 -g -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ \
         -fsanitize=address -fsanitize=fuzzer -Wno-int-conversion -L.   \
         -o apps/openssl \
         apps/lib/openssl-bin-cmp_mock_srv.o \
@@ -196,7 +207,9 @@ function build_sgfuzz {
 }
 
 function run_sgfuzz {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     outdir=/tmp/fuzzing-output
     queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
@@ -224,8 +237,9 @@ function run_sgfuzz {
 
     OPENSSL_ARGS=(
         s_server
-        -key "${HOME}/profuzzbench/test.key.pem"
-        -cert "${HOME}/profuzzbench/test.fullchain.pem"
+        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+        -key "${HOME}/profuzzbench/cert/server.key"
+        -cert "${HOME}/profuzzbench/cert/server.crt"
         -accept "4433"
         -4
     )
@@ -245,8 +259,9 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./apps/openssl s_server \
-            -cert ${HOME}/profuzzbench/test.fullchain.pem \
-            -key ${HOME}/profuzzbench/test.key.pem \
+            -cert ${HOME}/profuzzbench/cert/server.crt \
+            -key ${HOME}/profuzzbench/cert/server.key \
+            -CAfile ${HOME}/profuzzbench/cert/ca.crt \
             -accept 4433 -4
         wait
     }
@@ -297,8 +312,8 @@ function build_ft_consumer {
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
-    export CFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -g -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
 
     ./config --with-rand-seed=devrandom enable-asan no-shared no-tests no-threads no-asm no-cached-fetch no-async
     bear -- make ${MAKE_OPT}
@@ -309,9 +324,9 @@ function build_ft_consumer {
 }
 
 function run_ft {
-    timeout=$1
-    replay_step=$2
-    gcov_step=$3
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="OpenSSL"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
@@ -331,7 +346,7 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/openssl
@@ -385,7 +400,9 @@ function build_pingu_consumer {
 }
 
 function run_pingu {
-    timeout=$1
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
     consumer="OpenSSL"
     generator=${@: -1}
     generator=${generator:-$consumer}
@@ -421,7 +438,7 @@ function build_gcov {
     cp -r repo/openssl target/gcov/consumer/openssl
     pushd target/gcov/consumer/openssl >/dev/null
 
-    export CFLAGS="-fprofile-arcs -ftest-coverage -DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
     ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async

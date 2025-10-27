@@ -6,3 +6,4 @@ archive
 **/.ipynb_checkpoints*
 volume
 *.code-workspace
+cert/**

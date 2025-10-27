@@ -5,9 +5,9 @@ sink:
       "-p",
       "4433",
       "-c",
-      "/home/user/profuzzbench/test.fullchain.pem",
+      "/home/user/profuzzbench/cert/fullchain.crt",
       "-k",
-      "/home/user/profuzzbench/test.key.pem",
+      "/home/user/profuzzbench/cert/server.key",
       "-e"
     ]
   cwd: "/home/user/target/pingu/consumer/wolfssl"

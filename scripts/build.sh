@@ -85,12 +85,12 @@ cmd="docker build \
     --build-arg TARGET=$target \
     --build-arg VERSION=$version \
     --build-arg GENERATOR=$generator \
-    --build-arg USER_UID="$(id -u)" \
-    --build-arg USER_GID="$(id -g)" \
+    --build-arg UID="$(id -u)" \
+    --build-arg GID="$(id -g)" \
     -f scripts/Dockerfile \
     $docker_args . \
     -t $image_name"
-log_success "[+] Running command: ${cmd}"
+log_success "[+] Running command: DOCKER_BUILDKIT=1 ${cmd}"
 DOCKER_BUILDKIT=1 ${cmd}
 if [[ $? -ne 0 ]]; then
     log_error "[!] Error while building the docker image: $image_name"
