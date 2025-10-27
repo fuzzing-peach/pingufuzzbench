@@ -9,8 +9,12 @@ function checkout {
     cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
 
-    git checkout "$@"
+    git checkout 66596ad
     git apply ${HOME}/profuzzbench/subjects/TLS/WolfSSL/sgfuzz.patch
+    git add .
+    git commit -m "apply sgfuzz patch"
+    git rebase master
+
     ./autogen.sh
 
     popd >/dev/null
