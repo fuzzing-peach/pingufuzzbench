@@ -90,7 +90,7 @@ cmd="docker build \
     -f scripts/Dockerfile \
     $docker_args . \
     -t $image_name"
-log_success "[+] Running command: ${cmd}"
+log_success "[+] Running command: DOCKER_BUILDKIT=1 ${cmd}"
 DOCKER_BUILDKIT=1 ${cmd}
 if [[ $? -ne 0 ]]; then
     log_error "[!] Error while building the docker image: $image_name"

@@ -20,10 +20,11 @@ sink:
   server-port: "4433"
   log-stdout: true
   log-stderr: true
-  allow-unstable-sink: false
+  allow-unstable-sink: true
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
+  cwd: "/home/user/target/gcov/consumer/wolfssl/"
   env:
     - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
     - FAKE_RANDOM: "1"

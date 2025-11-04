@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+
 ARG BASE_IMAGE=pingu-env:latest
 
 FROM ${BASE_IMAGE}
