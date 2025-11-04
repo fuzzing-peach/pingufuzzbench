@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-aflnet'
+      - 'scripts/dockerfile/Dockerfile-env-aflnet'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-aflnet'
+      - 'scripts/dockerfile/Dockerfile-env-aflnet'
 
 jobs:    
   push:
