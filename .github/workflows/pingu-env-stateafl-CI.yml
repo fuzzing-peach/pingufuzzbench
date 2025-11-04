@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-stateafl'
+      - 'scripts/dockerfile/Dockerfile-env-stateafl'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-stateafl'
+      - 'scripts/dockerfile/Dockerfile-env-stateafl'
 
 jobs:    
   push:

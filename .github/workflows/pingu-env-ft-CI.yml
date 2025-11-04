@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-ft'
+      - 'scripts/dockerfile/Dockerfile-env-ft'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-ft'
+      - 'scripts/dockerfile/Dockerfile-env-ft'
 
 jobs:    
   push:

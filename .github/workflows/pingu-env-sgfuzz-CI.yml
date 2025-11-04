@@ -4,11 +4,11 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-sgfuzz'
+      - 'scripts/dockerfile/Dockerfile-env-sgfuzz'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'scripts/Dockerfile-env-sgfuzz'
+      - 'scripts/dockerfile/Dockerfile-env-sgfuzz'
 
 jobs:    
   push:
