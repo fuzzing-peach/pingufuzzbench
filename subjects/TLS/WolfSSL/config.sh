@@ -242,9 +242,6 @@ function run_sgfuzz {
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" ""
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
-    
-    cd ${HOME}/target/gcov/consumer/wolfssl
-    grcov --branch --threads 2 -s . -t html -o ${outdir}/cov_html .
 
     popd >/dev/null
 }
@@ -321,8 +318,9 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/wolf ssl
-    grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
+    cd ${HOME}/target/gcov/consumer/wolfssl
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null
 }
