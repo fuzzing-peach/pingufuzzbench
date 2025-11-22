@@ -321,7 +321,7 @@ function run_ft {
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/wolf ssl
+    cd ${HOME}/target/gcov/consumer/wolfssl
     grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
 
     popd >/dev/null

@@ -26,3 +26,4 @@ gcov:
     - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
     - FAKE_RANDOM: "1"
   src-dir: "/home/user/target/gcov/consumer/wolfssl"
+  reporter: gcovr
