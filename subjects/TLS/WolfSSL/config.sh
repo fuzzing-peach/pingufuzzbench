@@ -449,6 +449,7 @@ function build_gcov {
     make examples/server/server ${MAKE_OPT}
 
     rm -rf a-conftest.gcno .git
+    rm -rf a--.gcno .git
 
     popd >/dev/null
 }
