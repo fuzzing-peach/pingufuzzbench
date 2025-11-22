@@ -9,10 +9,18 @@ index 92f1bce..be052dc 100644
  pub const ENV_SHM_NAME: &str = "FT_SHM_NAME";
  pub const ENV_LOG_LEVEL: &str = "FT_LOG_LEVEL";
 diff --git a/fuzztruction_shared/src/mutation_cache_content.rs b/fuzztruction_shared/src/mutation_cache_content.rs
-index 2b40d69..f095e05 100644
+index 2b40d69..5868cdb 100644
 --- a/fuzztruction_shared/src/mutation_cache_content.rs
 +++ b/fuzztruction_shared/src/mutation_cache_content.rs
-@@ -139,6 +139,7 @@ impl MutationCacheContent {
+@@ -1,7 +1,5 @@
+ use std::{cmp::min, mem, ptr};
+ 
+-use log::warn;
+-
+ use crate::{
+     constants::MAX_MUTATION_CACHE_ENTRIES, mutation_cache_entry::MutationCacheEntry,
+     types::MutationSiteID,
+@@ -139,6 +137,7 @@ impl MutationCacheContent {
          assert!(self.next_free_slot < self.entry_decriptor_tbl.len());
  
          if entry.size() > self.space_left() {
@@ -20,7 +28,7 @@ index 2b40d69..f095e05 100644
              return None;
          }
  
-@@ -151,6 +152,7 @@ impl MutationCacheContent {
+@@ -151,6 +150,7 @@ impl MutationCacheContent {
              *slot = descriptor;
              self.next_free_slot = min(self.next_free_slot + 1, max_slot_idx);
          } else {
@@ -28,7 +36,7 @@ index 2b40d69..f095e05 100644
              return None;
          }
  
-@@ -168,7 +170,7 @@ impl MutationCacheContent {
+@@ -168,7 +168,7 @@ impl MutationCacheContent {
                  return Some(&*(dst_addr as *const MutationCacheEntry));
              };
          } else {
@@ -38,27 +46,33 @@ index 2b40d69..f095e05 100644
          }
      }
 diff --git a/fuzztruction_shared/src/util.rs b/fuzztruction_shared/src/util.rs
-index 0d07540..f2989a8 100644
+index 0d07540..14903c0 100644
 --- a/fuzztruction_shared/src/util.rs
 +++ b/fuzztruction_shared/src/util.rs
-@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
+@@ -1,8 +1,9 @@
+-use anyhow::{anyhow, Result};
++use anyhow::Result;
  use log::log_enabled;
  use nix::{
      sys::signal::Signal,
+-    unistd::{close, Pid},
 +    sys::wait::{waitpid, WaitPidFlag, WaitStatus},
-     unistd::{close, Pid},
++    unistd::Pid,
  };
  use std::{
-@@ -12,7 +13,7 @@ use std::{
+     alloc,
+@@ -12,9 +13,8 @@ use std::{
          Arc,
      },
      thread,
 -    time::Duration,
 +    time::{Duration, Instant},
  };
- use syscalls::{syscall2, Sysno};
+-use syscalls::{syscall2, Sysno};
  
-@@ -91,26 +92,26 @@ pub fn current_log_level() -> log::Level {
+ pub trait ExpectNone {
+     /// Whether this value is None.
+@@ -91,26 +91,26 @@ pub fn current_log_level() -> log::Level {
  pub fn wait_pid_timeout(
      pid: i32,
      timeout: Option<Duration>,
@@ -275,15 +289,17 @@ index 3aa7cd0..d5105be 100644
          // Mount /proc, /sys and /dev. These are shared since they are also marked as shared in the "parent" namespace.
          Jail::mount(&["-o", "bind", "/proc", &format!("{}/proc", self.new_root)])
 diff --git a/scheduler/src/checks.rs b/scheduler/src/checks.rs
-index 2689dde..bb399e9 100644
+index 2689dde..f8dc826 100644
 --- a/scheduler/src/checks.rs
 +++ b/scheduler/src/checks.rs
-@@ -131,13 +131,13 @@ fn check_mqueue_queues_max() -> Result<()> {
+@@ -130,14 +130,14 @@ fn check_mqueue_queues_max() -> Result<()> {
+ 
  /// Check if all requirements to run this software are satisfied.
  pub fn check_system() -> Result<()> {
-     check_core_pattern_is_core()?;
+-    check_core_pattern_is_core()?;
 -    check_fs_suid_dumpable()?;
 -    check_if_tmp_is_tmpfs()?;
++    // check_core_pattern_is_core()?;
 +    // check_fs_suid_dumpable()?;
 +    // check_if_tmp_is_tmpfs()?;
      check_if_agent_is_in_path()?;

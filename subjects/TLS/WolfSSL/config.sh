@@ -242,9 +242,6 @@ function run_sgfuzz {
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" ""
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
-    
-    cd ${HOME}/target/gcov/consumer/wolfssl
-    grcov --branch --threads 2 -s . -t html -o ${outdir}/cov_html .
 
     popd >/dev/null
 }
@@ -264,7 +261,7 @@ function build_ft_generator {
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/client/client ${MAKE_OPT}
 
     rm -rf .git
@@ -287,7 +284,7 @@ function build_ft_consumer {
     export CFLAGS="-O3 -g -fsanitize=address"
     export CXXFLAGS="-O3 -g -fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -322,7 +319,8 @@ function run_ft {
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl
-    grcov --branch --threads 2 -s . -t html . -o ${work_dir}/cov_html
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null
 }
@@ -391,7 +389,7 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store,memcall -role=sink -svf=1 -dump-svf=1 \
+        -ins=load,store,memcall,icmp,memcmp -role=sink -svf=1 -dump-svf=1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
@@ -451,6 +449,7 @@ function build_gcov {
     make examples/server/server ${MAKE_OPT}
 
     rm -rf a-conftest.gcno .git
+    rm -rf a--.gcno .git
 
     popd >/dev/null
 }
