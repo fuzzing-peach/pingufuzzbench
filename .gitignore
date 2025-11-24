@@ -1,6 +1,8 @@
 results-*
 output
 archive
+exp-archive
+old-archive
 **/shortcut.sh
 **/__pycache__*
 **/.ipynb_checkpoints*
