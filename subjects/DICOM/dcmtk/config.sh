@@ -1,8 +1,8 @@
 function checkout {
-    if [ ! -d ".git-cache/gnutls" ]; then
+    if [ ! -d ".git-cache/dcmtk" ]; then
         git clone --no-single-branch https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
     fi
-    
+
     mkdir -p repo
     cp -r .git-cache/dcmtk repo/dcmtk
 
