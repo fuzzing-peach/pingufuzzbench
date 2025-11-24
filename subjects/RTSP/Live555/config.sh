@@ -33,7 +33,7 @@ function build_aflnet {
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
     export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -91,7 +91,7 @@ function build_stateafl {
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
     export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING"
-    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING"
+    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -155,7 +155,7 @@ function build_sgfuzz {
     export CC=wllvm
     export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
-    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion -std=c++20"
     
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
@@ -273,7 +273,7 @@ function build_ft_generator {
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
     export CFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR -std=c++20"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -300,7 +300,7 @@ function build_ft_consumer {
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
     export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
