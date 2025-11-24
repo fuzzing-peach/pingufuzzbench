@@ -1,10 +1,19 @@
 function checkout {
+    if [ ! -d ".git-cache/gnutls" ]; then
+        git clone --no-single-branch https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
+    fi
+    
     mkdir -p repo
-    git clone --no-single-branch https://github.com/dcmtk/dcmtk.git repo/dcmtk
+    cp -r .git-cache/dcmtk repo/dcmtk
+
     pushd repo/dcmtk >/dev/null
+
     git fetch --unshallow
-    git checkout "$@"
+    git checkout 1549d8c
     git apply "${HOME}/profuzzbench/subjects/DICOM/dcmtk/ft-dcmtk.patch"
+    git add .
+    git commit -m "apply fuzzing patch"
+    git rebase "$@"
     
     popd >/dev/null
 }
