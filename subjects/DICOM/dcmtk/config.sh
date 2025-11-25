@@ -134,6 +134,9 @@ function run_stateafl {
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
 
+    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/stateafl/g' dcmqrscp.cfg
+
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/5158 \
@@ -196,6 +199,10 @@ function build_sgfuzz {
         -lz \
         -lm \
         -lstdc++ \
+        -lpthread \
+        -lrt \
+        -lssl \
+        -lcrypto \
         -fsanitize=address \
         -fsanitize=fuzzer \
         -DFT_FUZZING \
