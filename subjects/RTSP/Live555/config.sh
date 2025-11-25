@@ -21,7 +21,7 @@ function replay {
     wait
 
     # 再次 kill 进程一次，确保进程停止
-    pkill testOnDemandR
+    pkill testOnDemandRTSPServer
 }
 
 function build_aflnet {
@@ -60,6 +60,7 @@ function run_aflnet {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
+    export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -119,6 +120,7 @@ function run_stateafl {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
+    export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -366,8 +368,8 @@ function build_gcov {
     pushd target/gcov/consumer/live555 >/dev/null
 
     export CFLAGS="-fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-fprofile-arcs -ftest-coverage"
+    export CPPFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
+    export CXXFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
     ./genMakefiles linux
