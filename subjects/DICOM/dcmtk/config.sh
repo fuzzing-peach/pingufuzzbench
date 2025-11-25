@@ -21,7 +21,7 @@ function checkout {
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 DICOM 5158 1 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-        timeout -k 0 -s SIGTERM 1s ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
+        timeout -k 0 -s SIGTERM 1s ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
     wait
 
     pkill dcmqrscp
@@ -43,12 +43,6 @@ function build_aflnet {
     cmake ..
     make dcmqrscp ${MAKE_OPT}
 
-    cd bin
-    # Create directory for DICOM database
-    if [ ! -d "ACME_STORE" ]; then
-        mkdir ACME_STORE
-    fi
-
     popd >/dev/null
 }
 
@@ -62,6 +56,10 @@ function run_aflnet {
 
     mkdir -p $outdir
 
+    if [ ! -d "${HOME}/ACME_STORE" ]; then
+        mkdir ${HOME}/ACME_STORE
+    fi
+
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
@@ -74,7 +72,7 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/5158 \
         -P DICOM -D 10000 -q 3 -s 3 -E -K -R -W 50  -m none \
         -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
-        ./dcmqrscp --single-process --config /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
+        ./dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
@@ -83,7 +81,7 @@ function run_aflnet {
     
     cd ${HOME}/target/gcov/consumer/dcmtk
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    clean_cmd="rm -f ${HOME}/target/gcov/consumer/dcmtk/build/bin/ACME_STORE/*"
+    clean_cmd="rm -f ${HOME}/ACME_STORE/*"
 
     compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "" "$clean_cmd"
     mkdir -p ${outdir}/cov_html
@@ -110,9 +108,6 @@ function build_stateafl {
     mkdir build && cd build
     cmake ..
     make dcmqrscp ${MAKE_OPT}
-
-    cd bin
-    mkdir ACME_STORE
     
     rm -rf fuzz test .git doc
 
@@ -129,6 +124,10 @@ function run_stateafl {
 
     mkdir -p $outdir
 
+    if [ ! -d "${HOME}/ACME_STORE" ]; then
+        mkdir ${HOME}/ACME_STORE
+    fi
+
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
@@ -141,8 +140,9 @@ function run_stateafl {
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/5158 \
-        -P DICOM -D 10000 -E -K -m none \
-        -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh ./dcmqrscp --single-process --config ./dcmqrscp.cfg
+        -P DICOM -D 10000 -E -K -m none -t 1000 \
+        -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
+        ./dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
@@ -154,7 +154,7 @@ function run_stateafl {
 
     cd ${HOME}/target/gcov/consumer/dcmtk
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    clean_cmd="rm -f ${HOME}/target/gcov/consumer/dcmtk/build/bin/ACME_STORE/*"
+    clean_cmd="rm -f ${HOME}/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
 
     mkdir -p ${outdir}/cov_html
@@ -202,6 +202,10 @@ function build_sgfuzz {
         -lz \
         -lm \
         -lstdc++ \
+        -lpthread \
+        -lrt \
+        -lssl \
+        -lcrypto \
         -fsanitize=address \
         -fsanitize=fuzzer \
         -DFT_FUZZING \
@@ -213,12 +217,6 @@ function build_sgfuzz {
         ../lib/liboflog.a \
         ../lib/libofstd.a \
         ../lib/liboficonv.a 
-
-    if [ ! -d "ACME_STORE" ]; then
-        mkdir ACME_STORE
-    fi
-    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 
     popd >/dev/null
 }
@@ -235,6 +233,10 @@ function run_sgfuzz {
     rm -rf $outdir/replayable-queue/*
     mkdir -p $outdir/crash
     rm -rf $outdir/crash/*
+
+    if [ ! -d "${HOME}/ACME_STORE" ]; then
+        mkdir ${HOME}/ACME_STORE
+    fi
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
@@ -261,7 +263,7 @@ function run_sgfuzz {
 
     DCMTK_ARGS=(
         --single-process
-        --config ./dcmqrscp.cfg
+        --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
         -d
     )
 
@@ -275,7 +277,7 @@ function run_sgfuzz {
     function replay {
         /home/user/aflnet/afl-replay $1 DICOM 5158 1 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
-            timeout -k 0 1s ./build/bin/dcmqrscp --single-process --config ./build/bin/dcmqrscp.cfg
+            timeout -k 0 1s ./build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
         wait
         pkill dcmqrscp
@@ -284,7 +286,7 @@ function run_sgfuzz {
     cd ${HOME}/target/gcov/consumer/dcmtk/
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"    
-    clean_cmd="rm -f ${HOME}/target/gcov/consumer/dcmtk/build/bin/ACME_STORE/*"
+    clean_cmd="rm -f ${HOME}/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
 
     mkdir -p ${outdir}/cov_html
@@ -312,12 +314,6 @@ function build_ft_consumer {
     mkdir build && cd build
     cmake ..
     make dcmqrscp ${MAKE_OPT}
-
-    cd bin
-    # Create directory for DICOM database
-    if [ ! -d "ACME_STORE" ]; then
-        mkdir ACME_STORE
-    fi
     
     popd >/dev/null
 }
@@ -353,8 +349,9 @@ function run_ft {
     work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/ft/ >/dev/null
 
-    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/ft\/consumer/g' dcmqrscp.cfg
+    if [ ! -d "${HOME}/ACME_STORE" ]; then
+        mkdir ${HOME}/ACME_STORE
+    fi
 
     # synthesize the ft configuration yaml
     # according to the targeted fuzzer and generated
@@ -398,14 +395,6 @@ function build_gcov {
     mkdir build && cd build
     cmake ..
     make dcmqrscp ${MAKE_OPT}
-
-    cd bin
-    if [ ! -d "ACME_STORE" ]; then
-        mkdir ACME_STORE
-    fi
-
-    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 
     rm -rf fuzz test .git doc
 
