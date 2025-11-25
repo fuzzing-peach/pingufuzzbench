@@ -191,6 +191,10 @@ function build_sgfuzz {
         -lz \
         -lm \
         -lstdc++ \
+        -lpthread \
+        -lrt \
+        -lssl \
+        -lcrypto \
         -fsanitize=address \
         -fsanitize=fuzzer \
         -DFT_FUZZING \
@@ -206,8 +210,6 @@ function build_sgfuzz {
     if [ ! -d "ACME_STORE" ]; then
         mkdir ACME_STORE
     fi
-    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 
     popd >/dev/null
 }
@@ -224,6 +226,9 @@ function run_sgfuzz {
     rm -rf $outdir/replayable-queue/*
     mkdir -p $outdir/crash
     rm -rf $outdir/crash/*
+
+    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/sgfuzz/g' dcmqrscp.cfg
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
