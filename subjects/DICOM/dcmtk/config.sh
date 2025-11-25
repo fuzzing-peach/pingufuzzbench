@@ -140,7 +140,7 @@ function run_stateafl {
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/5158 \
-        -P DICOM -D 10000 -E -K -m none -t 1000 \
+        -P DICOM -D 10000 -E -K -m none \
         -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
         ./dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
