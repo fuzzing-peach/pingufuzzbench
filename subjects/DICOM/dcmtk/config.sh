@@ -142,7 +142,7 @@ function run_stateafl {
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/5158 \
-        -P DICOM -D 10000 -E -K -m none -t 1000 \
+        -P DICOM -D 10000 -E -K -m none \
         -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
         ./dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
@@ -150,6 +150,9 @@ function run_stateafl {
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
+
+    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
+    sed -i 's/aflnet/gcov/consumer/g' ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
 
     cd ${HOME}/target/gcov/consumer/dcmtk
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"

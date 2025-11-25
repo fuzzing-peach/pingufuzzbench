@@ -31,7 +31,7 @@ HTTP_TIMEOUT = 10  # 请求超时时间（秒）
 CHECK_INTERVAL = 30  # 检查间隔（秒）
 STATE_FILE = "asan_monitor_state.json"  # 状态文件名
 LOG_FILE = "asan_monitor.log"  # 日志文件名
-MONITOR_DIRS = ["asan", "crashing", "replayable-crashes", "replayable-hangs"]  # 需要监控的目录名称列表
+MONITOR_DIRS = ["asan", "crashing", "replayable-crashes", "replayable-hangs", "crash"]  # 需要监控的目录名称列表
 
 # ================================================
 
