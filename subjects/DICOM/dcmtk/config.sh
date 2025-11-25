@@ -1,10 +1,19 @@
 function checkout {
+    if [ ! -d ".git-cache/dcmtk" ]; then
+        git clone --no-single-branch https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
+    fi
+
     mkdir -p repo
-    git clone --no-single-branch https://github.com/dcmtk/dcmtk.git repo/dcmtk
+    cp -r .git-cache/dcmtk repo/dcmtk
+
     pushd repo/dcmtk >/dev/null
+
     git fetch --unshallow
-    git checkout "$@"
+    git checkout 1549d8c
     git apply "${HOME}/profuzzbench/subjects/DICOM/dcmtk/ft-dcmtk.patch"
+    git add .
+    git commit -m "apply fuzzing patch"
+    git rebase "$@"
     
     popd >/dev/null
 }
@@ -40,8 +49,6 @@ function build_aflnet {
         mkdir ACME_STORE
     fi
 
-    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-
     popd >/dev/null
 }
 
@@ -67,7 +74,7 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/5158 \
         -P DICOM -D 10000 -q 3 -s 3 -E -K -R -W 50  -m none \
         -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
-        ./dcmqrscp --single-process --config ./dcmqrscp.cfg
+        ./dcmqrscp --single-process --config /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
