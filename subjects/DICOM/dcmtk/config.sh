@@ -49,8 +49,6 @@ function build_aflnet {
         mkdir ACME_STORE
     fi
 
-    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-
     popd >/dev/null
 }
 
@@ -76,7 +74,7 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/5158 \
         -P DICOM -D 10000 -q 3 -s 3 -E -K -R -W 50  -m none \
         -c ${HOME}/profuzzbench/subjects/DICOM/dcmtk/clean.sh \
-        ./dcmqrscp --single-process --config ./dcmqrscp.cfg
+        ./dcmqrscp --single-process --config /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk
