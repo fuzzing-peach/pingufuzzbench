@@ -6,9 +6,10 @@
 
 ## Supported version
 
-| Date       | Tag | Commit                                                                                 |
-| ---------- | --- | -------------------------------------------------------------------------------------- |
-| 2023-10-27 | -   | [1549d8](https://github.com/DCMTK/dcmtk/tree/1549d8ccccadad9ddd8a2bf75ff31eb554ee9dde) |
+| Date       | Tag | Commit                                                                                  |
+| ---------- | --- | --------------------------------------------------------------------------------------- |
+| 2025-11-21 | -   | [fe24c81]()                                                                             |
+| 2023-10-27 | -   | [1549d8c](https://github.com/DCMTK/dcmtk/tree/1549d8ccccadad9ddd8a2bf75ff31eb554ee9dde) |
 
 ## Target
 

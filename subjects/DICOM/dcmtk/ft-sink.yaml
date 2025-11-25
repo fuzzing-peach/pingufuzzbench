@@ -22,5 +22,6 @@ gcov:
   bin-path: "/home/user/target/gcov/consumer/dcmtk/build/bin/dcmqrscp"
   env:
     - LD_PRELOAD: "libgcov_preload.so"
+  cwd: "/home/user/target/gcov/consumer/dcmtk"
   src-dir: "/home/user/target/gcov/consumer/dcmtk"
   reporter: gcovr

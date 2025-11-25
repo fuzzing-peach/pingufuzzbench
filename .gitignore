@@ -9,3 +9,4 @@ old-archive
 volume
 *.code-workspace
 cert/**
+nohup*
