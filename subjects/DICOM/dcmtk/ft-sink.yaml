@@ -6,7 +6,7 @@ sink:
     [
       "--single-process",
       "--config",
-      "/home/user/target/ft/consumer/dcmtk/build/bin/dcmqrscp.cfg",
+      "/home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg",
       "-d"
     ]
   input-type: Tcp
