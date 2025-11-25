@@ -106,8 +106,6 @@ function build_stateafl {
 
     cd bin
     mkdir ACME_STORE
-    cp /home/user/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/stateafl/g' dcmqrscp.cfg
     
     rm -rf fuzz test .git doc
 
@@ -129,6 +127,9 @@ function run_stateafl {
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+
+    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
+    sed -i 's/aflnet/stateafl/g' dcmqrscp.cfg
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
