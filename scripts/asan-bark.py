@@ -144,7 +144,7 @@ class AsanMonitor:
         self.log(message)
 
         encoded_message = quote(message, safe='')
-        url = WEBHOOK_URL + f"检测到崩溃文件/{encoded_message}"
+        url = WEBHOOK_URL + f"检测到崩溃文件/{encoded_message}?level=passive"
         try:
             print(f"✉️ 发送 HTTP 请求: {url}")
             response = requests.get(
@@ -296,7 +296,7 @@ def main():
     try:
         # URL encode the base_dir path to handle special characters
         encoded_base_dir = quote(str(base_dir), safe='')
-        url = WEBHOOK_URL + f"启动崩溃文件监控器/监控目录: {encoded_base_dir}"
+        url = WEBHOOK_URL + f"启动崩溃文件监控器/监控目录: {encoded_base_dir}?level=passive"
         print(f"✉️  发送 HTTP 请求: {url}")
         _response = requests.get(
             url,
