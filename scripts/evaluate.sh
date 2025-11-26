@@ -37,7 +37,7 @@ else
     log_success "[+] pingu-eval container already exists"
 fi
 
-opt_args=$(getopt -o f:t:v:o:c: -l fuzzer:,target:,version:,generator:,output:,count:,summary --name "$0" -- "${args[@]}")
+opt_args=$(getopt -o f:t:v:o:c: -l fuzzer:,target:,generator:,output:,count:,summary --name "$0" -- "${args[@]}")
 if [ $? != 0 ]; then
     log_error "[!] Error in parsing shell arguments."
     exit 1
@@ -53,15 +53,6 @@ while true; do
     -t | --target)
         target="$2"
         shift 2
-        ;;
-    -v | --version)
-        if [[ -n "$2" && "$2" != "--" ]]; then
-            version="$2"
-            shift 2
-        else
-            log_error "[!] Option -v|--version requires a non-empty value."
-            exit 1
-        fi
         ;;
     --generator)
         generator="$2"
@@ -85,24 +76,12 @@ while true; do
     esac
 done
 
-if [[ -z "$version" ]]; then
-    log_error "[!] --version is required"
-    exit 1
-fi
-
 if [[ -z "$output" ]]; then
     output="."
 fi
 
 protocol=${target%/*}
 impl=${target##*/}
-if [[ -z "$generator" ]]; then
-    image_name=$(echo "pingu-${fuzzer}-${protocol}-${impl}:${version:-latest}" | tr 'A-Z' 'a-z')
-else
-    # image name is like: pingu-ft/pingu-OpenSSL-TLS-OpenSSL:latest
-    # or: pingu-ft/pingu-OpenSSL-TLS:latest
-    image_name=$(echo "pingu-${fuzzer}-${generator}-${protocol}-${impl}:${version:-latest}" | tr 'A-Z' 'a-z')
-fi
 
 output_tar_prefix="${output}/pingu-${fuzzer}-${protocol}-${impl}"
 log_info "[+] Searching for output folders matching: ${output_tar_prefix}*"

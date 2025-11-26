@@ -10,3 +10,4 @@ volume
 *.code-workspace
 cert/**
 nohup*
+*.tar.gz
