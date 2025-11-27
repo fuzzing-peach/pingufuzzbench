@@ -247,6 +247,10 @@ function run_sgfuzz {
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=5158
     export HFND_FORK_MODE=1
+    export HFND_STATE_DUMP_FILES=${HOME}/ACME_STORE/index.dat
+    export HFND_STATE_DUMP_DIR=${outdir}/state-dump
+
+    mkdir -p ${HFND_STATE_DUMP_DIR}
 
     SGFuzz_ARGS=(
         -max_len=100000

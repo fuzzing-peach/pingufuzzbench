@@ -189,8 +189,8 @@ function run_sgfuzz {
 
     mkdir -p $outdir/replayable-queue
     rm -rf $outdir/replayable-queue/*
-    mkdir -p $outdir/crash
-    rm -rf $outdir/crash/*
+    mkdir -p $outdir/crashes
+    rm -rf $outdir/crashes/*
 
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export AFL_NO_AFFINITY=1

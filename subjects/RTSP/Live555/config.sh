@@ -209,8 +209,8 @@ function run_sgfuzz {
 
     mkdir -p $outdir/replayable-queue
     rm -rf $outdir/replayable-queue/*
-    mkdir -p $outdir/crash
-    rm -rf $outdir/crash/*
+    mkdir -p $outdir/crashes
+    rm -rf $outdir/crashes/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
