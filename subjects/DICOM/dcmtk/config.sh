@@ -233,8 +233,8 @@ function run_sgfuzz {
 
     mkdir -p $outdir/replayable-queue
     rm -rf $outdir/replayable-queue/*
-    mkdir -p $outdir/crash
-    rm -rf $outdir/crash/*
+    mkdir -p $outdir/crashes
+    rm -rf $outdir/crashes/*
 
     if [ ! -d "${HOME}/ACME_STORE" ]; then
         mkdir ${HOME}/ACME_STORE
