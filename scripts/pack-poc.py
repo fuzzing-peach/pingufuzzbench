@@ -54,7 +54,7 @@ def validate_dir(path: Path, desc: str) -> None:
 
 
 def gather_runs(output_dir: Path, fuzzer: str, target: str) -> list[Path]:
-    target = target.replace("/", "_").lower()
+    target = target.replace("/", "-")
     return sorted([d for d in output_dir.iterdir() if d.is_dir() and d.name.find(fuzzer) != -1 and d.name.find(target) != -1])
 
 

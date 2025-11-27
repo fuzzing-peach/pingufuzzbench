@@ -1,8 +1,18 @@
 diff --git a/libhfnetdriver/netdriver.c b/libhfnetdriver/netdriver.c
-index b4230c31..422b1427 100644
+index 3e11f71a..777ad02a 100644
 --- a/libhfnetdriver/netdriver.c
 +++ b/libhfnetdriver/netdriver.c
-@@ -32,9 +32,12 @@
+@@ -2,7 +2,9 @@
+ 
+ #include <arpa/inet.h>
+ #include <errno.h>
++#include <fcntl.h>
+ #include <inttypes.h>
++#include <libgen.h>
+ #include <netinet/in.h>
+ #include <netinet/tcp.h>
+ #include <stdbool.h>
+@@ -32,9 +34,14 @@
  __attribute__((visibility("default"))) __attribute__((used))
  const char *const LIBHFNETDRIVER_module_netdriver = _HF_NETDRIVER_SIG;
  
@@ -15,10 +25,12 @@ index b4230c31..422b1427 100644
 +#define HFND_FORK_MODE_ENV       "HFND_FORK_MODE"
 +#define HFND_FORK_MODE_ARGS_ENV  "HFND_FORK_MODE_ARGS"
 +#define HFND_FORK_MODE_CHILD_ENV "HFND_FORK_MODE_CHILD"
++#define HFND_STATE_DUMP_FILES_ENV "HFND_STATE_DUMP_FILES"
++#define HFND_STATE_DUMP_DIR_ENV   "HFND_STATE_DUMP_DIR"
  
  /* Define this to use receiving timeouts
  #define HFND_RECVTIME 10
-@@ -63,6 +66,21 @@ static struct {
+@@ -63,6 +70,21 @@ static struct {
  extern int HonggfuzzNetDriver_main(int argc, char **argv);
  
  static void *netDriver_mainProgram(void *unused HF_ATTR_UNUSED) {
@@ -40,7 +52,7 @@ index b4230c31..422b1427 100644
      int ret = HonggfuzzNetDriver_main(hfnd_globals.argc_server, hfnd_globals.argv_server);
      LOG_I("Honggfuzz Net Driver (pid=%d): HonggfuzzNetDriver_main() function exited with: %d",
          (int)getpid(), ret);
-@@ -174,7 +192,7 @@ static int netDriver_sockConnAddr(
+@@ -174,7 +196,7 @@ static int netDriver_sockConnAddr(
  #endif /* defined(SOL_TCP) && defined(TCP_QUICKACK) */
      }
  
@@ -49,7 +61,7 @@ index b4230c31..422b1427 100644
  
      LOG_D("Connecting to '%s'", files_sockAddrToStr(addr, socklen));
      if (TEMP_FAILURE_RETRY(connect(sock, addr, socklen)) == -1) {
-@@ -225,6 +243,18 @@ __attribute__((weak)) int HonggfuzzNetDriverArgsForServer(
+@@ -225,6 +247,18 @@ __attribute__((weak)) int HonggfuzzNetDriverArgsForServer(
              argv[i]      = argv[0];
              *server_argc = argc - i;
              *server_argv = &argv[i];
@@ -68,7 +80,155 @@ index b4230c31..422b1427 100644
              return i;
          }
      }
-@@ -387,7 +417,14 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
+@@ -312,6 +346,137 @@ static bool netDriver_connAndAssign(
+     return false;
+ }
+ 
++/*
++ * Copy a file from source to destination
++ * Returns true on success, false on failure
++ */
++static bool netDriver_copyFile(const char *src_path, const char *dst_path) {
++    int src_fd = TEMP_FAILURE_RETRY(open(src_path, O_RDONLY | O_CLOEXEC));
++    if (src_fd == -1) {
++        PLOG_W("Couldn't open source file '%s' for reading", src_path);
++        return false;
++    }
++
++    /* Create destination directory if it doesn't exist */
++    char *dst_path_copy = strdup(dst_path);
++    if (!dst_path_copy) {
++        LOG_W("Couldn't allocate memory for path copy");
++        close(src_fd);
++        return false;
++    }
++    char *dir = dirname(dst_path_copy);
++    if (mkdir(dir, 0755) == -1 && errno != EEXIST) {
++        PLOG_W("Couldn't create destination directory '%s'", dir);
++        free(dst_path_copy);
++        close(src_fd);
++        return false;
++    }
++    free(dst_path_copy);
++
++    int dst_fd = TEMP_FAILURE_RETRY(open(dst_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644));
++    if (dst_fd == -1) {
++        PLOG_W("Couldn't open destination file '%s' for writing", dst_path);
++        close(src_fd);
++        return false;
++    }
++
++    /* Copy file content in chunks */
++    static char buffer[4096];
++    ssize_t     bytes_read;
++    bool        success = true;
++
++    while ((bytes_read = TEMP_FAILURE_RETRY(read(src_fd, buffer, sizeof(buffer)))) > 0) {
++        ssize_t bytes_written = TEMP_FAILURE_RETRY(write(dst_fd, buffer, bytes_read));
++        if (bytes_written != bytes_read) {
++            PLOG_W("Couldn't write all data to destination file '%s'", dst_path);
++            success = false;
++            break;
++        }
++    }
++
++    if (bytes_read == -1) {
++        PLOG_W("Error reading from source file '%s'", src_path);
++        success = false;
++    }
++
++    close(src_fd);
++    close(dst_fd);
++
++    if (!success) {
++        unlink(dst_path);
++        return false;
++    }
++
++    LOG_I("Successfully backed up '%s' to '%s'", src_path, dst_path);
++    return true;
++}
++
++/*
++ * ASAN error report callback function
++ * This function is called when ASAN detects an error
++ */
++static void netDriver_asanErrorCallback(const char *report HF_ATTR_UNUSED) {
++    const char *files_env = getenv(HFND_STATE_DUMP_FILES_ENV);
++    const char *dir_env   = getenv(HFND_STATE_DUMP_DIR_ENV);
++
++    if (!files_env || !dir_env) {
++        LOG_D("ASAN error callback: Environment variables not set, skipping file backup");
++        return;
++    }
++
++    /* Get current process ID */
++    pid_t pid = getpid();
++
++    /* Create crash directory with pid: crash-{pid} */
++    char crash_dir[PATH_MAX];
++    snprintf(crash_dir, sizeof(crash_dir), "%s/crash-%d", dir_env, (int)pid);
++
++    /* Create the crash directory */
++    if (mkdir(crash_dir, 0755) == -1 && errno != EEXIST) {
++        PLOG_W("Couldn't create crash directory '%s'", crash_dir);
++        return;
++    }
++
++    LOG_I("ASAN error detected (pid=%d), backing up state dump files to '%s'", (int)pid, crash_dir);
++
++    /* Create a copy of the files string for tokenization */
++    char *files_str = strdup(files_env);
++    if (!files_str) {
++        LOG_W("Couldn't allocate memory for files string");
++        return;
++    }
++
++    /* Split files by comma and backup each file */
++    char *token = strtok(files_str, ",");
++    while (token != NULL) {
++        /* Trim whitespace */
++        while (*token == ' ' || *token == '\t') {
++            token++;
++        }
++        char *end = token + strlen(token) - 1;
++        while (end > token && (*end == ' ' || *end == '\t')) {
++            *end = '\0';
++            end--;
++        }
++
++        if (strlen(token) > 0) {
++            /* Construct destination path using basename in crash directory */
++            const char *basename_str = files_basename(token);
++            char        dst_path[PATH_MAX];
++            snprintf(dst_path, sizeof(dst_path), "%s/%s", crash_dir, basename_str);
++
++            /* Backup the file */
++            if (!netDriver_copyFile(token, dst_path)) {
++                LOG_W("Failed to backup file '%s' to '%s'", token, dst_path);
++            }
++        }
++
++        token = strtok(NULL, ",");
++    }
++
++    free(files_str);
++}
++
+ static bool netDriver_checkIfServerReady(int argc, char **argv) {
+     struct sockaddr_storage addr     = {.ss_family = AF_UNSPEC};
+     int                     type     = SOCK_STREAM;
+@@ -384,10 +549,24 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
+     /* Make sure LIBHFNETDRIVER_module_netdriver (NetDriver signature) is used */
+     LOG_D("Module: %s", LIBHFNETDRIVER_module_netdriver);
+ 
++    /* Register ASAN error report callback if available */
++    __attribute__((weak)) void __asan_set_error_report_callback(void (*callback)(const char *));
++    if (__asan_set_error_report_callback) {
++        __asan_set_error_report_callback(netDriver_asanErrorCallback);
++        LOG_D("Registered ASAN error report callback for state dump file backup");
++    }
++
      *argc = HonggfuzzNetDriverArgsForServer(
          *argc, *argv, &hfnd_globals.argc_server, &hfnd_globals.argv_server);
  
@@ -84,7 +244,7 @@ index b4230c31..422b1427 100644
      netDriver_startOriginalProgramInThread();
      for (;;) {
          if (netDriver_checkIfServerReady(*argc, *argv)) {
-@@ -470,7 +507,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
+@@ -470,7 +649,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
          }
  #endif
          if (ret == -1) {
@@ -93,3 +253,15 @@ index b4230c31..422b1427 100644
                     "error",
                  (int)getpid(), sock);
              break;
+diff --git a/libhfnetdriver/netdriver.h b/libhfnetdriver/netdriver.h
+index c666c6cd..e30aac3a 100644
+--- a/libhfnetdriver/netdriver.h
++++ b/libhfnetdriver/netdriver.h
+@@ -6,6 +6,7 @@
+ #include <stdint.h>
+ #include <sys/socket.h>
+ #include <sys/types.h>
++#include <sanitizer/common_interface_defs.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
