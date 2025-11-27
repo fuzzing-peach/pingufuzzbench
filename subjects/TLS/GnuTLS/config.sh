@@ -233,7 +233,7 @@ function run_sgfuzz {
         -print_final_stats=1
         -detect_leaks=0
         -max_total_time=$timeout
-        -artifact_prefix="${outdir}/crash/"
+        -artifact_prefix="${outdir}/crashes/"
         "${queue}"
         "${indir}"
     )

@@ -257,8 +257,7 @@ function run_sgfuzz {
         -detect_leaks=0
         -max_total_time=$timeout
         -fork=1
-        -artifact_prefix="${outdir}/crash/"
-        -ignore_crashes=1
+        -artifact_prefix="${outdir}/crashes/"
         "${outdir}/replayable-queue"
         "${indir}"
     )
