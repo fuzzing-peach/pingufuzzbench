@@ -15,10 +15,15 @@ import requests
 from pathlib import Path
 from datetime import datetime
 from typing import Set, Dict
+from urllib.parse import quote
 
 # ==================== 配置区 ====================
 # HTTP 通知配置
-WEBHOOK_URL = "https://bark.kendrickzou.com/qcwgFLCtq9374L6jrpA3mi/"  # 修改为你的 webhook 地址
+WEBHOOK_URL = os.environ.get("BARK_WEBHOOK_URL")  # 从环境变量读取 webhook 地址
+if not WEBHOOK_URL:
+    print("❌ 错误: 未设置 BARK_WEBHOOK_URL 环境变量")
+    sys.exit(1)
+    
 HTTP_METHOD = "GET"  # GET 或 POST
 HTTP_TIMEOUT = 10  # 请求超时时间（秒）
 
@@ -26,7 +31,7 @@ HTTP_TIMEOUT = 10  # 请求超时时间（秒）
 CHECK_INTERVAL = 30  # 检查间隔（秒）
 STATE_FILE = "asan_monitor_state.json"  # 状态文件名
 LOG_FILE = "asan_monitor.log"  # 日志文件名
-MONITOR_DIRS = ["asan", "crashing", "replayable-crashes", "replayable-hangs"]  # 需要监控的目录名称列表
+MONITOR_DIRS = ["asan", "crashing", "replayable-crashes", "replayable-hangs", "crash"]  # 需要监控的目录名称列表
 
 # ================================================
 
@@ -137,18 +142,15 @@ class AsanMonitor:
         
         message = "\n".join(message_parts)
         self.log(message)
-        
+
+        encoded_message = quote(message, safe='')
+        url = WEBHOOK_URL + f"检测到崩溃文件/{encoded_message}?level=passive"
         try:
-            if HTTP_METHOD.upper() == "POST":
-                response = requests.post(
-                    WEBHOOK_URL,
-                    timeout=HTTP_TIMEOUT
-                )
-            else:
-                response = requests.get(
-                    WEBHOOK_URL + "检测到崩溃文件/" + message,
-                    timeout=HTTP_TIMEOUT
-                )
+            print(f"✉️ 发送 HTTP 请求: {url}")
+            response = requests.get(
+                url,
+                timeout=HTTP_TIMEOUT
+            )
             
             if response.status_code == 200:
                 self.log(f"HTTP 通知发送成功 (状态码: {response.status_code})")
@@ -292,10 +294,15 @@ def main():
     
     # 发送启动通知
     try:
+        # URL encode the base_dir path to handle special characters
+        encoded_base_dir = quote(str(base_dir), safe='')
+        url = WEBHOOK_URL + f"启动崩溃文件监控器/监控目录: {encoded_base_dir}?level=passive"
+        print(f"✉️  发送 HTTP 请求: {url}")
         _response = requests.get(
-            WEBHOOK_URL + f"启动崩溃文件监控器/监控目录: {base_dir}",
+            url,
             timeout=HTTP_TIMEOUT
         )
+        print(f"✉️  发送 HTTP 请求成功: {_response.status_code}")
     except Exception as e:
         print(f"⚠️  启动通知发送失败: {e}")
     

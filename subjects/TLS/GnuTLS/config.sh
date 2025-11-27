@@ -11,8 +11,8 @@ function checkout {
     git checkout e840a07
     git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
     git add .
-    git commit -m "apply sgfuzz patch"
-    git rebase master
+    git commit -m "apply fuzzing patch"
+    git rebase "$@"
 
     # # Check if the checkout changed the commit
     # current_commit=$(git rev-parse HEAD)

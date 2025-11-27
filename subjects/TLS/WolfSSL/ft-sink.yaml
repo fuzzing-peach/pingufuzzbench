@@ -1,32 +1,36 @@
 sink:
-  bin-path: "/home/user/target/ft/consumer/wolfssl/examples/server/server"
-  env:
-    - LD_PRELOAD: "libfake_random.so"
-    - FAKE_RANDOM: "1"
-  arguments:
-    [
-      "-p",
-      "4433",
-      "-c",
-      "/home/user/profuzzbench/cert/fullchain.crt",
-      "-k",
-      "/home/user/profuzzbench/cert/server.key",
-      "-e",
-    ]
-  working-dir: "/home/user/target/ft/consumer/wolfssl/"
-  input-type: Tcp
-  output-type: Tcp
-  is-server: true
-  server-port: "4433"
-  log-stdout: true
-  log-stderr: true
-  allow-unstable-sink: true
+    bin-path: "/home/user/target/ft/consumer/wolfssl/examples/server/server"
+    env:
+        - LD_PRELOAD: "libfake_random.so"
+        - FAKE_RANDOM: "1"
+    arguments:
+        [
+            "-C",
+            "10",
+            "-p",
+            "4433",
+            "-c",
+            "/home/user/profuzzbench/cert/fullchain.crt",
+            "-k",
+            "/home/user/profuzzbench/cert/server.key",
+            "-e",
+            "-d",
+            "-r",
+        ]
+    working-dir: "/home/user/target/ft/consumer/wolfssl/"
+    input-type: Tcp
+    output-type: Tcp
+    is-server: true
+    server-port: "4433"
+    log-stdout: true
+    log-stderr: true
+    allow-unstable-sink: true
 
 gcov:
-  bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
-  cwd: "/home/user/target/gcov/consumer/wolfssl/"
-  env:
-    - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
-    - FAKE_RANDOM: "1"
-  src-dir: "/home/user/target/gcov/consumer/wolfssl"
-  reporter: gcovr
+    bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
+    cwd: "/home/user/target/gcov/consumer/wolfssl/"
+    env:
+        - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
+        - FAKE_RANDOM: "1"
+    src-dir: "/home/user/target/gcov/consumer/wolfssl"
+    reporter: gcovr

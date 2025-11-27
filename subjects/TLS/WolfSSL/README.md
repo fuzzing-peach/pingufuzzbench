@@ -8,10 +8,11 @@ Please carefully read the [main README.md](../../../README.md), which is stored 
 
 ## Supported target version
 
-| Date       | Tag | Commit     |
-| ---------- | --- | ---------- |
-| 2023-06-15 | -   | [66596a]() |
-
+| Date       | Tag           | Commit      | CVE            |
+| ---------- | ------------- | ----------- | -------------- |
+| 2023-06-15 | v5.6.6-stable | [66596ad]() |
+| 2022-07-12 | v5.4.0-stable | [57aac1c]() | CVE-2022-39173 |
+ 
 ## Target
 
 **examples/server/server**

@@ -15,6 +15,7 @@ sink:
 
 gcov:
   bin-path: "/home/user/target/gcov/consumer/live555/testProgs/testOnDemandRTSPServer"
+  cwd: "/home/user/target/gcov/consumer/live555/testProgs"
   env:
     - LD_PRELOAD: "libgcov_preload.so"
   src-dir: "/home/user/target/gcov/consumer/live555"

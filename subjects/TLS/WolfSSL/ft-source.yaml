@@ -3,7 +3,13 @@ source:
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
-  arguments: ["-p", "4433", "-A", "/home/user/profuzzbench/cert/ca.crt"]
+  arguments: [
+    "-r", 
+    "-p", 
+    "4433", 
+    "-A", 
+    "/home/user/profuzzbench/cert/ca.crt"
+  ]
   working-dir: "/home/user/target/ft/generator/wolfssl"
   input-type: Tcp
   output-type: Tcp

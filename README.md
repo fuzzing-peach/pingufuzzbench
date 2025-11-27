@@ -20,10 +20,10 @@ For contributor expectations and workflow tips, see [AGENTS.md](AGENTS.md).
 | [MQTT/mosquitto]() |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/openssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
 | [TLS/wolfssl]()    |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
-| [TLS/libressl]()   |           |          |            |          |          |             |             |            |
-| [TLS/boringssl]()  |           |          |            |          |          |             |             |            |
+| TLS/libressl       |           |          |            |          |          |             |             |            |
+| TLS/boringssl      |           |          |            |          |          |             |             |            |
 | [TLS/gnutls]()     |           | ✅        | ✅          | ✅        | ✅        |             |             |            |
-| [TLS/s2n]()        |           |          |            |          |          |             |             |            |
+| TLS/s2n            |           |          |            |          |          |             |             |            |
 | [SSH/openssh]()    |           |          |            |          |          |             |             |            |
 | [SSH/wolfssh]()    |           |          |            |          |          |             |             |            |
 | [SSH/dropbear]()   |           |          |            |          |          |             |             |            |

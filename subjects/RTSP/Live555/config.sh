@@ -21,7 +21,7 @@ function replay {
     wait
 
     # 再次 kill 进程一次，确保进程停止
-    pkill testOnDemandR
+    pkill testOnDemandRTSPServer
 }
 
 function build_aflnet {
@@ -33,7 +33,7 @@ function build_aflnet {
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
     export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -60,6 +60,7 @@ function run_aflnet {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
+    export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -91,7 +92,7 @@ function build_stateafl {
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
     export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING"
-    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING"
+    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -119,6 +120,7 @@ function run_stateafl {
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
+    export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
@@ -155,7 +157,7 @@ function build_sgfuzz {
     export CC=wllvm
     export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
-    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion -std=c++20"
     
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
@@ -273,7 +275,7 @@ function build_ft_generator {
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++
     export CFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O0 -g -DFT_FUZZING -DFT_GENERATOR -std=c++20"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
@@ -300,7 +302,7 @@ function build_ft_consumer {
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
     export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -366,8 +368,8 @@ function build_gcov {
     pushd target/gcov/consumer/live555 >/dev/null
 
     export CFLAGS="-fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-fprofile-arcs -ftest-coverage"
+    export CPPFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
+    export CXXFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
     ./genMakefiles linux
