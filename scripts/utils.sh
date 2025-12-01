@@ -225,3 +225,35 @@ get_lowest_load_cpus() {
 
     echo "$cpu_list" | tr '\n' ' ' | sed 's/ $//'
 }
+
+function crash_dir {
+    if [[ "${FUZZER}" == "aflnet" || "${FUZZER}" == "stateafl" ]]; then
+        echo "replayable-crashes"
+    elif [[ "${FUZZER}" == "sgfuzz" ]]; then
+        echo "crashes"
+    fi
+}
+
+function collect_asan_reports {
+    local crash_dir="$1"
+    local replayer="$2"
+    local clean_cmd="$3"
+    local text_ext="txt|log|md|csv|json|xml|yml|yaml|ini|conf|cfg|html|htm|py|sh|c|cpp|h|hpp|java|rb|js|ts"
+
+    find "$crash_dir" -type f | while read -r file; do
+        local ext="${file##*.}"
+        if [[ "$file" =~ \.($text_ext)$ ]]; then
+            continue
+        fi
+
+        if [ -n "$clean_cmd" ]; then
+            eval "$clean_cmd"        
+        fi
+
+        output=$($replayer "$file")
+        if echo "$output" | grep -q "ERROR: AddressSanitizer:"; then
+            echo "$output" | awk '/ERROR: AddressSanitizer:/ {print_flag=1} print_flag' > "${dir}/${crash_dir}-asan-replay.txt"
+        fi
+        
+    done
+}
