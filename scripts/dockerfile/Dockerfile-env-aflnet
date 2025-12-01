@@ -111,7 +111,7 @@ RUN git clone https://github.com/stateafl/libfaketime-asan-fixed libfaketime-asa
     git checkout 7e46ea4 && \
     cd src && \
     make ${MAKE_OPT} && \
-    cp libfaketime.so.1 ${HOME}/libfaketime.so
+    cp libfaketime.so.1 ${HOME}/libfaketime.so.1
 
 RUN sudo touch "/etc/ld.so.conf.d/custom.conf" && \
     echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/custom.conf" && \

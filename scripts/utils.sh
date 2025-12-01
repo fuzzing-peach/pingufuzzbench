@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+export FAKETIME="2025-12-01 11:11:11"
+
 USER_SUFFIX="$(id -u -n)"
 
 text_red=$(tput setaf 1)   # Red

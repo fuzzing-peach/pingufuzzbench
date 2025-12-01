@@ -20,7 +20,9 @@ function checkout {
 
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 DICOM 5158 1 &
-    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so:libfaketime.so.1 \
+    FAKE_RANDOM=1 \
+    FAKETIME_ONLY_CMDS="dcmqrscp" \
         timeout -k 0 -s SIGTERM 1s ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
     wait
 
@@ -71,8 +73,7 @@ function run_aflnet {
     fi
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so,libfaketime.so.1
-    export FAKETIME="2000-01-01 11:12:13"
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
     export FAKETIME_ONLY_CMDS="dcmqrscp"
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
@@ -147,7 +148,8 @@ function run_stateafl {
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
+    export FAKETIME_ONLY_CMDS="dcmqrscp"
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
@@ -255,9 +257,6 @@ function run_sgfuzz {
     fi
 
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
-    export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
-    export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=5158
     export HFND_FORK_MODE=1
@@ -295,7 +294,9 @@ function run_sgfuzz {
 
     function replay {
         /home/user/aflnet/afl-replay $1 DICOM 5158 1 &
-        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so \
+        FAKE_RANDOM=1 \
+        FAKETIME_ONLY_CMDS="dcmqrscp" \
             timeout -k 0 1s ./build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg
 
         wait
@@ -307,6 +308,18 @@ function run_sgfuzz {
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"    
     clean_cmd="rm -f ${HOME}/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
+
+    function replay_poc {
+        ${HOME}/aflnet/afl-replay $1 DICOM 5158 1 &
+        err_output=$(timeout -k 0 -s SIGTERM 1s ${HOME}/target/asan/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg > /dev/null)
+        wait
+
+        pkill dcmqrscp
+
+        echo "$err_output"
+    }
+
+    collect_asan_reports "/tmp/fuzzing-output/crashes" replay_poc "$clean_cmd"
 
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
