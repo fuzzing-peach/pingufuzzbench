@@ -27,6 +27,16 @@ function replay {
     pkill dcmqrscp
 }
 
+function replay_poc {
+    ${HOME}/aflnet/aflnet-replay $1 DICOM 5158 1 &
+    err_output=$(timeout -k 0 -s SIGTERM 1s ${HOME}/target/asan/dcmtk/build/bin/dcmqrscp --single-process --config ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg > /dev/null)
+    wait
+
+    pkill dcmqrscp
+
+    echo "$err_output"
+}
+
 function build_aflnet {
     mkdir -p target/aflnet
     rm -rf target/aflnet/*
@@ -35,8 +45,8 @@ function build_aflnet {
 
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
-    export CFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER -DASAN_REPORT_HOOK"
+    export CXXFLAGS="-O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER -DASAN_REPORT_HOOK"
     export LDFLAGS="-fsanitize=address"
 
     mkdir build && cd build
@@ -64,9 +74,10 @@ function run_aflnet {
     export AFL_PRELOAD=libfake_random.so
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export DCMDICTPATH=${HOME}/profuzzbench/subjects/DICOM/dcmtk/dicom.dic
     export WORKDIR=${HOME}/target/aflnet/dcmtk/build/bin
+    export ASAN_REPORT_PATH=${outdir}/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
@@ -88,6 +99,9 @@ function run_aflnet {
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
 
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    collect_asan_reports "/tmp/fuzzing-output/replayable-crashes" replay_poc "$clean_cmd"
+
     popd >/dev/null
 }
 
@@ -102,8 +116,8 @@ function build_stateafl {
     export ASAN_OPTIONS=detect_leaks=0
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
-    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER -DASAN_REPORT_HOOK"
+    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER -DASAN_REPORT_HOOK"
     export LDFLAGS="-fsanitize=address"
 
     mkdir build && cd build
@@ -134,10 +148,8 @@ function run_stateafl {
     export AFL_PRELOAD=libfake_random.so
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
-
-    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ./
-    sed -i 's/aflnet/stateafl/g' dcmqrscp.cfg
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export ASAN_REPORT_PATH=${outdir}/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
@@ -151,9 +163,6 @@ function run_stateafl {
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.c /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
     cp /home/user/repo/dcmtk/dcmdata/libsrc/vrscanl.l /home/user/target/gcov/consumer/dcmtk/build/dcmdata/libsrc/CMakeFiles/dcmdata.dir
 
-    cp ${HOME}/profuzzbench/subjects/DICOM/dcmtk/dcmqrscp.cfg ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
-    sed -i 's/aflnet/gcov/consumer/g' ${HOME}/target/gcov/consumer/dcmtk/build/bin/dcmqrscp.cfg
-
     cd ${HOME}/target/gcov/consumer/dcmtk
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/ACME_STORE/*"
@@ -161,6 +170,9 @@ function run_stateafl {
 
     mkdir -p ${outdir}/cov_html
     gcovr -r . --html --html-details -o ${outdir}/cov_html/index.html
+
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    collect_asan_reports "/tmp/fuzzing-output/replayable-crashes" replay_poc "$clean_cmd"
 
     popd >/dev/null
 }
@@ -248,7 +260,7 @@ function run_sgfuzz {
     export HFND_TCP_PORT=5158
     export HFND_FORK_MODE=1
     export HFND_STATE_DUMP_FILES=${HOME}/ACME_STORE/index.dat
-    export HFND_STATE_DUMP_DIR=${outdir}/state-dump
+    export HFND_STATE_DUMP_DIR=${outdir}/crashes-dump
 
     mkdir -p ${HFND_STATE_DUMP_DIR}
 
@@ -402,6 +414,39 @@ function build_gcov {
     make dcmqrscp ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
+
+    popd >/dev/null
+}
+
+function build_asan {
+    if [ ! -d ".git-cache/dcmtk" ]; then
+        git clone --no-single-branch https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
+    fi
+
+    mkdir -p repo
+    cp -r .git-cache/dcmtk repo/dcmtk-raw
+
+    pushd repo/dcmtk >/dev/null
+
+    git fetch --unshallow
+    git rebase "$1"
+    
+    popd >/dev/null
+
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/dcmtk-raw target/asan/dcmtk
+    pushd target/asan/dcmtk >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O0 -g -fsanitize=address"
+    export CXXFLAGS="-O0 -g -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+
+    mkdir build && cd build
+    cmake ..
+    make dcmqrscp ${MAKE_OPT}
 
     popd >/dev/null
 }
