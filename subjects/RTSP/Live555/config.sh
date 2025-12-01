@@ -393,15 +393,10 @@ function build_gcov {
     cp -r repo/live555 target/gcov/consumer/live555
     pushd target/gcov/consumer/live555 >/dev/null
 
-    export CC=clang
-    export CXX=clang++
     export CFLAGS="-fprofile-arcs -ftest-coverage"
+    export CPPFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
-
-    sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
-    sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
-    sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
 
     ./genMakefiles linux
     make ${MAKE_OPT}
