@@ -1,5 +1,5 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index f08b941..586b623 100644
+index f08b941..a900479 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
 @@ -1214,6 +1214,19 @@ static void bind_to_free_cpu(void) {
@@ -77,6 +77,17 @@ index f08b941..586b623 100644
 +                        unique_crashes, get_cur_time() - start_time, kill_signal, describe_op(0));
  
  #else
+ 
+@@ -8550,8 +8563,8 @@ static void check_asan_opts(void) {
+     if (!strstr(x, "abort_on_error=1"))
+       FATAL("Custom ASAN_OPTIONS set without abort_on_error=1 - please fix!");
+ 
+-    if (!strstr(x, "symbolize=0"))
+-      FATAL("Custom ASAN_OPTIONS set without symbolize=0 - please fix!");
++    //if (!strstr(x, "symbolize=0"))
++    //  FATAL("Custom ASAN_OPTIONS set without symbolize=0 - please fix!");
+ 
+   }
  
 @@ -9088,6 +9101,9 @@ int main(int argc, char** argv) {
          }else if (!strcmp(optarg, "SNMP")) {

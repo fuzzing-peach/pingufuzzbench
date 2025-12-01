@@ -28,7 +28,7 @@ index 332ac2b..307bf61 100644
  
  GenericMediaServer::ClientSession*
 diff --git a/testProgs/testOnDemandRTSPServer.cpp b/testProgs/testOnDemandRTSPServer.cpp
-index 131c21e..86b3f15 100644
+index 131c21e..9b30e94 100644
 --- a/testProgs/testOnDemandRTSPServer.cpp
 +++ b/testProgs/testOnDemandRTSPServer.cpp
 @@ -18,12 +18,13 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
@@ -46,7 +46,7 @@ index 131c21e..86b3f15 100644
  
  // To make the second and subsequent client for each stream reuse the same
  // input stream as the first client (rather than playing the file from the
-@@ -35,30 +36,105 @@ Boolean reuseFirstSource = False;
+@@ -35,30 +36,156 @@ Boolean reuseFirstSource = False;
  // change the following "False" to "True":
  Boolean iFramesOnly = False;
  
@@ -55,7 +55,7 @@ index 131c21e..86b3f15 100644
 +int standardPort = 8554;
 +int tlsPort = 322;
 +
-+char eventLoopWatchVariable = 0;
++EventLoopWatchVariable eventLoopWatchVariable = 0;
 +
 +static void announceStream(RTSPServer *rtspServer, ServerMediaSession *sms,
 +                           char const *streamName, char const *inputFileName); // forward
@@ -133,12 +133,63 @@ index 131c21e..86b3f15 100644
 +  return new OneShotRTSPServer(env, ourSocketIPv4, ourSocketIPv6, ourPort, authDatabase, reclamationSeconds);
 +}
 +
++#ifdef ASAN_REPORT_HOOK
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <unistd.h>
++#include <sys/types.h>
++#include <sanitizer/asan_interface.h>
++
++#define ASAN_REPORT_PATH_ENV "ASAN_REPORT_PATH"
++
++void asan_report_callback(const char* report) {
++    pid_t pid = getpid();
++    char pid_str[32], file_path[512];
++    snprintf(pid_str, sizeof(pid_str), "%d", pid);
++
++    char *env_path = getenv(ASAN_REPORT_PATH_ENV);
++    if (!env_path || !env_path[0]) return;
++
++    strcpy(file_path, env_path);
++    size_t len = strlen(file_path);
++    if (len > 0 && file_path[len-1] != '/') strcat(file_path, "/");
++    strcat(file_path, pid_str);
++    strcat(file_path, "-asan-rt.txt");
++
++    FILE *fp = fopen(file_path, "a");
++    if (!fp) return;
++
++    time_t now = time(NULL);
++    fprintf(fp, "\n========== ASAN Report ==========\n");
++    fprintf(fp, "Time: %s", ctime(&now));
++    fprintf(fp, "PID: %d\n", pid);
++    fprintf(fp, "Report:\n%s", report);
++    fprintf(fp, "==================================\n");
++    fclose(fp);
++}
++
++int init_asan_report_hook(void) {
++    char *env_path = getenv(ASAN_REPORT_PATH_ENV);
++    if (env_path && env_path[0]) {
++        __asan_set_error_report_callback(asan_report_callback);
++        return 1;
++    }
++    return 0;
++}
++#endif
++
 +#ifdef SGFUZZ
 +extern "C" int HonggfuzzNetDriver_main(int argc, char ** argv)
 +#else
 +int main(int argc, char ** argv)
 +#endif
 +{
++#ifdef ASAN_REPORT_HOOK
++  init_asan_report_hook();
++#endif
    // Begin by setting up our usage environment:
 -  TaskScheduler* scheduler = BasicTaskScheduler::createNew();
 +  TaskScheduler *scheduler = BasicTaskScheduler::createNew();
@@ -161,7 +212,7 @@ index 131c21e..86b3f15 100644
    // To implement client access control to the RTSP server, do the following:
    authDB = new UserAuthenticationDatabase;
    authDB->addUserRecord("username1", "password1"); // replace these with real strings
-@@ -66,15 +142,17 @@ int main(int argc, char** argv) {
+@@ -66,15 +193,17 @@ int main(int argc, char** argv) {
    // access to the server.
  #endif
  
@@ -183,7 +234,7 @@ index 131c21e..86b3f15 100644
      *env << "Failed to create RTSP server: " << env->getResultMsg() << "\n";
      exit(1);
    }
-@@ -83,11 +161,10 @@ int main(int argc, char** argv) {
+@@ -83,11 +212,10 @@ int main(int argc, char** argv) {
  #define STREAM_USING_SRTP True
  #endif
    rtspServer->setTLSState(PATHNAME_TO_CERTIFICATE_FILE, PATHNAME_TO_PRIVATE_KEY_FILE,
@@ -197,7 +248,7 @@ index 131c21e..86b3f15 100644
  
    // Set up each of the possible streams that can be served by the
    // RTSP server.  Each such stream is implemented using a
-@@ -96,13 +173,11 @@ int main(int argc, char** argv) {
+@@ -96,13 +224,11 @@ int main(int argc, char** argv) {
  
    // A MPEG-4 video elementary stream:
    {
@@ -216,7 +267,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -110,13 +185,11 @@ int main(int argc, char** argv) {
+@@ -110,13 +236,11 @@ int main(int argc, char** argv) {
  
    // A H.264 video elementary stream:
    {
@@ -235,7 +286,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -124,13 +197,11 @@ int main(int argc, char** argv) {
+@@ -124,13 +248,11 @@ int main(int argc, char** argv) {
  
    // A H.265 video elementary stream:
    {
@@ -254,7 +305,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -138,14 +209,12 @@ int main(int argc, char** argv) {
+@@ -138,14 +260,12 @@ int main(int argc, char** argv) {
  
    // A MPEG-1 or 2 audio+video program stream:
    {
@@ -274,7 +325,7 @@ index 131c21e..86b3f15 100644
      sms->addSubsession(demux->newVideoServerMediaSubsession(iFramesOnly));
      sms->addSubsession(demux->newAudioServerMediaSubsession());
      rtspServer->addServerMediaSession(sms);
-@@ -155,14 +224,12 @@ int main(int argc, char** argv) {
+@@ -155,14 +275,12 @@ int main(int argc, char** argv) {
  
    // A MPEG-1 or 2 video elementary stream:
    {
@@ -294,7 +345,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -170,31 +237,28 @@ int main(int argc, char** argv) {
+@@ -170,31 +288,28 @@ int main(int argc, char** argv) {
  
    // A MP3 audio stream (actually, any MPEG-1 or 2 audio file will work):
    // To stream using 'ADUs' rather than raw MP3 frames, uncomment the following:
@@ -340,7 +391,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -202,16 +266,14 @@ int main(int argc, char** argv) {
+@@ -202,16 +317,14 @@ int main(int argc, char** argv) {
  
    // A WAV audio stream:
    {
@@ -362,7 +413,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -219,13 +281,11 @@ int main(int argc, char** argv) {
+@@ -219,13 +332,11 @@ int main(int argc, char** argv) {
  
    // An AMR audio stream:
    {
@@ -381,7 +432,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -233,14 +293,12 @@ int main(int argc, char** argv) {
+@@ -233,14 +344,12 @@ int main(int argc, char** argv) {
  
    // A 'VOB' file (e.g., from an unencrypted DVD):
    {
@@ -401,7 +452,7 @@ index 131c21e..86b3f15 100644
      sms->addSubsession(demux->newVideoServerMediaSubsession(iFramesOnly));
      sms->addSubsession(demux->newAC3AudioServerMediaSubsession());
      rtspServer->addServerMediaSession(sms);
-@@ -250,14 +308,12 @@ int main(int argc, char** argv) {
+@@ -250,14 +359,12 @@ int main(int argc, char** argv) {
  
    // A MPEG-2 Transport Stream:
    {
@@ -422,7 +473,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -265,13 +321,11 @@ int main(int argc, char** argv) {
+@@ -265,13 +372,11 @@ int main(int argc, char** argv) {
  
    // An AAC audio stream (ADTS-format file):
    {
@@ -441,7 +492,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -280,15 +334,13 @@ int main(int argc, char** argv) {
+@@ -280,15 +385,13 @@ int main(int argc, char** argv) {
    // A DV video stream:
    {
      // First, make sure that the RTPSinks' buffers will be large enough to handle the huge size of DV frames (as big as 288000).
@@ -464,7 +515,7 @@ index 131c21e..86b3f15 100644
      rtspServer->addServerMediaSession(sms);
  
      announceStream(rtspServer, sms, streamName, inputFileName);
-@@ -296,14 +348,12 @@ int main(int argc, char** argv) {
+@@ -296,14 +399,12 @@ int main(int argc, char** argv) {
  
    // A AC3 video elementary stream:
    {
@@ -484,7 +535,7 @@ index 131c21e..86b3f15 100644
  
      rtspServer->addServerMediaSession(sms);
  
-@@ -312,23 +362,24 @@ int main(int argc, char** argv) {
+@@ -312,23 +413,24 @@ int main(int argc, char** argv) {
  
    // A Matroska ('.mkv') file, with video+audio+subtitle streams:
    {
@@ -517,7 +568,7 @@ index 131c21e..86b3f15 100644
        rtspServer->addServerMediaSession(sms);
      }
      // otherwise, because the stream has no tracks, we don't add a ServerMediaSession to the server.
-@@ -339,23 +390,24 @@ int main(int argc, char** argv) {
+@@ -339,23 +441,24 @@ int main(int argc, char** argv) {
    // A WebM ('.webm') file, with video(VP8)+audio(Vorbis) streams:
    // (Note: ".webm' files are special types of Matroska files, so we use the same code as the Matroska ('.mkv') file code above.)
    {
@@ -550,7 +601,7 @@ index 131c21e..86b3f15 100644
        rtspServer->addServerMediaSession(sms);
      }
      // otherwise, because the stream has no tracks, we don't add a ServerMediaSession to the server.
-@@ -365,23 +417,24 @@ int main(int argc, char** argv) {
+@@ -365,23 +468,24 @@ int main(int argc, char** argv) {
  
    // An Ogg ('.ogg') file, with video and/or audio streams:
    {
@@ -583,7 +634,7 @@ index 131c21e..86b3f15 100644
        rtspServer->addServerMediaSession(sms);
      }
      // otherwise, because the stream has no tracks, we don't add a ServerMediaSession to the server.
-@@ -392,23 +445,24 @@ int main(int argc, char** argv) {
+@@ -392,23 +496,24 @@ int main(int argc, char** argv) {
    // An Opus ('.opus') audio file:
    // (Note: ".opus' files are special types of Ogg files, so we use the same code as the Ogg ('.ogg') file code above.)
    {
@@ -616,7 +667,7 @@ index 131c21e..86b3f15 100644
        rtspServer->addServerMediaSession(sms);
      }
      // otherwise, because the stream has no tracks, we don't add a ServerMediaSession to the server.
-@@ -418,24 +472,25 @@ int main(int argc, char** argv) {
+@@ -418,24 +523,25 @@ int main(int argc, char** argv) {
  
    // A MPEG-2 Transport Stream, coming from a live UDP (raw-UDP or RTP/UDP) source:
    {
@@ -655,7 +706,7 @@ index 131c21e..86b3f15 100644
        *env << "unicast;";
      }
      *env << " port " << inputPortNum << ")\n";
-@@ -448,25 +503,30 @@ int main(int argc, char** argv) {
+@@ -448,25 +554,30 @@ int main(int argc, char** argv) {
  
  #ifdef SERVER_USE_TLS
    // (Attempt to) use the default HTTPS port (443) instead:

@@ -159,6 +159,11 @@ gcov)
     source $target_config
     in_subshell build_gcov "$@"
     ;;
+asan)
+    # Build the asan version, which is used to generate ASan reports.
+    source $target_config
+    in_subshell "$cmd"_asan "$@"
+    ;;
 all)
     echo "[!] Not implemented for 'all'"
     ;;

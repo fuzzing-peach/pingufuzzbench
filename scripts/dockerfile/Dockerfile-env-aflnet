@@ -99,16 +99,22 @@ RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
 
 # Build libgcov_preload.so
 COPY scripts/gcov_preload.c gcov_preload.c
-RUN gcc -shared -fpic gcov_preload.c -g -o libgcov_preload.so && \
-    sudo touch "/etc/ld.so.conf.d/gcov.conf" && \
-    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/gcov.conf" && \
-    sudo ldconfig
+RUN gcc -shared -fpic gcov_preload.c -g -o libgcov_preload.so
 
 # Build libfake_random.so
 COPY scripts/fake_random.c fake_random.c
-RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so && \
-    sudo touch "/etc/ld.so.conf.d/fake_random.conf" && \
-    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/fake_random.conf" && \
+RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so
+
+# For deterministic timestamps
+RUN git clone https://github.com/stateafl/libfaketime-asan-fixed libfaketime-asan-fixed && \
+    cd libfaketime-asan-fixed && \
+    git checkout 7e46ea4 && \
+    cd src && \
+    make ${MAKE_OPT} && \
+    cp libfaketime.so.1 ${HOME}/libfaketime.so.1
+
+RUN sudo touch "/etc/ld.so.conf.d/custom.conf" && \
+    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/custom.conf" && \
     sudo ldconfig
 
 # Disable ASLR
