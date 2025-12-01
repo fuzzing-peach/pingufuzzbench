@@ -71,7 +71,9 @@ function run_aflnet {
     fi
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so,libfaketime.so.1
+    export FAKETIME="2000-01-01 11:12:13"
+    export FAKETIME_ONLY_CMDS="dcmqrscp"
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
