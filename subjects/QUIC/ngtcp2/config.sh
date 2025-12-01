@@ -132,7 +132,7 @@ function run_quicfuzz {
 
     mkdir -p $outdir
 
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     # setsid ./run_common.sh ngtcp2 10 ../results/ quic-fuzz/aflnet out-ngtcp2-quic-fuzz '-a /tmp/quic-fuzz/aflnet/sabre -A /tmp/quic-fuzz/aflnet/libsnapfuzz.so -p 0 -y -m none -P QUIC -q 3 -s 3 -E -K' 86400 5 1 > ngtcp2_quic_snap_aflnet.log 2>&1 &
     timeout -k 0 --preserve-status $timeout \
