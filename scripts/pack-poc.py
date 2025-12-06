@@ -14,7 +14,7 @@ from typing import Sequence
 POC_DIR_WHITELIST: dict[str, Sequence[str]] = {
     "aflnet": ("replayable-hangs", "replayable-crashes"),
     "stateafl": ("replayable-hangs", "replayable-crashes"),
-    "sgfuzz": ("crash",),
+    "sgfuzz": ("crashes",),
 }
 
 

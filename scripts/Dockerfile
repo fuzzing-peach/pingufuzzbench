@@ -36,6 +36,9 @@ RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     --mount=type=cache,target=/home/user/.git-cache,uid=${UID},gid=${GID} \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} checkout ${VERSION}"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
+    --mount=type=cache,target=/home/user/.git-cache,uid=${UID},gid=${GID} \
+    /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build asan ${VERSION}"
+RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build gcov"
 RUN --mount=type=bind,source=.,target=/home/user/profuzzbench \
     /bin/bash -c "set -euxo pipefail && bash ${HOME}/profuzzbench/scripts/dispatch.sh ${TARGET} build ${FUZZER}"

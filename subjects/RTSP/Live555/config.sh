@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/live555" ]; then
+        git clone --no-single-branch https://github.com/rgaufman/live555.git .git-cache/live555
+    fi
+    
     mkdir -p repo
-    git clone https://github.com/rgaufman/live555.git repo/live555
+    cp -r .git-cache/live555 repo/live555
     pushd repo/live555 >/dev/null
-    git checkout "$@"
+
+    git fetch --unshallow
+    git checkout 2c92a57
     git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-live555.patch
+    git add .
+    git commit -m "apply fuzzing patch"
+    git rebase "$@"
     
     popd >/dev/null
 }
@@ -15,13 +24,25 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 RTSP 8554 1 &
 
     # 预加载gcov和伪随机库，并限制服务器运行3秒
-    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so:libfaketime.so.1 \
+    FAKE_RANDOM=1 \
+    FAKETIME_ONLY_CMDS="testOnDemandRTSPServer" \
         timeout -k 0 3s ./testOnDemandRTSPServer 8554
 
     wait
 
     # 再次 kill 进程一次，确保进程停止
     pkill testOnDemandRTSPServer
+}
+
+function replay_poc {
+    ${HOME}/aflnet/aflnet-replay $1 RTSP 8554 1 &
+    err_output=$(timeout -k 0 -s SIGTERM 1s ./testOnDemandRTSPServer 8554 > /dev/null)
+    wait
+
+    pkill testOnDemandRTSPServer
+
+    echo "$err_output"
 }
 
 function build_aflnet {
@@ -32,8 +53,8 @@ function build_aflnet {
 
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
-    export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -std=c++20"
+    export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -DASAN_REPORT_HOOK"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -std=c++20 -DASAN_REPORT_HOOK"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -59,15 +80,16 @@ function run_aflnet {
     rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export FAKETIME_ONLY_CMDS="testOnDemandRTSPServer"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/8554 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
+        -P RTSP -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./testOnDemandRTSPServer 8554
 
     cd ${HOME}/target/gcov/consumer/live555/testProgs
@@ -80,6 +102,8 @@ function run_aflnet {
     mkdir -p ${outdir}/cov_html
     gcovr -r .. --html --html-details -o ${outdir}/cov_html/index.html
 
+    collect_asan_reports "/tmp/fuzzing-output/replayable-crashes" replay_poc "$clean_cmd"
+
     popd >/dev/null
 }
 
@@ -91,8 +115,8 @@ function build_stateafl {
    
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
-    export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING"
-    export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -std=c++20"
+    export CFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -DASAN_REPORT_HOOK"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -fsanitize=address -DASAN_REPORT_HOOK -std=c++20"
     export LDFLAGS="-fsanitize=address"
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
@@ -100,7 +124,9 @@ function build_stateafl {
     sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
 
     ./genMakefiles linux
-    make -j
+    make ${MAKE_OPT}
+
+    rm -rf fuzz test .git doc
 
     popd >/dev/null
 }
@@ -119,15 +145,16 @@ function run_stateafl {
     rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
+    export FAKETIME_ONLY_CMDS="testOnDemandRTSPServer"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/8554 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -m none -t 1000 \
+        -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 1000 \
         ./testOnDemandRTSPServer 8554
     
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
@@ -309,7 +336,7 @@ function build_ft_consumer {
     sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
     
     ./genMakefiles linux
-    make ${MAKE_OPT}
+    make testOnDemandRTSPServer ${MAKE_OPT}
 
     popd >/dev/null
 }
@@ -367,16 +394,54 @@ function build_gcov {
     pushd target/gcov/consumer/live555 >/dev/null
 
     export CFLAGS="-fprofile-arcs -ftest-coverage"
-    export CPPFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
+    export CPPFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage -std=c++20"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
     ./genMakefiles linux
     make ${MAKE_OPT}
 
+    rm -rf fuzz test .git doc
+
     popd >/dev/null
 }
 
 function install_dependencies {
     echo "No dependencies"
+}
+
+function build_asan {
+    if [ ! -d ".git-cache/live555" ]; then
+        git clone --no-single-branch https://github.com/rgaufman/live555.git .git-cache/live555
+    fi
+
+    mkdir -p repo
+    cp -r .git-cache/live555 repo/live555-raw
+
+    pushd repo/live555-raw >/dev/null
+
+    git fetch --unshallow
+    git rebase "$1"
+
+    popd >/dev/null
+
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/live555-raw target/asan/live555
+    pushd target/asan/live555 >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-fsanitize=address -g"
+    export CXXFLAGS="-fsanitize=address -g -std=c++20"
+    export LDFLAGS="-fsanitize=address"
+
+    sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
+    sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
+    sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
+
+    ./genMakefiles linux
+    make ${MAKE_OPT}
+
+    popd >/dev/null
 }
