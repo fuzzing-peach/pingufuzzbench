@@ -80,12 +80,12 @@ function build_quicfuzz {
     autoreconf -i
     export CC=${HOME}/quic-fuzz/aflnet/afl-clang-fast
     export CXX=${HOME}/quic-fuzz/aflnet/afl-clang-fast++
-    export PKG_CONFIG_PATH=${HOME}/target/quicfuzz/wolfssl/build/lib/pkgconfig:${HOME}/target/quicfuzz/nghttp3/build/lib/pkgconfig
+    export PKG_CONFIG_PATH=${PWD}/wolfssl/build/lib/pkgconfig:${PWD}/nghttp3/build/lib/pkgconfig
     ./configure --with-wolfssl --disable-shared --enable-static
     export AFL_USE_ASAN=1
-    export CFLAGS="-fsanitize=address"
-    export CXXFLAGS="-fsanitize=address" 
-    export LDFLAGS="-fsanitize=address" 
+    export CFLAGS="-fsanitize=address -g"
+    export CXXFLAGS="-fsanitize=address -g"
+    export LDFLAGS="-fsanitize=address -g"
     make ${MAKE_OPT} check
     popd >/dev/null
 }
@@ -113,11 +113,11 @@ function build_gcov {
     autoreconf -i
     export CC=${HOME}/quic-fuzz/aflnet/afl-clang-fast
     export CXX=${HOME}/quic-fuzz/aflnet/afl-clang-fast++
-    export PKG_CONFIG_PATH=${HOME}/target/quicfuzz/wolfssl/build/lib/pkgconfig:${HOME}/target/quicfuzz/nghttp3/build/lib/pkgconfig
+    export PKG_CONFIG_PATH=${PWD}/wolfssl/build/lib/pkgconfig:${PWD}/nghttp3/build/lib/pkgconfig
     ./configure --with-wolfssl --disable-shared --enable-static
     export CFLAGS="-fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="-fprofile-arcs -ftest-coverage" 
-    export LDFLAGS="-fprofile-arcs -ftest-coverage" 
+    export CXXFLAGS="-fprofile-arcs -ftest-coverage"
+    export LDFLAGS="-fprofile-arcs -ftest-coverage"
     make ${MAKE_OPT} check
     popd >/dev/null
 }
@@ -127,24 +127,26 @@ function run_quicfuzz {
     gcov_step=$2
     timeout=$3
     outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/in-quic
-    pushd ${HOME}/target/quicfuzz/ngtcp2/build/bin >/dev/null
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2_seed
+    pushd ${HOME}/target/quicfuzz/ngtcp2 >/dev/null
 
     mkdir -p $outdir
 
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
 
-    # setsid ./run_common.sh ngtcp2 10 ../results/ quic-fuzz/aflnet out-ngtcp2-quic-fuzz '-a /tmp/quic-fuzz/aflnet/sabre -A /tmp/quic-fuzz/aflnet/libsnapfuzz.so -p 0 -y -m none -P QUIC -q 3 -s 3 -E -K' 86400 5 1 > ngtcp2_quic_snap_aflnet.log 2>&1 &
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/quic-fuzz/aflnet/afl-fuzz \
         -d -i ${indir} -o ${outdir} -N udp://127.0.0.1/4433 \
-        -a /tmp/quic-fuzz/aflnet/sabre \
-        -A /tmp/quic-fuzz/aflnet/libsnapfuzz.so \
+        -a ${HOME}/quic-fuzz/aflnet/sabre \
+        -A ${HOME}/quic-fuzz/aflnet/libsnapfuzz.so \
         -p 0 -y -m none -P QUIC -q 3 -s 3 -E -K \
-        -R /tmp/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
-        ${HOME}/profuzzbench/test.key.pem \
-        ${HOME}/profuzzbench/test.fullchain.pem --initial-pkt-num=0
+        -R ${HOME}/target/quicfuzz/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
+        ${HOME}/profuzzbench/cert/server.key \
+        ${HOME}/profuzzbench/cert/fullchain.crt --initial-pkt-num=0
 
+    popd >/dev/null
 }
 
 function install_dependencies {
