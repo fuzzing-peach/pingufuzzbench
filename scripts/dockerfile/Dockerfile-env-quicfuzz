@@ -14,8 +14,8 @@ ENV NO_PROXY=${no_proxy}
 
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirror.nyist.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirror.nyist.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
         apt clean; \
     fi
 
@@ -77,10 +77,6 @@ USER user
 WORKDIR /home/user
 ENV HOME=/home/user
 
-RUN if [ "${ZH_CN}" = "true" ]; then \
-        git config --global url."https://gh-proxy.com/github.com/".insteadOf "https://github.com/"; \
-    fi
-
 RUN git config --global http.version HTTP/1.1 && \
     git config --global user.name Kherrisan && \
     git config --global user.email zdkscope@qq.com
@@ -88,6 +84,7 @@ RUN git config --global http.version HTTP/1.1 && \
 COPY patches /tmp/patches
 
 RUN git clone https://github.com/QUICTester/QUIC-Fuzz.git quic-fuzz
+
 RUN cd quic-fuzz/aflnet && \
     wget https://www.openssl.org/source/openssl-3.0.2.tar.gz && \
     tar xzvf openssl-3.0.2.tar.gz && \
@@ -98,6 +95,7 @@ RUN cd quic-fuzz/aflnet && \
     make clean all && \
     cd llvm_mode && \
     make ${MAKE_OPT}
+
 RUN cd quic-fuzz/aflnet/SnapFuzz/SaBRe/plugins && \
     ln -sf ../../snapfuzz snapfuzz && \
     cd ../ && \
@@ -115,16 +113,23 @@ RUN cd quic-fuzz/aflnet/SnapFuzz/SaBRe/plugins && \
     ln -sf SnapFuzz/SaBRe/build/plugins/snapfuzz/libsnapfuzz.so libsnapfuzz.so && \
     ln -sf SnapFuzz/SaBRe/build/plugins/snapfuzz/libsnapfuzz_no_snap.so libsnapfuzz_no_snap.so
 
+# Build libgcov_preload.so
 COPY scripts/gcov_preload.c gcov_preload.c
-RUN gcc -shared -fpic gcov_preload.c -g -o libgcov_preload.so && \
-    sudo touch "/etc/ld.so.conf.d/gcov.conf" && \
-    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/gcov.conf" && \
-    sudo ldconfig
+RUN gcc -shared -fpic gcov_preload.c -g -o libgcov_preload.so
 
 COPY scripts/fake_random.c fake_random.c
-RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so && \
-    sudo touch "/etc/ld.so.conf.d/fake_random.conf" && \
-    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/fake_random.conf" && \
+RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so
+
+# For deterministic timestamps
+RUN git clone https://github.com/stateafl/libfaketime-asan-fixed libfaketime-asan-fixed && \
+    cd libfaketime-asan-fixed && \
+    git checkout 7e46ea4 && \
+    cd src && \
+    make ${MAKE_OPT} && \
+    cp libfaketime.so.1 ${HOME}/libfaketime.so.1
+
+RUN sudo touch "/etc/ld.so.conf.d/custom.conf" && \
+    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/custom.conf" && \
     sudo ldconfig
 
 RUN echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/01-disable-aslr.conf && \
