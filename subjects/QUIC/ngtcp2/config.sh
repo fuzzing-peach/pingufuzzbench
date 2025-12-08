@@ -102,6 +102,37 @@ function build_quicfuzz {
     popd >/dev/null
 }
 
+function run_quicfuzz {
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2_seed
+    pushd ${HOME}/target/quicfuzz/ngtcp2 >/dev/null
+
+    mkdir -p $outdir
+
+    # TODO: symbolize=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+
+    timeout -k 0 --preserve-status $timeout \
+        ${HOME}/quic-fuzz/aflnet/afl-fuzz \
+        -d -i ${indir} -o ${outdir} -N udp://127.0.0.1/4433 \
+        -y -m none -P QUIC -q 3 -s 3 -E -K \
+        -R ${HOME}/target/quicfuzz/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
+        /tmp/server-key.pem /tmp/server-cert.pem --initial-pkt-num=0
+        ${HOME}/profuzzbench/cert/server.key \
+        ${HOME}/profuzzbench/cert/fullchain.crt --initial-pkt-num=0
+
+    popd >/dev/null
+}
+
+function build_asan {
+    echo "Not implemented"
+}
+
 function build_gcov {
     mkdir -p target/gcov
     rm -rf target/gcov/*
@@ -132,37 +163,6 @@ function build_gcov {
     ./configure --with-wolfssl --disable-shared --enable-static
     make ${MAKE_OPT} check
     popd >/dev/null
-}
-
-function run_quicfuzz {
-    replay_step=$1
-    gcov_step=$2
-    timeout=$3
-    outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2_seed
-    pushd ${HOME}/target/quicfuzz/ngtcp2 >/dev/null
-
-    mkdir -p $outdir
-
-    # TODO: symbolize=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
-    export AFL_SKIP_CPUFREQ=1
-    export AFL_NO_AFFINITY=1
-
-    timeout -k 0 --preserve-status $timeout \
-        ${HOME}/quic-fuzz/aflnet/afl-fuzz \
-        -d -i ${indir} -o ${outdir} -N udp://127.0.0.1/4433 \
-        -p 0 -y -m none -P QUIC -q 3 -s 3 -E -K \
-        -R ${HOME}/target/quicfuzz/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
-        /tmp/server-key.pem /tmp/server-cert.pem --initial-pkt-num=0
-        ${HOME}/profuzzbench/cert/server.key \
-        ${HOME}/profuzzbench/cert/fullchain.crt --initial-pkt-num=0
-
-    popd >/dev/null
-}
-
-function build_asan {
-    echo "Not implemented"
 }
 
 function install_dependencies {

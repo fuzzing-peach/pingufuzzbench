@@ -1,4 +1,4 @@
-FROM ubuntu:24.04
+FROM ubuntu:20.04
 
 ARG ZH_CN
 ARG HTTP_PROXY
@@ -12,45 +12,39 @@ ENV ZH_CN=${ZH_CN}
 ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
 ENV NO_PROXY=${no_proxy}
 
-RUN apt update && apt install -y apt-transport-https ca-certificates
+RUN apt update && apt install -y apt-transport-https ca-certificates software-properties-common
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirror.nyist.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirror.nyist.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirror.nyist.edu.cn@g' /etc/apt/sources.list && \
+        sed -i 's/security.ubuntu.com/mirror.nyist.edu.cn/g' /etc/apt/sources.list && \
         apt clean; \
     fi
 
-# ---------- LLVM-17 ----------
-RUN apt update && apt install -y --no-install-recommends wget gnupg2 && rm -rf /var/lib/apt/lists
-RUN echo deb http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
-RUN echo deb-src http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
-RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+RUN DEBIAN_FRONTEND=noninteractive apt update -y --fix-missing && apt upgrade -y
+RUN DEBIAN_FRONTEND=noninteractive apt install -y software-properties-common
+RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN DEBIAN_FRONTEND=noninteractive apt update -y --fix-missing && apt upgrade -y
+RUN DEBIAN_FRONTEND=noninteractive apt install -y sudo build-essential git graphviz clang-12 llvm-12 llvm-12-dev llvm-12-tools openssl libssl-dev graphviz-dev libcap-dev lsof wget gpg \
+                                                    libsqlite3-dev libelf-dev libc6-dbg gettext libgnutls28-dev apt-utils libtool gettext-base cmake-curses-gui \
+                                                    libcurl4-openssl-dev libjson-c-dev libpcre2-dev \
+                                                    pkg-config autoconf automake autotools-dev libtool libev-dev libcunit1 gnupg cmake libstdc++-13-dev
 
-# ---------- 依赖安装 ----------
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt update -y && yes | unminimize && apt upgrade -y && \
-    apt install -y \
-    clang-17 llvm-17 llvm-17-dev lldb-17 lld-17 \
-    apt-utils git build-essential mold curl libc++-dev sudo libtool libtool-bin libz-dev libglib2.0-dev graphviz-dev bison flex automake libpixman-1-dev cgroup-tools \
-    cmake bear autoconf pkg-config gdb strace \
-    openssh-server openssl libssl-dev libgnutls28-dev \
-    libcap-dev libpcap-dev tcpdump \
-    rsync autopoint gperf texinfo gettext \
-    vim nano screen htop man wget httpie bash-completion ripgrep iputils-ping iproute2 telnet net-tools ncat netcat-traditional \
-    graphviz graphviz-dev lsof gpg \
-    libsqlite3-dev libelf-dev libc6-dbg gettext libtool gettext-base cmake-curses-gui \
-    libcurl4-openssl-dev libjson-c-dev libpcre2-dev \
-    pkg-config autoconf automake autotools-dev libev-dev libcunit1 gnupg \
-    libstdc++-13-dev \
-    && rm -rf /var/lib/apt/lists
+# We use llvm-17 now
+RUN wget https://apt.llvm.org/llvm-snapshot.gpg.key
+RUN gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg llvm-snapshot.gpg.key
+RUN echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-17 main" | tee /etc/apt/sources.list.d/llvm.list
+RUN DEBIAN_FRONTEND=noninteractive apt update && apt upgrade -y && apt install -y llvm-17 llvm-17-dev llvm-17-tools clang-17 lld-17
 
 RUN ln -sf /usr/bin/clang-17 /usr/bin/clang && \
     ln -sf /usr/bin/clang++-17 /usr/bin/clang++ && \
     ln -sf /usr/bin/llvm-config-17 /usr/bin/llvm-config
 
+RUN DEBIAN_FRONTEND=noninteractive apt update -y && \
+    apt install -y python3 python3-pip
+
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple gcovr; \
+        pip3 install -i https://mirrors.aliyun.com/pypi/simple gcovr; \
     else \
-        pip3 install --break-system-packages gcovr; \
+        pip3 install gcovr; \
     fi
 
 RUN chmod 777 /tmp
