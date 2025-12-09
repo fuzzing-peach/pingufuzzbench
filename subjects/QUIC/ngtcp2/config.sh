@@ -25,7 +25,7 @@ function checkout {
     fi
     cp -r .git-cache/nghttp3 repo/nghttp3
     pushd repo/nghttp3 >/dev/null
-    git checkout 7ca2b33423f4e706d540df780c7a1557affdc42c
+    git checkout 6bcfffb
     git submodule update --init --recursive
     pushd lib/sfparse >/dev/null
     git checkout 6e15726
