@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 
 function checkout {
+    if [ ! -d ".git-cache/mosquitto" ]; then
+        git clone --no-single-branch https://github.com/eclipse/mosquitto.git .git-cache/mosquitto
+    fi
+
     mkdir -p repo
-    git clone https://github.com/eclipse/mosquitto.git repo/mosquitto
+    cp -r .git-cache/mosquitto repo/mosquitto
+
     pushd repo/mosquitto >/dev/null
+
+    git fetch --unshallow
     git checkout "$@"
     git apply ${HOME}/profuzzbench/subjects/MQTT/mosquitto/ft.patch
+    
     popd >/dev/null
 }
 
@@ -13,9 +21,17 @@ function replay {
     # 启动后台的 aflnet-replay
     /home/user/aflnet/aflnet-replay $1 MQTT 7899 1 &
     # 预加载gcov和伪随机库，并限制服务器运行3秒
-    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so:libfaketime.so.1 FAKE_RANDOM=1 \
     timeout -k 1s 1s ./mosquitto -p 7899
     wait
+}
+
+function replay_poc {
+    ${HOME}/aflnet/aflnet-replay $1 MQTT 7899 1 &
+    err_output=$(timeout -k 0 -s SIGTERM 1s ./mosquitto -p 7899 > /dev/null)
+    wait
+    pkill mosquitto
+    echo "$err_output"
 }
 
 function build_aflnet {
@@ -26,8 +42,8 @@ function build_aflnet {
 
     export CC=${HOME}/aflnet/afl-clang-fast
     export CXX=${HOME}/aflnet/afl-clang-fast++
-    export CFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
-    export CXXFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DASAN_REPORT_HOOK"
+    export CXXFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DASAN_REPORT_HOOK"
     export LDFLAGS="-fsanitize=address"
    
     mkdir build
@@ -50,10 +66,12 @@ function run_aflnet {
     rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
+    export FAKETIME_ONLY_CMDS="mosquitto"
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export AFL_NO_AFFINITY=1
+    export ASAN_REPORT_PATH=${outdir}/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
@@ -62,10 +80,8 @@ function run_aflnet {
         ./mosquitto -p 7899
 
     cd ${HOME}/target/gcov/consumer/mosquitto/build/src
-
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     gcov_cmd="gcovr -r ../.. -s | grep \"[lb][a-z]*:\""
-    gcovr -r ../.. -s -d >/dev/null 2>&1
     
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
     mkdir -p ${outdir}/cov_html
@@ -239,6 +255,39 @@ function run_sgfuzz {
     popd >/dev/null
 }
 
+function build_asan {
+    if [ ! -d ".git-cache/mosquitto" ]; then
+        git clone --no-single-branch https://github.com/eclipse/mosquitto.git .git-cache/mosquitto
+    fi
+
+    mkdir -p repo
+    cp -r .git-cache/mosquitto repo/mosquitto-raw
+
+    pushd repo/mosquitto-raw >/dev/null
+
+    git checkout "$1"
+    
+    popd >/dev/null
+
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/mosquitto-raw target/asan/mosquitto
+    pushd target/asan/mosquitto >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer"
+    export CXXFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer"
+    export LDFLAGS="-fsanitize=address"
+
+    mkdir build
+    cd build
+    cmake -DWITH_STATIC_LIBRARIES=ON ..
+    make ${MAKE_OPT}
+
+    popd >/dev/null
+}
+
 function build_gcov {
     mkdir -p target/gcov/consumer
     rm -rf target/gcov/consumer/*
@@ -338,5 +387,5 @@ function run_ft {
 
 function install_dependencies {
     sudo -E apt update
-    sudo -E apt install -y xsltproc libcjson-dev docbook-xsl
+    sudo -E apt install -y xsltproc libcjson-dev docbook-xsl libssl-dev
 }
