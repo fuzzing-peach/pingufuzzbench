@@ -1,5 +1,5 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index 04d5fae..8daa0be 100644
+index 04d5fae..12132e2 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
 @@ -66,6 +66,7 @@
@@ -10,9 +10,13 @@ index 04d5fae..8daa0be 100644
  
  #include "aflnet.h"
  #include <graphviz/gvc.h>
-@@ -110,14 +111,16 @@ EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
+@@ -108,16 +109,19 @@ EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
+                                          binary (without StateAFL probes) */
+ 	  *wd_vanilla,                /* Path to working directory for
  					 "vanilla" binary                 */
-           *orig_cmdline;              /* Original command line            */
+-          *orig_cmdline;              /* Original command line            */
++          *orig_cmdline,              /* Original command line            */
++          *core_dump_path;            /* Path to core dump files          */
  
 -EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   */
 +EXP_ST u32 exec_tmout = EXEC_TIMEOUT, /* Configurable exec timeout (ms)   */
@@ -29,7 +33,7 @@ index 04d5fae..8daa0be 100644
             force_deterministic,       /* Force deterministic stages?      */
             use_splicing,              /* Recombine input files?           */
             dumb_mode,                 /* Run in non-instrumented mode?    */
-@@ -1724,6 +1727,15 @@ static void bind_to_free_cpu(void) {
+@@ -1724,6 +1728,15 @@ static void bind_to_free_cpu(void) {
  
    }
  
@@ -45,7 +49,7 @@ index 04d5fae..8daa0be 100644
    d = opendir("/proc");
  
    if (!d) {
-@@ -1788,7 +1800,20 @@ static void bind_to_free_cpu(void) {
+@@ -1788,7 +1801,20 @@ static void bind_to_free_cpu(void) {
  
    closedir(d);
  
@@ -67,7 +71,37 @@ index 04d5fae..8daa0be 100644
  
    if (i == cpu_core_count) {
  
-@@ -4807,7 +4832,7 @@ static void pivot_inputs(void) {
+@@ -3723,9 +3749,14 @@ EXP_ST void init_forkserver(char** argv, struct forkserver *fsrv, u8* exe_path,
+     }
+ 
+     /* Dumping cores is slow and can lead to anomalies if SIGKILL is delivered
+-       before the dump is complete. */
++       before the dump is complete. However, if core_dump_path is specified,
++       we allow core dumps for crash analysis. */
+ 
+-    r.rlim_max = r.rlim_cur = 0;
++    if (core_dump_path) {
++      r.rlim_max = r.rlim_cur = RLIM_INFINITY;
++    } else {
++      r.rlim_max = r.rlim_cur = 0;
++    }
+ 
+     setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
+ 
+@@ -4013,7 +4044,11 @@ static u8 run_target(char** argv, u32 timeout, struct forkserver *fsrv) {
+ 
+       }
+ 
+-      r.rlim_max = r.rlim_cur = 0;
++      if (core_dump_path) {
++        r.rlim_max = r.rlim_cur = RLIM_INFINITY;
++      } else {
++        r.rlim_max = r.rlim_cur = 0;
++      }
+ 
+       setrlimit(RLIMIT_CORE, &r); /* Ignore errors */
+ 
+@@ -4807,7 +4842,7 @@ static void pivot_inputs(void) {
        u8* use_name = strstr(rsl, ",orig:");
  
        if (use_name) use_name += 6; else use_name = rsl;
@@ -76,7 +110,73 @@ index 04d5fae..8daa0be 100644
  
  #else
  
-@@ -4953,8 +4978,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -4930,6 +4965,65 @@ static void write_crash_readme(void) {
+ }
+ 
+ 
++/* Save core dump file for crash analysis. This function looks for the "core"
++   file in the specified core_dump_path directory and copies it to the crashes
++   directory. */
++
++static void save_core_dump(u8* crash_fn, s32 target_pid) {
++
++  u8* core_src = NULL;
++  u8* core_dst = NULL;
++  s32 src_fd = -1, dst_fd = -1;
++  struct stat st;
++  u8 buf[8192];
++  ssize_t bytes_read, bytes_written;
++
++  if (!core_dump_path) return;
++
++  /* Construct the source core file path: <core_dump_path>/core */
++  core_src = alloc_printf("%s/core", core_dump_path);
++
++  /* Check if the core file exists */
++  if (stat(core_src, &st) != 0 || !S_ISREG(st.st_mode)) {
++    /* No core file found - not an error, as not all crashes produce cores */
++    ck_free(core_src);
++    return;
++  }
++
++  /* Create destination filename */
++  core_dst = alloc_printf("%s.core", crash_fn);
++
++  /* Copy the core file */
++  src_fd = open(core_src, O_RDONLY);
++  if (src_fd < 0) goto cleanup;
++
++  dst_fd = open(core_dst, O_WRONLY | O_CREAT | O_EXCL, 0600);
++  if (dst_fd < 0) goto cleanup;
++
++  /* Copy data in chunks */
++  while ((bytes_read = read(src_fd, buf, sizeof(buf))) > 0) {
++    bytes_written = write(dst_fd, buf, bytes_read);
++    if (bytes_written != bytes_read) {
++      /* Write error - clean up partial file */
++      close(dst_fd);
++      dst_fd = -1;
++      unlink(core_dst);
++      goto cleanup;
++    }
++  }
++
++  /* Success - remove the original core file to avoid clutter */
++  unlink(core_src);
++
++cleanup:
++  if (src_fd >= 0) close(src_fd);
++  if (dst_fd >= 0) close(dst_fd);
++  if (core_src) ck_free(core_src);
++  if (core_dst) ck_free(core_dst);
++
++}
++
++
+ /* Check if the result of an execve() during routine fuzzing is interesting,
+    save or queue the input test case for further analysis if so. Returns 1 if
+    entry is saved, 0 otherwise. */
+@@ -4953,8 +5047,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -87,7 +187,7 @@ index 04d5fae..8daa0be 100644
  
  #else
  
-@@ -5051,8 +5076,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
+@@ -5051,8 +5145,8 @@ static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
  
  #ifndef SIMPLE_FILES
  
@@ -98,7 +198,7 @@ index 04d5fae..8daa0be 100644
  
  #else
  
-@@ -5095,8 +5120,8 @@ keep_as_crash:
+@@ -5095,8 +5189,8 @@ keep_as_crash:
  
  #ifndef SIMPLE_FILES
  
@@ -109,7 +209,18 @@ index 04d5fae..8daa0be 100644
  
  #else
  
-@@ -8907,6 +8932,8 @@ static void sync_fuzzers(char** argv) {
+@@ -5105,6 +5199,10 @@ keep_as_crash:
+ 
+ #endif /* ^!SIMPLE_FILES */
+ 
++      /* Save core dump if core_dump_path is specified. We pass child_pid 
++         which was set during the last run_target() call. */
++      save_core_dump(fn, child_pid);
++
+       unique_crashes++;
+ 
+       last_crash_time = get_cur_time();
+@@ -8907,6 +9005,8 @@ static void sync_fuzzers(char** argv) {
    struct dirent* sd_ent;
    u32 sync_cnt = 0;
  
@@ -118,7 +229,17 @@ index 04d5fae..8daa0be 100644
    sd = opendir(sync_dir);
    if (!sd) PFATAL("Unable to open '%s'", sync_dir);
  
-@@ -9845,8 +9872,8 @@ static void check_asan_opts(void) {
+@@ -9373,7 +9473,8 @@ static void usage(u8* argv0) {
+ 
+        "  -T text       - text banner to show on the screen\n"
+        "  -M / -S id    - distributed mode (see parallel_fuzzing.txt)\n"
+-       "  -C            - crash exploration mode (the peruvian rabbit thing)\n\n"
++       "  -C            - crash exploration mode (the peruvian rabbit thing)\n"
++       "  -G dir        - save core dumps from <dir>/core to crashes directory\n\n"
+ 
+        "For additional tips, please consult %s/README.\n\n",
+ 
+@@ -9845,8 +9946,8 @@ static void check_asan_opts(void) {
      if (!strstr(x, "abort_on_error=1"))
        FATAL("Custom ASAN_OPTIONS set without abort_on_error=1 - please fix!");
  
@@ -129,7 +250,7 @@ index 04d5fae..8daa0be 100644
  
    }
  
-@@ -10083,7 +10110,19 @@ int main(int argc, char** argv) {
+@@ -10083,7 +10184,19 @@ int main(int argc, char** argv) {
    gettimeofday(&tv, &tz);
    srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
  
@@ -146,11 +267,11 @@ index 04d5fae..8daa0be 100644
 +    }
 +    printf("ASLR disabled for this process\n");
 +
-+  while ((opt = getopt(argc, argv, "+i:b:o:f:m:t:T:dnCB:S:M:x:QN:D:W:r:w:e:P:KEq:s:RFc:l:u:U:")) > 0)
++  while ((opt = getopt(argc, argv, "+i:b:o:f:m:t:T:dnCB:S:M:x:QN:D:W:r:w:e:P:KEq:s:RFc:l:u:U:G:")) > 0)
  
      switch (opt) {
  
-@@ -10204,6 +10243,16 @@ int main(int argc, char** argv) {
+@@ -10204,6 +10317,16 @@ int main(int argc, char** argv) {
          use_splicing = 1;
          break;
  
@@ -167,7 +288,20 @@ index 04d5fae..8daa0be 100644
        case 'B': /* load bitmap */
  
          /* This is a secret undocumented option! It is useful if you find
-@@ -10329,6 +10378,9 @@ int main(int argc, char** argv) {
+@@ -10229,6 +10352,12 @@ int main(int argc, char** argv) {
+         crash_mode = FAULT_CRASH;
+         break;
+ 
++      case 'G': /* core dump path */
++
++        if (core_dump_path) FATAL("Multiple -G options not supported");
++        core_dump_path = optarg;
++        break;
++
+       case 'n': /* dumb mode */
+ 
+         if (dumb_mode) FATAL("Multiple -n options not supported");
+@@ -10329,6 +10458,9 @@ int main(int argc, char** argv) {
          } else if (!strcmp(optarg, "IPP")) {
            extract_requests = &extract_requests_ipp;
            extract_response_codes = &extract_response_codes_ipp;
@@ -177,7 +311,7 @@ index 04d5fae..8daa0be 100644
          } else {
            FATAL("%s protocol is not supported yet!", optarg);
          }
-@@ -10420,6 +10472,7 @@ int main(int argc, char** argv) {
+@@ -10420,6 +10552,7 @@ int main(int argc, char** argv) {
  
    //if (!protocol_selected) FATAL("Please specify the protocol to be tested using the -P option");
  
@@ -185,7 +319,7 @@ index 04d5fae..8daa0be 100644
    setup_signal_handlers();
    check_asan_opts();
  
-@@ -10470,7 +10523,7 @@ int main(int argc, char** argv) {
+@@ -10470,7 +10603,7 @@ int main(int argc, char** argv) {
  #endif /* HAVE_AFFINITY */
  
    check_crash_handling();
@@ -194,7 +328,7 @@ index 04d5fae..8daa0be 100644
    check_cpu_governor();
  
    setup_post();
-@@ -10495,8 +10548,6 @@ int main(int argc, char** argv) {
+@@ -10495,8 +10628,6 @@ int main(int argc, char** argv) {
  
    check_binary(argv[optind]);
  
