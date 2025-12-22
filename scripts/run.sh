@@ -110,10 +110,6 @@ if [[ -z "$version" ]]; then
     exit 1
 fi
 
-if [[ -z "${dry_run}" ]]; then
-    dry_run=0
-fi
-
 times=${times:-"1"}
 replay_step=${replay_step:-"1"}
 gcov_step=${gcov_step:-"1"}
