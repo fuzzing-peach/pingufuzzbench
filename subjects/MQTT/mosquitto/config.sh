@@ -98,8 +98,8 @@ function build_stateafl {
    
     export CC=${HOME}/stateafl/afl-clang-fast
     export CXX=${HOME}/stateafl/afl-clang-fast++
-    export CFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
-    export CXXFLAGS="-g -O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
+    export CXXFLAGS="-O3 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING"
     export LDFLAGS="-fsanitize=address"
    
     mkdir build
@@ -125,10 +125,12 @@ function run_stateafl {
     rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
-    export AFL_PRELOAD=libfake_random.so
+    export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
+    export FAKETIME_ONLY_CMDS="mosquitto"
     export FAKE_RANDOM=1
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export AFL_NO_AFFINITY=1
+    export ASAN_REPORT_PATH=${outdir}/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
