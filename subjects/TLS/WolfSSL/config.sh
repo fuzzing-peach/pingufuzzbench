@@ -4,7 +4,7 @@ function checkout {
     if [ ! -d ".git-cache/wolfssl" ]; then
         git clone https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
     fi
-    
+
     mkdir -p repo
     cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
@@ -126,7 +126,7 @@ function run_stateafl {
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
         -e -p 4433
-    
+
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
@@ -228,7 +228,7 @@ function run_sgfuzz {
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${outdir}/replayable-queue
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cd ${HOME}/target/gcov/consumer/wolfssl
-    
+
     function replay {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
@@ -240,7 +240,7 @@ function run_sgfuzz {
         wait
         pkill -f testOnDemandRTSPServer
     }
-    
+
     gcovr -r . -s -d >/dev/null 2>&1
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" ""
     mkdir -p ${outdir}/cov_html
@@ -352,6 +352,8 @@ function build_pingu_generator {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
         -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=1 \
+        -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
+        -svf-slice=backward -svf-slice-sources=send:1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
@@ -392,6 +394,8 @@ function build_pingu_consumer {
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
+        -svf-slice=forward -svf-slice-sources=recv:1 \
         -ins=load,store,memcall,icmp,memcmp -role=sink -svf=1 -dump-svf=1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
