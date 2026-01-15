@@ -349,11 +349,11 @@ function build_pingu_generator {
 
     # now we have client.bc
     # instrument the whole program bitcode
+    # Removed opt: -svf-slice=backward -svf-slice-sources=send:1 \
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
         -ins=load,store,memcall,trampoline -role=source -svf=1 -dump-svf=0 \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
-        -svf-slice=backward -svf-slice-sources=send:1 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
@@ -395,7 +395,6 @@ function build_pingu_consumer {
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
-        -svf-slice=forward -svf-slice-sources=recv:1 \
         -ins=load,store,memcall,icmp,memcmp -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
