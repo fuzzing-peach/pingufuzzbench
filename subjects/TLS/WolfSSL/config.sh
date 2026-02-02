@@ -397,6 +397,7 @@ function build_pingu_consumer {
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
         -ins=load,store,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
+        -svf-slice=forward -svf-slice-sources=recv:1 \
         server.bc -o server_opt.bc
 
     llvm-dis server_opt.bc -o server_opt.ll
