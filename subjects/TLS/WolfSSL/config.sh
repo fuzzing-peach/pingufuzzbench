@@ -355,6 +355,7 @@ function build_pingu_generator {
         -ins=load,store,memcpy,trampoline,ret -role=source -svf=1 -dump-svf=0 \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
+        -svf-slice=backward -svf-slice-sources=send:1 \
         client.bc -o client_opt.bc
 
     llvm-dis client_opt.bc -o client_opt.ll
