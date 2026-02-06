@@ -1,0 +1,26 @@
+diff --git a/svf-llvm/lib/LLVMUtil.cpp b/svf-llvm/lib/LLVMUtil.cpp
+index ed3cd946..e2225e31 100644
+--- a/svf-llvm/lib/LLVMUtil.cpp
++++ b/svf-llvm/lib/LLVMUtil.cpp
+@@ -461,7 +461,7 @@ const std::string LLVMUtil::getSourceLoc(const Value* val )
+     {
+         if (SVFUtil::isa<AllocaInst>(inst))
+         {
+-#if LLVM_VERSION_MAJOR > 16
++#if LLVM_VERSION_MAJOR > 17
+             for (llvm::DbgInfoIntrinsic *DII : llvm::findDbgDeclares(const_cast<Instruction*>(inst)))
+ #else
+             for (llvm::DbgInfoIntrinsic *DII : FindDbgDeclareUses(const_cast<Instruction*>(inst)))
+diff --git a/svf-llvm/lib/SVFIRBuilder.cpp b/svf-llvm/lib/SVFIRBuilder.cpp
+index 357f54a9..0a5e2f70 100644
+--- a/svf-llvm/lib/SVFIRBuilder.cpp
++++ b/svf-llvm/lib/SVFIRBuilder.cpp
+@@ -269,7 +269,7 @@ void SVFIRBuilder::initDomTree(FunObjVar* svffun, const Function* fun)
+     for (DominanceFrontierBase::const_iterator dfIter = df.begin(), eDfIter = df.end(); dfIter != eDfIter; dfIter++)
+     {
+         const BasicBlock* keyBB = dfIter->first;
+-#if LLVM_VERSION_MAJOR > 16
++#if LLVM_VERSION_MAJOR > 17
+         const llvm::SetVector<llvm::BasicBlock* >& domSet = dfIter->second;
+ #else
+         const std::set<BasicBlock* >& domSet = dfIter->second;
