@@ -77,7 +77,6 @@ function run_aflnet {
     pushd ${HOME}/target/aflnet/live555/testProgs >/dev/null
 
     mkdir -p $outdir
-    rm -rf $outdir/*
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
@@ -85,6 +84,7 @@ function run_aflnet {
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export FAKETIME_ONLY_CMDS="testOnDemandRTSPServer"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_REPORT_PATH=$outdir/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
@@ -141,8 +141,7 @@ function run_stateafl {
     indir=${HOME}/profuzzbench/subjects/RTSP/Live555/in-rtsp-replay
     pushd ${HOME}/target/stateafl/live555/testProgs >/dev/null
 
-    mkdir -p $outdir
-    rm -rf $outdir/*
+    mkdir -p $outdir/
 
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so:libfaketime.so.1
@@ -150,18 +149,19 @@ function run_stateafl {
     export FAKE_RANDOM=1
     export FAKETIME_ONLY_CMDS="testOnDemandRTSPServer"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_REPORT_PATH=${outdir}/replayable-crashes
 
     timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
-        -o $outdir -N tcp://127.0.0.1/8554 \
+        -o $outdir -N tcp://127.0.0.1/8554 -G $(pwd) \
         -P RTSP -D 10000 -q 3 -s 3 -E -K -R -m none -t 1000 \
         ./testOnDemandRTSPServer 8554
     
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
-    gcov_cmd="gcovr -r .. -s | grep \"[lb][a-z]*:\""
+    gcov_cmd="gcovr -r .. -s --gcov-ignore-parse-errors=suspicious_hits.warn | grep \"[lb][a-z]*:\""
     cd ${HOME}/target/gcov/consumer/live555/testProgs
 
-    gcovr -r .. -s -d >/dev/null 2>&1
+    gcovr -r .. -s -d --gcov-ignore-parse-errors=suspicious_hits.warn >/dev/null 2>&1
     
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$gcov_cmd"
     mkdir -p ${outdir}/cov_html

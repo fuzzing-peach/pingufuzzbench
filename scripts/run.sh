@@ -110,10 +110,6 @@ if [[ -z "$version" ]]; then
     exit 1
 fi
 
-if [[ -z "${dry_run}" ]]; then
-    dry_run=0
-fi
-
 times=${times:-"1"}
 replay_step=${replay_step:-"1"}
 gcov_step=${gcov_step:-"1"}
@@ -156,7 +152,9 @@ for i in $(seq 1 $times); do
     fi
     # 将 CPU ID 加入到容器名称中: name-index-cpuid-timestamp
     cname="${container_name}-${i}-cpu${idle_core}-${ts}"
-    mkdir -p ${output}/${cname}
+    if [[ -z "$dry_run" ]]; then
+        mkdir -p "${output}/${cname}"
+    fi
 
     #         # -e PFB_CPU_CORE=${idle_core} \
 
@@ -178,12 +176,19 @@ for i in $(seq 1 $times); do
         $image_name \
         /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $replay_step $gcov_step $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
     echo $cmd
+    if [[ -n "$dry_run" ]]; then
+        continue
+    fi
     id=$(eval $cmd)
     echo "$idle_core" >> ${output}/${cname}/attached_core
     log_success "[+] Launch docker container: ${cname}"
     cids+=(${id::12}) # store only the first 12 characters of a container ID
     sleep 1
 done
+
+if [[ -n "$dry_run" ]]; then
+    exit 0
+fi
 
 dlist="" # docker list
 for id in ${cids[@]}; do

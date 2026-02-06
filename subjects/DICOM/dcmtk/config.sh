@@ -1,6 +1,6 @@
 function checkout {
     if [ ! -d ".git-cache/dcmtk" ]; then
-        git clone --no-single-branch https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
+        git clone https://github.com/dcmtk/dcmtk.git .git-cache/dcmtk
     fi
 
     mkdir -p repo
@@ -8,7 +8,7 @@ function checkout {
 
     pushd repo/dcmtk >/dev/null
 
-    git fetch --unshallow
+    git pull
     git checkout 1549d8c
     git apply "${HOME}/profuzzbench/subjects/DICOM/dcmtk/ft-dcmtk.patch"
     git add .
