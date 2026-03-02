@@ -336,7 +336,7 @@ function build_ft_consumer {
     sed -i "s@^LINK =.*@LINK = $CXX -o@g" config.linux
     
     ./genMakefiles linux
-    make testOnDemandRTSPServer ${MAKE_OPT}
+    make -j$(nproc)
 
     popd >/dev/null
 }
