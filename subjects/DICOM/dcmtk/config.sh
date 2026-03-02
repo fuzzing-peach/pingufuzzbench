@@ -336,15 +336,27 @@ function build_ft_consumer {
     cp -r repo/dcmtk target/ft/consumer/dcmtk
     pushd target/ft/consumer/dcmtk >/dev/null
 
+    mkdir build && cd build
+    cmake ..
+
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
+    export AFL_LLVM_INSTRUMENT=CLASSIC
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
     export CFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export LDFLAGS="-fsanitize=address"
+    export LDFLAGS="-fsanitize=address"                                                                                                    
+                                                                                                                                                                            
+    find . -name "flags.make" -exec sed -i \
+      -e "s|CXX = /usr/bin/c\+\+|$CXX|" \
+      -e "s|compile CXX with /usr/bin/c\+\+|compile CXX with $CXX|" \
+      -e "s|CXX_FLAGS =|CXX_FLAGS = -fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER |" \
+      -e "s|C_FLAGS =|C_FLAGS = -fsanitize=address -O3 -g -DFT_FUZZING -DFT_CONSUMER |" \
+      {} \;
+    find . -name "link.txt" -exec sed -i \
+      -e "s|/usr/bin/c\+\+ |$CXX $LDFLAGS |" \
+      {} \;
 
-    mkdir build && cd build
-    cmake ..
     make dcmqrscp ${MAKE_OPT}
     
     popd >/dev/null

@@ -177,10 +177,106 @@ index 47294d0..45bd76d 100644
      self->argv[self->argc++] = "-DNDEBUG";
  
 diff --git a/generator/pass/fuzztruction-source-llvm-pass.cc b/generator/pass/fuzztruction-source-llvm-pass.cc
-index f275c54..27fef89 100644
+index f275c54..2bdfdc8 100644
 --- a/generator/pass/fuzztruction-source-llvm-pass.cc
 +++ b/generator/pass/fuzztruction-source-llvm-pass.cc
-@@ -281,7 +281,9 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
+@@ -233,20 +233,55 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
+         ins_builder.CreateCall(init_hook_fn);
+     }
+ 
++    auto collect_callsites = [](Function *fn) {
++        SmallVector<CallBase *, 16> callsites;
++        for (auto *user : fn->users()) {
++            if (auto *call_base = dyn_cast<CallBase>(user)) {
++                callsites.push_back(call_base);
++                continue;
++            }
++
++            // The callee may be wrapped in a bitcast constant expression.
++            if (auto *const_expr = dyn_cast<ConstantExpr>(user)) {
++                for (auto *ce_user : const_expr->users()) {
++                    if (auto *call_base = dyn_cast<CallBase>(ce_user)) {
++                        callsites.push_back(call_base);
++                    }
++                }
++            }
++        }
++        return callsites;
++    };
++
++    auto insert_hook_after_callsite = [&](CallBase *call_base, FunctionCallee hook_fn, StringRef target_name) {
++        if (auto *call_ins = dyn_cast<CallInst>(call_base)) {
++            dbgs() << "patching " << target_name << " call: " << *call_ins << "\n";
++            IRBuilder<> ins_builder(call_ins->getNextNode());
++            ins_builder.CreateCall(hook_fn);
++            return;
++        }
++
++        if (auto *invoke_ins = dyn_cast<InvokeInst>(call_base)) {
++            dbgs() << "patching " << target_name << " invoke: " << *invoke_ins << "\n";
++
++            // Hook needs to run only after a successful return from invoke.
++            BasicBlock *hook_bb = SplitEdge(invoke_ins->getParent(), invoke_ins->getNormalDest());
++            IRBuilder<> ins_builder(&*hook_bb->getFirstInsertionPt());
++            ins_builder.CreateCall(hook_fn);
++        }
++    };
++
+     // Insert a call to __ft_after_listen after the 'listen' function returns.
+     auto listen_hook_fn = M.getOrInsertFunction("__ft_after_listen", FunctionType::getVoidTy(M.getContext()));
+     auto listen_fn = M.getFunction("listen");
+     if (listen_fn && listen_fn->arg_size() == 2) {
+-        // check if arg types match those of the type of listen function we are interested in.
+-        auto first_arg = listen_fn->getArg(0);
+-        auto second_arg = listen_fn->getArg(1);
++        // Check if arg types match those of the listen function we are interested in.
++        auto *first_arg = listen_fn->getArg(0);
++        auto *second_arg = listen_fn->getArg(1);
+         if (first_arg->getType()->isIntegerTy() && second_arg->getType()->isIntegerTy()) {
+-            for (const auto& user : listen_fn->users()) {
+-                if(CallInst* call_ins = dyn_cast<CallInst>(user)) {
+-                    dbgs() << *call_ins << "\n";
+-                    IRBuilder<> ins_builder(call_ins->getNextNode());
+-                    ins_builder.CreateCall(listen_hook_fn);
+-                }
++            auto listen_callsites = collect_callsites(listen_fn);
++            for (auto *call_base : listen_callsites) {
++                insert_hook_after_callsite(call_base, listen_hook_fn, "listen");
+             }
+         }
+     }
+@@ -255,24 +290,18 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
+     auto bind_hook_fn = M.getOrInsertFunction("__ft_after_bind", FunctionType::getVoidTy(M.getContext()));
+     auto bind_fn = M.getFunction("bind");
+     if (bind_fn && bind_fn->arg_size() == 3) {
+-        for (const auto& user : bind_fn->users()) {
+-            if(CallInst* call_ins = dyn_cast<CallInst>(user)) {
+-                dbgs() << *call_ins << "\n";
+-                IRBuilder<> ins_builder(call_ins->getNextNode());
+-                ins_builder.CreateCall(bind_hook_fn);
+-            }
++        auto bind_callsites = collect_callsites(bind_fn);
++        for (auto *call_base : bind_callsites) {
++            insert_hook_after_callsite(call_base, bind_hook_fn, "bind");
+         }
+     }
+ 
+     auto connect_hook_fn = M.getOrInsertFunction("__ft_after_connect", FunctionType::getVoidTy(M.getContext()));
+     auto connect_fn = M.getFunction("connect");
+     if (connect_fn && connect_fn->arg_size() == 3) {
+-        for (const auto& user : connect_fn->users()) {
+-            if(CallInst* call_ins = dyn_cast<CallInst>(user)) {
+-                dbgs() << "patching connect call: " << *call_ins << "\n";
+-                IRBuilder<> ins_builder(call_ins->getNextNode());
+-                ins_builder.CreateCall(connect_hook_fn);
+-            }
++        auto connect_callsites = collect_callsites(connect_fn);
++        for (auto *call_base : connect_callsites) {
++            insert_hook_after_callsite(call_base, connect_hook_fn, "connect");
+         }
+     }
+ 
+@@ -281,7 +310,9 @@ bool FuzztructionSourcePass::initializeFuzzingStub(Module &M) {
  
  
  /*
@@ -191,7 +287,7 @@ index f275c54..27fef89 100644
  */
  bool FuzztructionSourcePass::maybeDeleteFunctionCall(Module &M, CallInst *call_ins, std::set<std::string> &target_functions) {
      Function *callee = call_ins->getCalledFunction();
-@@ -351,7 +353,12 @@ uint64_t get_alloction_size_in_bits(AllocaInst *ins, Value *target) {
+@@ -351,7 +382,12 @@ uint64_t get_alloction_size_in_bits(AllocaInst *ins, Value *target) {
      }
  }
  
@@ -205,7 +301,7 @@ index f275c54..27fef89 100644
  bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *stackmap_intr) {
      auto custom_patch_points_enables = env_var_set("FT_CUSTOM_PATCH_POINTS");
  
-@@ -387,7 +394,9 @@ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *st
+@@ -387,7 +423,9 @@ bool FuzztructionSourcePass::instrumentCustomPatchPoints(Module &M, Function *st
      return true;
  }
  
@@ -216,7 +312,7 @@ index f275c54..27fef89 100644
  bool FuzztructionSourcePass::instrumentFunctionEntry(Function &instrumented_function, Function *stackmap_intr) {
      auto call_injection_enabled = env_var_set("FT_CALL_INJECTION");
      if (!call_injection_enabled || instrumented_function.isVarArg()) {
-@@ -620,6 +629,21 @@ bool FuzztructionSourcePass::instrumentInsArg(Module &M, Function *stackmap_intr
+@@ -620,6 +658,21 @@ bool FuzztructionSourcePass::instrumentInsArg(Module &M, Function *stackmap_intr
      return true;
  }
  
@@ -238,7 +334,7 @@ index f275c54..27fef89 100644
  bool FuzztructionSourcePass::instrumentCall(Module &M, Function *stackmap_intr, CallInst *call) {
      if (!call->user_empty())
          return false;
-@@ -741,6 +765,9 @@ bool FuzztructionSourcePass::injectPatchPoints(Module &M) {
+@@ -741,6 +794,9 @@ bool FuzztructionSourcePass::injectPatchPoints(Module &M) {
              }
      }
  
@@ -289,10 +385,68 @@ index 3aa7cd0..d5105be 100644
          // Mount /proc, /sys and /dev. These are shared since they are also marked as shared in the "parent" namespace.
          Jail::mount(&["-o", "bind", "/proc", &format!("{}/proc", self.new_root)])
 diff --git a/scheduler/src/checks.rs b/scheduler/src/checks.rs
-index 2689dde..f8dc826 100644
+index 2689dde..48915c6 100644
 --- a/scheduler/src/checks.rs
 +++ b/scheduler/src/checks.rs
-@@ -130,14 +130,14 @@ fn check_mqueue_queues_max() -> Result<()> {
+@@ -119,6 +119,57 @@ fn check_file_limit() -> Result<()> {
+     Ok(())
+ }
+ 
++fn check_msgqueue_limit() -> Result<()> {
++    const DEFAULT_TARGET_MSGQUEUE_BYTES: u64 = 33_554_432;
++    let target_limit = std::env::var("FT_RLIMIT_MSGQUEUE")
++        .ok()
++        .and_then(|value| value.parse::<u64>().ok())
++        .unwrap_or(DEFAULT_TARGET_MSGQUEUE_BYTES);
++
++    let (mut soft_limit, mut hard_limit) = getrlimit(Resource::RLIMIT_MSGQUEUE)
++        .context("Failed to read RLIMIT_MSGQUEUE")?;
++    log::info!(
++        "Current RLIMIT_MSGQUEUE soft={} hard={} target={}",
++        soft_limit,
++        hard_limit,
++        target_limit
++    );
++
++    // While we still run with elevated privileges (sudo/root), try to raise
++    // both hard and soft to the configured target first.
++    if hard_limit < target_limit || soft_limit < target_limit {
++        match setrlimit(Resource::RLIMIT_MSGQUEUE, target_limit, target_limit) {
++            Ok(()) => {
++                let (new_soft, new_hard) = getrlimit(Resource::RLIMIT_MSGQUEUE)
++                    .context("Failed to re-read RLIMIT_MSGQUEUE after raise")?;
++                soft_limit = new_soft;
++                hard_limit = new_hard;
++                log::info!(
++                    "Raised RLIMIT_MSGQUEUE to soft={} hard={}",
++                    soft_limit,
++                    hard_limit
++                );
++            }
++            Err(err) => {
++                log::warn!(
++                    "Failed to raise RLIMIT_MSGQUEUE hard/soft to {}: {:#?}",
++                    target_limit,
++                    err
++                );
++            }
++        }
++    }
++
++    // Fallback: at least raise soft to current hard to maximize usable quota.
++    if soft_limit < hard_limit {
++        log::info!("Increasing RLIMIT_MSGQUEUE soft to current hard={}", hard_limit);
++        setrlimit(Resource::RLIMIT_MSGQUEUE, hard_limit, hard_limit)
++            .context("Failed to raise RLIMIT_MSGQUEUE soft to hard")?;
++    }
++
++    Ok(())
++}
++
+ fn check_mqueue_queues_max() -> Result<()> {
+     let procfs_file = "/proc/sys/fs/mqueue/queues_max";
+     let limit: u64 = fs::read_to_string(procfs_file)?.trim().parse().unwrap();
+@@ -130,13 +181,14 @@ fn check_mqueue_queues_max() -> Result<()> {
  
  /// Check if all requirements to run this software are satisfied.
  pub fn check_system() -> Result<()> {
@@ -305,15 +459,13 @@ index 2689dde..f8dc826 100644
      check_if_agent_is_in_path()?;
 -    check_scaling_governor()?;
 -    check_perf_event_paranoid()?;
--    check_file_limit()?;
--    check_mqueue_queues_max()?;
 +    // check_scaling_governor()?;
 +    // check_perf_event_paranoid()?;
-+    // check_file_limit()?;
-+    // check_mqueue_queues_max()?;
+     check_file_limit()?;
++    check_msgqueue_limit()?;
+     check_mqueue_queues_max()?;
      Ok(())
  }
- 
 diff --git a/scheduler/src/cli/fuzztruction.rs b/scheduler/src/cli/fuzztruction.rs
 index eb8c21d..499e9e9 100644
 --- a/scheduler/src/cli/fuzztruction.rs
@@ -1222,7 +1374,7 @@ index a4b0084..2cbb0e2 100644
          }
      }
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
-index 549ac57..335fc78 100644
+index 549ac57..aafd5d1 100644
 --- a/scheduler/src/source.rs
 +++ b/scheduler/src/source.rs
 @@ -1,6 +1,6 @@
@@ -1233,7 +1385,7 @@ index 549ac57..335fc78 100644
  use fuzztruction_shared::{
      aux_messages::{AuxStreamMessage, AuxStreamType},
      aux_stream::AuxStreamAssembler,
-@@ -61,9 +61,9 @@ use crate::{networked::ServerReadySignalKind, trace::Trace};
+@@ -61,12 +61,225 @@ use crate::{networked::ServerReadySignalKind, trace::Trace};
  
  use crate::io_channels::*;
  
@@ -1246,7 +1398,223 @@ index 549ac57..335fc78 100644
  const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
  const MAX_OUTPUT_SIZE: u64 = n_mib_bytes!(1) as u64;
  
-@@ -465,7 +465,8 @@ impl Source {
++fn parse_reuid_from_status(status: &str) -> Option<u32> {
++    for line in status.lines() {
++        if let Some(rest) = line.strip_prefix("Uid:") {
++            return rest.split_whitespace().next()?.parse::<u32>().ok();
++        }
++    }
++    None
++}
++
++fn current_max_fd_number() -> Option<i32> {
++    let mut max_fd: Option<i32> = None;
++    let entries = fs::read_dir("/proc/self/fd").ok()?;
++    for entry in entries.flatten() {
++        let name = entry.file_name();
++        let fd = name.to_string_lossy().parse::<i32>().ok();
++        if let Some(fd) = fd {
++            max_fd = Some(max_fd.map_or(fd, |cur| cur.max(fd)));
++        }
++    }
++    max_fd
++}
++
++fn mq_usage_bytes_in_current_ns() -> Option<(usize, u64)> {
++    let mut queue_count = 0usize;
++    let mut qsize_sum = 0u64;
++    let entries = fs::read_dir("/dev/mqueue").ok()?;
++    for entry in entries.flatten() {
++        let path = entry.path();
++        let content = fs::read_to_string(&path).ok()?;
++        // Format usually contains "QSIZE:<n>"
++        if let Some(idx) = content.find("QSIZE:") {
++            let tail = &content[idx + "QSIZE:".len()..];
++            let num = tail
++                .chars()
++                .take_while(|c| c.is_ascii_digit())
++                .collect::<String>()
++                .parse::<u64>()
++                .ok()?;
++            qsize_sum += num;
++            queue_count += 1;
++        }
++    }
++    Some((queue_count, qsize_sum))
++}
++
++fn uid_ipc_namespace_distribution(reuid: u32) -> Option<Vec<(String, usize)>> {
++    let mut ns_count: HashMap<String, usize> = HashMap::new();
++    let proc_entries = fs::read_dir("/proc").ok()?;
++    for proc_entry in proc_entries.flatten() {
++        let pid = proc_entry.file_name();
++        if pid.to_string_lossy().parse::<u32>().is_err() {
++            continue;
++        }
++        let status_path = proc_entry.path().join("status");
++        let status = match fs::read_to_string(status_path) {
++            Ok(s) => s,
++            Err(_) => continue,
++        };
++        if parse_reuid_from_status(&status) != Some(reuid) {
++            continue;
++        }
++        let ipc_ns_path = proc_entry.path().join("ns/ipc");
++        let ipc_ns = match fs::read_link(ipc_ns_path) {
++            Ok(ns) => ns.to_string_lossy().into_owned(),
++            Err(_) => continue,
++        };
++        *ns_count.entry(ipc_ns).or_insert(0) += 1;
++    }
++    let mut dist: Vec<(String, usize)> = ns_count.into_iter().collect();
++    dist.sort_by(|a, b| b.1.cmp(&a.1));
++    Some(dist)
++}
++
++fn log_mqueue_mount_status(phase: &str) {
++    let mounts = match fs::read_to_string("/proc/self/mounts") {
++        Ok(m) => m,
++        Err(err) => {
++            log::warn!("{}: failed to read /proc/self/mounts: {}", phase, err);
++            return;
++        }
++    };
++
++    let mut found = false;
++    for line in mounts.lines() {
++        let mut parts = line.split_whitespace();
++        let _src = parts.next();
++        let mount_point = parts.next();
++        let fs_type = parts.next();
++        let options = parts.next();
++        if mount_point == Some("/dev/mqueue") {
++            found = true;
++            log::info!(
++                "{}: /dev/mqueue mount found, fs_type={}, options={}",
++                phase,
++                fs_type.unwrap_or("<unknown>"),
++                options.unwrap_or("<unknown>")
++            );
++            break;
++        }
++    }
++    if !found {
++        log::warn!("{}: /dev/mqueue is NOT mounted", phase);
++    }
++}
++
++fn log_mq_runtime_diagnostics(phase: &str) {
++    log_mqueue_mount_status(phase);
++
++    let mut nofile_limit = libc::rlimit {
++        rlim_cur: 0,
++        rlim_max: 0,
++    };
++    // SAFETY: getrlimit only writes to the provided struct.
++    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut nofile_limit) } == 0 {
++        log::info!(
++            "{}: RLIMIT_NOFILE soft={} hard={}",
++            phase,
++            nofile_limit.rlim_cur,
++            nofile_limit.rlim_max
++        );
++    } else {
++        log::warn!("{}: failed to read RLIMIT_NOFILE", phase);
++    }
++
++    let mut msgq_limit = libc::rlimit {
++        rlim_cur: 0,
++        rlim_max: 0,
++    };
++    // SAFETY: getrlimit only writes to the provided struct.
++    if unsafe { libc::getrlimit(libc::RLIMIT_MSGQUEUE, &mut msgq_limit) } == 0 {
++        log::info!(
++            "{}: RLIMIT_MSGQUEUE soft={} hard={}",
++            phase,
++            msgq_limit.rlim_cur,
++            msgq_limit.rlim_max
++        );
++    } else {
++        log::warn!("{}: failed to read RLIMIT_MSGQUEUE", phase);
++    }
++
++    match fs::read_dir("/proc/self/fd") {
++        Ok(entries) => {
++            let fd_count = entries.count();
++            let max_fd_number = current_max_fd_number().unwrap_or(-1);
++            log::info!(
++                "{}: open_fd_count={} max_fd_number={}",
++                phase,
++                fd_count,
++                max_fd_number
++            );
++        }
++        Err(err) => {
++            log::warn!("{}: failed to count /proc/self/fd: {}", phase, err);
++        }
++    }
++
++    for key in [
++        "queues_max",
++        "msg_max",
++        "msgsize_max",
++        "msg_default",
++        "msgsize_default",
++    ] {
++        let path = format!("/proc/sys/fs/mqueue/{key}");
++        match fs::read_to_string(&path) {
++            Ok(v) => log::info!("{}: {}={}", phase, key, v.trim()),
++            Err(err) => log::warn!("{}: failed to read {}: {}", phase, path, err),
++        }
++    }
++
++    let reuid = unsafe { libc::getuid() };
++    if let Some((queue_count, qsize_sum)) = mq_usage_bytes_in_current_ns() {
++        log::info!(
++            "{}: mq_usage_current_ns reuid={} queue_count={} qsize_bytes_sum={}",
++            phase,
++            reuid,
++            queue_count,
++            qsize_sum
++        );
++    } else {
++        log::warn!("{}: failed to estimate mq usage in current namespace", phase);
++    }
++
++    if let Some(dist) = uid_ipc_namespace_distribution(reuid) {
++        let namespace_count = dist.len();
++        let summary = dist
++            .iter()
++            .take(5)
++            .map(|(ns, cnt)| format!("{}:{}", ns, cnt))
++            .collect::<Vec<_>>()
++            .join(", ");
++        log::info!(
++            "{}: ipc_namespace_distribution reuid={} namespace_count={} top={}",
++            phase,
++            reuid,
++            namespace_count,
++            summary
++        );
++        if namespace_count > 1 {
++            log::warn!(
++                "{}: detected processes of same reuid in multiple IPC namespaces",
++                phase
++            );
++        }
++    } else {
++        log::warn!(
++            "{}: failed to inspect IPC namespace distribution for reuid={}",
++            phase,
++            reuid
++        );
++    }
++}
++
+ lazy_static! {
+     /// Mapping of (binary path, Child PID) to patch point collection if they
+     /// have already been parsed once.
+@@ -465,7 +678,8 @@ impl Source {
                  // This is an own mount in our mount namespace, thus we need
                  // to explicitly mount it.
                  jail.bind_rw(&workdir);
@@ -1256,7 +1624,31 @@ index 549ac57..335fc78 100644
                  Some(jail.build()?)
              } else {
                  None
-@@ -740,8 +741,24 @@ impl Source {
+@@ -565,6 +779,7 @@ impl Source {
+         log::debug!("Starting source");
+ 
+         log::debug!("Creating POSIX queues");
++        log_mq_runtime_diagnostics("Before MQ create");
+         log::debug!("Creating sending MQ: {}", self.mq_send_name);
+         self.mq_send = Some(
+             posixmq::OpenOptions::readwrite()
+@@ -573,6 +788,7 @@ impl Source {
+                 .open(&self.mq_send_name)
+                 .context("Failed to create send MQ")?,
+         );
++        log_mq_runtime_diagnostics("After send MQ create");
+ 
+         log::debug!("Creating receiving MQ: {}", self.mq_recv_name);
+         self.mq_recv = Some(
+@@ -582,6 +798,7 @@ impl Source {
+                 .open(&self.mq_recv_name)
+                 .context("Failed to create recv MQ")?,
+         );
++        log_mq_runtime_diagnostics("After recv MQ create");
+ 
+         let child_pid;
+         unsafe {
+@@ -740,8 +957,24 @@ impl Source {
                      assert_eq!(ret, 0);
  
                      // Disable ASLR since we rely on all instances having the same memory layout.
@@ -1283,7 +1675,7 @@ index 549ac57..335fc78 100644
  
                      if let Some(ref mut jail) = self.jail {
                          // ! Make sure that the code in `enter()` is async-signal-safe since we
-@@ -1494,8 +1511,20 @@ impl Source {
+@@ -1494,8 +1727,20 @@ impl Source {
                      } else {
                          /* Signals are represented by negative exit codes */
                          log::trace!("Child was signalled");
@@ -1305,7 +1697,7 @@ index 549ac57..335fc78 100644
                              msgs: self.msg_buffer.take().unwrap(),
                          })
                          .into());
-@@ -2053,6 +2082,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
+@@ -2053,6 +2298,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
      Ok(())
  }
  
