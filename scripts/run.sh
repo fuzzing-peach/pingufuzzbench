@@ -78,7 +78,7 @@ while true; do
         shift 2
         ;;
     --cpu-affinity)
-        if [[ -z "$no_cpu_affinity" ]]; then
+        if [[ -n "$no_cpu_affinity" ]]; then
             log_error "[!] --cpu-affinity and --no-cpu cannot be used together"
             exit 1
         fi
@@ -134,21 +134,56 @@ fi
 
 output=$(realpath "$output")
 
-idle_cores=$(python3 ./scripts/idle_cpu.py $times)
-idle_cores_array=($idle_cores)
+cores_per_container=1
+case "$fuzzer" in
+    ft | ft-net | pingu)
+        cores_per_container=4
+        ;;
+    aflnet | stateafl | sgfuzz)
+        cores_per_container=4
+        ;;
+esac
+
+declare -a idle_cores_array
+if [[ -z "$no_cpu_affinity" && -z "$cpu_affinity" ]]; then
+    idle_cores=$(python3 ./scripts/idle_cpu.py "$times" "$cores_per_container")
+    idle_cores_array=($idle_cores)
+fi
 
 log_success "[+] Ready to launch image: $image_id"
 cids=()
 for i in $(seq 1 $times); do
     # use current ms timestamp as the id
     ts=$(date +%s%3N)
+    cpuset_cpus=""
     if [[ -n "$no_cpu_affinity" ]]; then
         idle_core="x"
+        attached_core="none"
+    elif [[ -n "$cpu_affinity" ]]; then
+        if [[ "$cpu_affinity" =~ ^[0-9]+$ ]]; then
+            start_core=$((cpu_affinity + (i - 1) * cores_per_container))
+            end_core=$((start_core + cores_per_container - 1))
+            cpuset_cpus="${start_core}-${end_core}"
+        elif [[ "$cpu_affinity" =~ ^[0-9]+(,[0-9]+)*$ ]] && [[ "$times" -gt 1 ]]; then
+            IFS=',' read -r -a manual_starts <<< "$cpu_affinity"
+            if [[ "${#manual_starts[@]}" -ne "$times" ]]; then
+                log_error "[!] --cpu-affinity as start-core list requires exactly --times values"
+                exit 1
+            fi
+            start_core="${manual_starts[$((i-1))]}"
+            end_core=$((start_core + cores_per_container - 1))
+            cpuset_cpus="${start_core}-${end_core}"
+        else
+            cpuset_cpus="$cpu_affinity"
+        fi
+
+        idle_core=$(echo "$cpuset_cpus" | awk -F'[-,]' '{print $1}')
+        attached_core="$cpuset_cpus"
     else
         idle_core=${idle_cores_array[$((i-1))]}
-    fi
-    if [[ -n "$cpu_affinity" ]]; then
-        idle_core=${cpu_affinity}
+        end_core=$((idle_core + cores_per_container - 1))
+        cpuset_cpus="${idle_core}-${end_core}"
+        attached_core="$cpuset_cpus"
     fi
     # 将 CPU ID 加入到容器名称中: name-index-cpuid-timestamp
     cname="${container_name}-${i}-cpu${idle_core}-${ts}"
@@ -159,7 +194,7 @@ for i in $(seq 1 $times); do
     #         # -e PFB_CPU_CORE=${idle_core} \
 
     container_fuzzing_args="${fuzzer_args}"
-    cmd="docker run -it -d \
+    cmd="docker run -it -d --privileged \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \
@@ -173,6 +208,7 @@ for i in $(seq 1 $times); do
         --ulimit msgqueue=2097152000 \
         --shm-size=64G \
         --name $cname \
+        ${cpuset_cpus:+--cpuset-cpus $cpuset_cpus} \
         $image_name \
         /bin/bash -c \"bash /home/user/profuzzbench/scripts/dispatch.sh $target run $fuzzer $replay_step $gcov_step $timeout ${container_fuzzing_args} > /tmp/fuzzing-output/stdout.log 2> /tmp/fuzzing-output/stderr.log\""
     echo $cmd
@@ -180,7 +216,7 @@ for i in $(seq 1 $times); do
         continue
     fi
     id=$(eval $cmd)
-    echo "$idle_core" >> ${output}/${cname}/attached_core
+    echo "$attached_core" >> ${output}/${cname}/attached_core
     log_success "[+] Launch docker container: ${cname}"
     cids+=(${id::12}) # store only the first 12 characters of a container ID
     sleep 1

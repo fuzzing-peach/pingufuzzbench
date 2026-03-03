@@ -2,76 +2,156 @@
 import os
 import sys
 import subprocess
-from typing import Dict, List
+from typing import List, Set
 
-def get_cpu_count() -> int:
-    """获取系统CPU数量"""
+
+FUZZER_CORE_COUNT = {
+    "ft": 4,
+    "aflnet": 4,
+    "stateafl": 4,
+    "sgfuzz": 4,
+}
+
+
+def parse_cpu_range_spec(spec: str) -> List[int]:
+    """Parse cpu range string like '0-3,8,10-12' to sorted unique cpu ids."""
+    cpus: Set[int] = set()
+    for chunk in spec.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if "-" in chunk:
+            left, right = chunk.split("-", 1)
+            start = int(left)
+            end = int(right)
+            if end < start:
+                start, end = end, start
+            cpus.update(range(start, end + 1))
+        else:
+            cpus.add(int(chunk))
+    return sorted(cpus)
+
+
+def get_online_cpus() -> List[int]:
+    """Get logical CPUs from host online list (/sys/devices/system/cpu/online)."""
+    online_path = "/sys/devices/system/cpu/online"
     try:
-        return len(os.sched_getaffinity(0))
+        with open(online_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+        if content:
+            return parse_cpu_range_spec(content)
+    except (OSError, ValueError):
+        pass
+
+    # Fallback for environments where /sys is unavailable.
+    try:
+        return sorted(os.sched_getaffinity(0))
     except AttributeError:
-        # 如果不支持 sched_getaffinity，使用 os.cpu_count()
-        return os.cpu_count() or 1
+        count = os.cpu_count() or 1
+        return list(range(count))
 
-def get_running_containers_cpu() -> Dict[int, str]:
-    """获取正在运行的容器已分配的CPU信息
-    通过解析容器名称 name-index-cpuX-timestamp 获取CPU ID
-    返回: Dict[cpu_number, container_id]
+
+def parse_start_cpu(container_name: str) -> int:
+    """Parse cpuX in container name and return X, -1 if not found."""
+    for part in container_name.split("-"):
+        if part.startswith("cpu"):
+            tail = part[3:]
+            if tail.isdigit():
+                return int(tail)
+    return -1
+
+
+def infer_container_core_count(container_name: str) -> int:
     """
-    cpu_allocations: Dict[int, str] = {}
-    
+    Infer cores per container from name pattern:
+    pingu-<fuzzer>-...-cpuX-<timestamp>
+    """
+    parts = container_name.split("-")
+    if len(parts) >= 2 and parts[0] == "pingu":
+        return FUZZER_CORE_COUNT.get(parts[1], 1)
+    return 1
+
+
+def get_running_containers_allocated_cpus(online_cpus: List[int]) -> Set[int]:
+    """Collect logical CPUs already allocated by running containers."""
+    allocated: Set[int] = set()
+    online = set(online_cpus)
+
     try:
-        # 获取所有运行中的容器
-        cmd = ["docker", "ps", "--format", "{{.Names}}"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        containers = result.stdout.strip().split('\n')
-        
-        # 过滤掉空行
-        containers = [c for c in containers if c]
-        
+        result = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        containers = [c for c in result.stdout.strip().split("\n") if c]
         for container in containers:
-            # 解析容器名称获取CPU ID
-            parts = container.split('-')
-            for part in parts:
-                if part.startswith('cpu'):
-                    try:
-                        cpu_num = int(part[3:])  # 去掉 'cpu' 前缀
-                        cpu_allocations[cpu_num] = container
-                    except (ValueError, IndexError):
-                        continue
-                        
+            start_cpu = parse_start_cpu(container)
+            if start_cpu < 0:
+                continue
+            core_count = infer_container_core_count(container)
+            for cpu in range(start_cpu, start_cpu + core_count):
+                if cpu in online:
+                    allocated.add(cpu)
     except subprocess.SubprocessError:
         print("Error running docker commands", file=sys.stderr)
-        
-    return cpu_allocations
 
-def find_available_cpus(max_cpus: int, allocated_cpus: Dict[int, str], n: int) -> List[int]:
-    """找到n个空闲的CPU，只返回偶数编号"""
-    # 只选择偶数CPU
-    all_cpus = set(range(0, max_cpus, 2))  # 步长为2，只包含偶数
-    used_cpus = set(allocated_cpus.keys())
-    free_cpus = sorted(list(all_cpus - used_cpus))
-    return free_cpus[:n]
+    return allocated
 
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: idle_cpu.py <number_of_cpus>", file=sys.stderr)
+
+def find_available_cpu_groups(
+    online_cpus: List[int], used_cpus: Set[int], n: int, cores_per_container: int
+) -> List[int]:
+    """
+    Return n start CPU indices for contiguous CPU groups of size cores_per_container.
+    """
+    online = set(online_cpus)
+    starts: List[int] = []
+    reserved = set(used_cpus)
+
+    for start in online_cpus:
+        group = list(range(start, start + cores_per_container))
+        if all(c in online for c in group) and all(c not in reserved for c in group):
+            starts.append(start)
+            reserved.update(group)
+            if len(starts) >= n:
+                break
+    return starts
+
+
+def main() -> None:
+    if len(sys.argv) not in (2, 3):
+        print(
+            "Usage: idle_cpu.py <number_of_containers> [cores_per_container]",
+            file=sys.stderr,
+        )
         sys.exit(1)
-        
+
     try:
         n = int(sys.argv[1])
+        cores_per_container = int(sys.argv[2]) if len(sys.argv) == 3 else 1
     except ValueError:
-        print("Error: argument must be an integer", file=sys.stderr)
+        print("Error: arguments must be integers", file=sys.stderr)
         sys.exit(1)
-        
-    max_cpus = get_cpu_count()
-    allocated_cpus = get_running_containers_cpu()
-    free_cpus = find_available_cpus(max_cpus, allocated_cpus, n)
-    
-    if len(free_cpus) < n:
-        print(f"Not enough idle CPUs, only {len(free_cpus)} CPUs available", file=sys.stderr)
+
+    if n <= 0 or cores_per_container <= 0:
+        print("Error: arguments must be positive integers", file=sys.stderr)
         sys.exit(1)
-        
-    print(" ".join(map(str, free_cpus)))
+
+    online_cpus = get_online_cpus()
+    used_cpus = get_running_containers_allocated_cpus(online_cpus)
+    starts = find_available_cpu_groups(online_cpus, used_cpus, n, cores_per_container)
+
+    if len(starts) < n:
+        print(
+            f"Not enough idle CPU groups, only {len(starts)} group(s) available "
+            f"for {cores_per_container} core(s) each",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(" ".join(map(str, starts)))
+
 
 if __name__ == "__main__":
     main()
