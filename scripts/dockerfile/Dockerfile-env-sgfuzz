@@ -113,7 +113,7 @@ RUN git clone https://github.com/AFLNet/AFLNet.git aflnet && \
     cd llvm_mode && make ${MAKE_OPT}
 
 # SGFuzz
-RUN git clone https://github.com/bajinsheng/SGFuzz.git --depth=4 sgfuzz && \
+RUN git clone https://github.com/bajinsheng/SGFuzz.git sgfuzz && \
     cd sgfuzz && \
     git checkout 00dbbd70ba79f1bcff3f7dfdb4fda0645cf91225 && \
     git apply /tmp/patches/sgfuzz.patch && \
@@ -121,8 +121,9 @@ RUN git clone https://github.com/bajinsheng/SGFuzz.git --depth=4 sgfuzz && \
     sudo cp libsfuzzer.a /usr/lib/libsFuzzer.a
 
 # Install hongfuzz netdrive that is used by SGFuzz
-RUN git clone https://github.com/google/honggfuzz.git --depth=1 && \
+RUN git clone https://github.com/google/honggfuzz.git && \
     cd honggfuzz && \
+    git checkout 6f89ccc9c43c6c1d9f938c81a47b72cd5ada61ba && \
     git apply /tmp/patches/hf.patch && \
     CC=clang CFLAGS="-fsanitize=fuzzer-no-link -fsanitize=address" make libhfcommon/libhfcommon.a && \
     CC=clang CFLAGS="-fsanitize=fuzzer-no-link -fsanitize=address -DHFND_RECVTIME=1 -Wno-error=unused-function" make libhfnetdriver/libhfnetdriver.a && \

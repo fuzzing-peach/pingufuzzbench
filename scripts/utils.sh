@@ -111,7 +111,7 @@ function compute_coverage {
   # process other testcases
   count=0
   for f in $testcases; do
-    echo $f
+    echo "replaying $f"
     time=$(stat -c %Y $f)
     "$replayer" "$f" || true
 
