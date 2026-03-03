@@ -146,7 +146,7 @@ esac
 
 declare -a idle_cores_array
 if [[ -z "$no_cpu_affinity" && -z "$cpu_affinity" ]]; then
-    idle_cores=$(python3 ./scripts/idle_cpu.py "$times" "$cores_per_container")
+    idle_cores=$(python3 ./scripts/idle_cpu.py "$times" "$cores_per_container" "$output")
     idle_cores_array=($idle_cores)
 fi
 
@@ -194,11 +194,19 @@ for i in $(seq 1 $times); do
     #         # -e PFB_CPU_CORE=${idle_core} \
 
     container_fuzzing_args="${fuzzer_args}"
+    afl_env_args=""
+    case "$fuzzer" in
+        aflnet | stateafl)
+            # CPU pinning is handled by Docker cpuset; disable AFL internal binding.
+            afl_env_args="-e AFL_NO_AFFINITY=1"
+            ;;
+    esac
     cmd="docker run -it -d --privileged \
         --cap-add=SYS_ADMIN --cap-add=SYS_RAWIO --cap-add=SYS_PTRACE \
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \
         --sysctl net.ipv4.tcp_tw_reuse=1 \
+        ${afl_env_args} \
         --user $(id -u):$(id -g) \
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \

@@ -2,6 +2,7 @@
 import os
 import sys
 import subprocess
+from pathlib import Path
 from typing import List, Set
 
 
@@ -99,6 +100,32 @@ def get_running_containers_allocated_cpus(online_cpus: List[int]) -> Set[int]:
     return allocated
 
 
+def get_output_allocated_cpus(online_cpus: List[int], output_dir: str) -> Set[int]:
+    """Collect logical CPUs recorded in output/*/attached_core files."""
+    allocated: Set[int] = set()
+    online = set(online_cpus)
+    root = Path(output_dir)
+    if not root.exists():
+        return allocated
+
+    for f in root.glob("*/attached_core"):
+        try:
+            raw = f.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if not raw or raw == "none":
+            continue
+        try:
+            for cpu in parse_cpu_range_spec(raw):
+                if cpu in online:
+                    allocated.add(cpu)
+        except ValueError:
+            # Ignore malformed records.
+            continue
+
+    return allocated
+
+
 def find_available_cpu_groups(
     online_cpus: List[int], used_cpus: Set[int], n: int, cores_per_container: int
 ) -> List[int]:
@@ -120,16 +147,16 @@ def find_available_cpu_groups(
 
 
 def main() -> None:
-    if len(sys.argv) not in (2, 3):
+    if len(sys.argv) not in (2, 3, 4):
         print(
-            "Usage: idle_cpu.py <number_of_containers> [cores_per_container]",
+            "Usage: idle_cpu.py <number_of_containers> [cores_per_container] [output_dir]",
             file=sys.stderr,
         )
         sys.exit(1)
 
     try:
         n = int(sys.argv[1])
-        cores_per_container = int(sys.argv[2]) if len(sys.argv) == 3 else 1
+        cores_per_container = int(sys.argv[2]) if len(sys.argv) >= 3 else 1
     except ValueError:
         print("Error: arguments must be integers", file=sys.stderr)
         sys.exit(1)
@@ -138,8 +165,11 @@ def main() -> None:
         print("Error: arguments must be positive integers", file=sys.stderr)
         sys.exit(1)
 
+    output_dir = sys.argv[3] if len(sys.argv) == 4 else "output"
+
     online_cpus = get_online_cpus()
     used_cpus = get_running_containers_allocated_cpus(online_cpus)
+    used_cpus.update(get_output_allocated_cpus(online_cpus, output_dir))
     starts = find_available_cpu_groups(online_cpus, used_cpus, n, cores_per_container)
 
     if len(starts) < n:
