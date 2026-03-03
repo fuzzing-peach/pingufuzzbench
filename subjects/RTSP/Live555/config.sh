@@ -177,7 +177,7 @@ function build_sgfuzz {
 
     pushd target/sgfuzz/live555 >/dev/null
 
-    git reset --hard HEAD
+    git reset --hard HEAD~1
     git apply ${HOME}/profuzzbench/subjects/RTSP/Live555/ft-sgfuzz-live555.patch
 
     export LLVM_COMPILER=clang
@@ -186,7 +186,7 @@ function build_sgfuzz {
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion -std=c++20"
     
-    python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
+    python3 ${HOME}/sgfuzz/sanitizer/State_machine_instrument.py .
 
     sed -i "s@^C_COMPILER.*@C_COMPILER = $CC@g" config.linux
     sed -i "s@^CPLUSPLUS_COMPILER.*@CPLUSPLUS_COMPILER = $CXX@g" config.linux
@@ -215,6 +215,8 @@ function build_sgfuzz {
         -lstdc++ \
         -fsanitize=address \
         -fsanitize=fuzzer \
+        -fsanitize=fuzzer \
+        -fsanitize=undefined \
         -DFT_FUZZING \
         -DFT_CONSUMER \
         -DSGFUZZ \
@@ -242,13 +244,13 @@ function run_sgfuzz {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="disable_coredump=0:abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export HFND_TCP_PORT=8554
     export HFND_FORK_MODE=1
 
     SGFuzz_ARGS=(
         -max_len=100000
-        -close_fd_mask=3
+        -close_fd_mask=0
         -shrink=1
         -print_full_coverage=1
         -reduce_inputs=1
@@ -257,6 +259,7 @@ function run_sgfuzz {
         -detect_leaks=0
         -max_total_time=$timeout
         -fork=1
+        -ignore_crashes=1
         -artifact_prefix="${outdir}/crashes/"
         "${outdir}/replayable-queue"
         "${indir}"
@@ -275,7 +278,7 @@ function run_sgfuzz {
 
     function replay {
         ${HOME}/aflnet/afl-replay $1 RTSP 8554 1 &
-        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        LD_PRELOAD=libgcov_preload.so \
             timeout -k 0 1s ./testOnDemandRTSPServer 8554
 
         wait

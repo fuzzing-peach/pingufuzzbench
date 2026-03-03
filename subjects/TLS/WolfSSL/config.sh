@@ -63,7 +63,7 @@ function run_aflnet {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         $HOME/aflnet/afl-fuzz -d -i $indir \
@@ -116,7 +116,7 @@ function run_stateafl {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
         $HOME/stateafl/afl-fuzz -d -i $indir \
@@ -197,7 +197,7 @@ function run_sgfuzz {
     mkdir -p $outdir/crashes
     rm -rf $outdir/crashes/*
 
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=4433
 
     SGFuzz_ARGS=(
@@ -352,7 +352,7 @@ function build_pingu_generator {
     # Removed opt: -svf-slice=backward -svf-slice-sources=send:1 \
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -passes="pingu-source" -debug-pass-manager \
-        -ins=load,store,memcpy,trampoline,ret -role=source -svf=1 -dump-svf=0 \
+        -ins=load,store,call,memcpy,trampoline,ret,icmp,memcmp -role=source -svf=1 -dump-svf=0 \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         -svf-slice=backward -svf-slice-sources=send:1 \
@@ -396,7 +396,7 @@ function build_pingu_consumer {
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
         -passes="pingu-source,afl-coverage" -debug-pass-manager \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
-        -ins=load,store,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
+        -ins=load,store,call,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         -svf-slice=forward -svf-slice-sources=recv:1 \
         server.bc -o server_opt.bc
