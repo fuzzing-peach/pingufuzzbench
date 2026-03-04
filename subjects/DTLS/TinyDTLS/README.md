@@ -9,7 +9,7 @@ The following commands create a docker image tagged tinyDTLS. The image should h
 ```bash
 cd $PFBENCH
 cd subjects/DTLS/TinyDTLS
-docker build . -t tinydtls
+docker build --progress=plain . -t tinydtls
 ```
 
 ## Step-2. Run fuzzing
