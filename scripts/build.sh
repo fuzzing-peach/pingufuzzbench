@@ -80,7 +80,7 @@ log_success "[+] Docker build args: ${docker_args}"
 # --build-arg HTTP_PROXY=http://172.17.0.1:7890 --build-arg HTTPS_PROXY=http://172.17.0.1:7890
 # If needs to add dns server, passing: --build-arg DNS_SERVER=9.9.9.9
 # --build-arg DNS_SERVER=9.9.9.9
-cmd="docker build \
+cmd="docker build --progress=plain \
     --build-arg FUZZER=$fuzzer \
     --build-arg TARGET=$target \
     --build-arg VERSION=$version \

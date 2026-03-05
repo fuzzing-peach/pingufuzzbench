@@ -9,7 +9,7 @@ The following commands create a docker image tagged openssh. The image should ha
 ```bash
 cd $PFBENCH
 cd subjects/SSH/OpenSSH
-docker build . -t openssh
+docker build --progress=plain . -t openssh
 ```
 
 ## Step-2. Run fuzzing

@@ -42,7 +42,7 @@ function build_aflnet {
     export CC=$HOME/aflnet/afl-clang-fast
     export AFL_USE_ASAN=1
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -93,7 +93,7 @@ function build_stateafl {
     export CC=$HOME/stateafl/afl-clang-fast
     export AFL_USE_ASAN=1
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -152,7 +152,7 @@ function build_sgfuzz {
     # export FT_BLOCK_PATH_POSTFIXES="src/internal.c"
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
     cd examples/server
     extract-bc server
@@ -263,7 +263,7 @@ function build_ft_generator {
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/client/client ${MAKE_OPT}
 
     rm -rf .git
@@ -286,7 +286,7 @@ function build_ft_consumer {
     export CFLAGS="-O3 -g -fsanitize=address"
     export CXXFLAGS="-O3 -g -fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -314,7 +314,7 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/ft-sink.yaml >>ft.yaml
 
     # running ft-net
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml fuzz -t ${timeout}s
 
     # collecting coverage results
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
@@ -323,6 +323,40 @@ function run_ft {
     cd ${HOME}/target/gcov/consumer/wolfssl
     mkdir -p ${work_dir}/cov_html
     gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
+
+    popd >/dev/null
+}
+
+function build_asan {
+    if [ ! -d ".git-cache/wolfssl" ]; then
+        git clone --no-single-branch https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
+    fi
+
+    mkdir -p repo
+    cp -r .git-cache/wolfssl repo/wolfssl-raw
+    pushd repo/wolfssl-raw >/dev/null
+
+    git fetch --unshallow || true
+    git rebase "$1"
+    ./autogen.sh
+
+    popd >/dev/null
+
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/wolfssl-raw target/asan/wolfssl
+    pushd target/asan/wolfssl >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O0 -g -fsanitize=address"
+    export CXXFLAGS="-O0 -g -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/server/server ${MAKE_OPT}
+
+    rm -rf .git
 
     popd >/dev/null
 }

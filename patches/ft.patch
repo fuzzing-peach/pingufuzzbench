@@ -1,3 +1,16 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 68ba1a2..03b76aa 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -29,7 +29,7 @@ lazy_static = "1.4.0"
+ #ipc-channel = "0.16.0"
+ serde = { version="1.0.163", features = ["derive"] }
+ repr-trait = "1.0.0"
+-log = { version = "0.4.17", features = ["release_max_level_debug", "kv_unstable", "serde"] }
++log = { version = "0.4.17", features = ["kv_unstable", "serde"] }
+ parking_lot = "0.12.1"
+ byte-unit = "4.0.19"
+ llvm_stackmap = "0.1.5"
 diff --git a/fuzztruction_shared/src/constants.rs b/fuzztruction_shared/src/constants.rs
 index 92f1bce..be052dc 100644
 --- a/fuzztruction_shared/src/constants.rs
@@ -119,10 +132,15 @@ index 0d07540..14903c0 100644
  }
  
 diff --git a/generator/agent/src/agent.rs b/generator/agent/src/agent.rs
-index 4ef436a..049dfef 100644
+index 4ef436a..264c94f 100644
 --- a/generator/agent/src/agent.rs
 +++ b/generator/agent/src/agent.rs
-@@ -373,6 +373,10 @@ fn run(agent: &mut Agent, _msg: &RunMessage) -> ProcessType {
+@@ -1,4 +1,3 @@
+-
+ use fuzztruction_shared::messages;
+ use fuzztruction_shared::{
+     communication_channel::{CommunicationChannel, CommunicationChannelError},
+@@ -373,6 +372,10 @@ fn run(agent: &mut Agent, _msg: &RunMessage) -> ProcessType {
              // Prevent the child from messing with the mutation cache. However, keep it mapped,
              // for accessing the mutation masks and updating runtime vars.
              agent.mutation_cache.make_private().unwrap();
@@ -345,7 +363,7 @@ index f275c54..2bdfdc8 100644
          dbgs() << "Deleting call to abort " << *call_ins << "\n";
          auto bb = call_ins->getParent();
 diff --git a/lib/jail/src/jail.rs b/lib/jail/src/jail.rs
-index 3aa7cd0..d5105be 100644
+index 3aa7cd0..003b65d 100644
 --- a/lib/jail/src/jail.rs
 +++ b/lib/jail/src/jail.rs
 @@ -39,7 +39,7 @@ where
@@ -373,22 +391,26 @@ index 3aa7cd0..d5105be 100644
              "/etc/hosts",
              "/etc/hostname",
              "/etc/resolv.conf",
-@@ -134,8 +135,8 @@ impl Jail {
+@@ -134,8 +135,12 @@ impl Jail {
              Jail::remount_bind_mount_ro(&dst).context("Failed to remount as ro")?;
          }
  
 -        let dst = format!("{}{}", &self.new_root, "/home/user/fuzztruction/eval-result");
 -        Jail::mount(&["--bind",  "/home/user/fuzztruction/eval-result", &dst]).context("Failed to mount eval-result RW")?;
-+        let dst = format!("{}{}", &self.new_root, "/home/user/fuzztruction-net/eval-result");
-+        Jail::mount(&["--bind",  "/home/user/fuzztruction-net/eval-result", &dst]).context("Failed to mount eval-result RW")?;
++        let dst = format!(
++            "{}{}",
++            &self.new_root, "/home/user/fuzztruction-net/eval-result"
++        );
++        Jail::mount(&["--bind", "/home/user/fuzztruction-net/eval-result", &dst])
++            .context("Failed to mount eval-result RW")?;
  
          // Mount /proc, /sys and /dev. These are shared since they are also marked as shared in the "parent" namespace.
          Jail::mount(&["-o", "bind", "/proc", &format!("{}/proc", self.new_root)])
 diff --git a/scheduler/src/checks.rs b/scheduler/src/checks.rs
-index 2689dde..48915c6 100644
+index 2689dde..8675a6a 100644
 --- a/scheduler/src/checks.rs
 +++ b/scheduler/src/checks.rs
-@@ -119,6 +119,57 @@ fn check_file_limit() -> Result<()> {
+@@ -119,6 +119,60 @@ fn check_file_limit() -> Result<()> {
      Ok(())
  }
  
@@ -399,8 +421,8 @@ index 2689dde..48915c6 100644
 +        .and_then(|value| value.parse::<u64>().ok())
 +        .unwrap_or(DEFAULT_TARGET_MSGQUEUE_BYTES);
 +
-+    let (mut soft_limit, mut hard_limit) = getrlimit(Resource::RLIMIT_MSGQUEUE)
-+        .context("Failed to read RLIMIT_MSGQUEUE")?;
++    let (mut soft_limit, mut hard_limit) =
++        getrlimit(Resource::RLIMIT_MSGQUEUE).context("Failed to read RLIMIT_MSGQUEUE")?;
 +    log::info!(
 +        "Current RLIMIT_MSGQUEUE soft={} hard={} target={}",
 +        soft_limit,
@@ -435,7 +457,10 @@ index 2689dde..48915c6 100644
 +
 +    // Fallback: at least raise soft to current hard to maximize usable quota.
 +    if soft_limit < hard_limit {
-+        log::info!("Increasing RLIMIT_MSGQUEUE soft to current hard={}", hard_limit);
++        log::info!(
++            "Increasing RLIMIT_MSGQUEUE soft to current hard={}",
++            hard_limit
++        );
 +        setrlimit(Resource::RLIMIT_MSGQUEUE, hard_limit, hard_limit)
 +            .context("Failed to raise RLIMIT_MSGQUEUE soft to hard")?;
 +    }
@@ -446,7 +471,7 @@ index 2689dde..48915c6 100644
  fn check_mqueue_queues_max() -> Result<()> {
      let procfs_file = "/proc/sys/fs/mqueue/queues_max";
      let limit: u64 = fs::read_to_string(procfs_file)?.trim().parse().unwrap();
-@@ -130,13 +181,14 @@ fn check_mqueue_queues_max() -> Result<()> {
+@@ -130,13 +184,14 @@ fn check_mqueue_queues_max() -> Result<()> {
  
  /// Check if all requirements to run this software are satisfied.
  pub fn check_system() -> Result<()> {
@@ -467,9 +492,18 @@ index 2689dde..48915c6 100644
      Ok(())
  }
 diff --git a/scheduler/src/cli/fuzztruction.rs b/scheduler/src/cli/fuzztruction.rs
-index eb8c21d..499e9e9 100644
+index eb8c21d..6f0453f 100644
 --- a/scheduler/src/cli/fuzztruction.rs
 +++ b/scheduler/src/cli/fuzztruction.rs
+@@ -7,7 +7,7 @@ mod stackmap_parser;
+ mod test_patchpoints;
+ mod util;
+ 
+-use anyhow::{anyhow, Context, Result};
++use anyhow::{Context, Result};
+ 
+ use std::env;
+ use std::path::PathBuf;
 @@ -358,6 +358,38 @@ fn parse_args() -> ArgMatches {
              Command::new("dump-stackmap")
                  .about("Dump the LLVM stackmap (e.g., locations and sizes)")
@@ -509,16 +543,29 @@ index eb8c21d..499e9e9 100644
          .subcommand(
              Command::new("test-patchpoints")
              .about("Test the patchpoints of the source application (for debugging)")
-@@ -387,10 +419,18 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
+@@ -372,9 +404,9 @@ fn parse_args() -> ArgMatches {
+     matches
+ }
+ 
+-/// Check whether the workdir already exists and raises an error if --purge
+-/// was not passed. If this function returns `Ok`, the workdir is empty, but
+-/// exists.
++/// Check whether the workdir already exists.
++/// If `--purge` is passed, existing content is removed for run modes that
++/// expect an empty directory. Otherwise we keep existing content and continue.
+ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
+     let purge_flag = matches.get_flag("purge");
+ 
+@@ -387,15 +419,22 @@ fn check_workdir(config: &mut Config, matches: &ArgMatches) -> Result<()> {
      // Purge the working directory if requested.
      if config.general.work_dir.exists() && expects_empty_dir {
          if purge_flag {
 -            std::fs::remove_dir_all(&config.general.work_dir).unwrap_or_else(|_| {
 -                panic!("Failed to remove workdir {:?}", config.general.work_dir)
-+            let dir_entries = std::fs::read_dir(&config.general.work_dir).unwrap_or_else(|_| {
-+                panic!("Failed to read workdir {:?}", config.general.work_dir)
-             });
+-            });
 -            std::fs::create_dir_all(&config.general.work_dir)?;
++            let dir_entries = std::fs::read_dir(&config.general.work_dir)
++                .unwrap_or_else(|_| panic!("Failed to read workdir {:?}", config.general.work_dir));
 +            for entry in dir_entries {
 +                let entry = entry.unwrap();
 +                let path = entry.path();
@@ -529,9 +576,17 @@ index eb8c21d..499e9e9 100644
 +                }
 +            }
          } else {
-             return Err(anyhow!(
-                 "Workdir {:?} exists and --purge was not provided!",
-@@ -507,6 +547,10 @@ fn real_main() -> Result<()> {
+-            return Err(anyhow!(
+-                "Workdir {:?} exists and --purge was not provided!",
++            log::warn!(
++                "Workdir {:?} exists and --purge was not provided. Continuing without cleaning.",
+                 config.general.work_dir
+-            ));
++            );
+         }
+     }
+     Ok(())
+@@ -507,6 +546,10 @@ fn real_main() -> Result<()> {
              handler::handle_cli_llvm_cov_subcommand(llvm_cov_matches, &config)
                  .expect("Failed to run llvm-cov subcommand");
          }
@@ -542,6 +597,19 @@ index eb8c21d..499e9e9 100644
          Some(("aflnet", matches)) => {
              handler::handle_cli_aflnet_subcommand(matches, &config)
                  .expect("Failed to run AFLNet mode");
+@@ -565,8 +608,10 @@ fn replace_workdir(config: &mut Config, matches: &ArgMatches) {
+ 
+ fn configure_jail(config: &mut Config) -> Result<()> {
+     if config.general.jail_drop_to_sudo_callee {
+-        let uid = env::var("SUDO_UID").context("Failed to get SUDO_UID from environment. Please run via sudo or as root.")?;
+-        let gid = env::var("SUDO_GID").context("Failed to get SUDO_GID from environment. Please run via sudo or as root")?;
++        let uid = env::var("SUDO_UID")
++            .context("Failed to get SUDO_UID from environment. Please run via sudo or as root.")?;
++        let gid = env::var("SUDO_GID")
++            .context("Failed to get SUDO_GID from environment. Please run via sudo or as root")?;
+         log::info!("Privileges will be dropped to uid: {uid:?} and gid: {gid:?}");
+         config.general.jail_uid = Some(uid.parse().unwrap());
+         config.general.jail_gid = Some(gid.parse().unwrap());
 diff --git a/scheduler/src/cli/handler.rs b/scheduler/src/cli/handler.rs
 index e98c37a..84ccd01 100644
 --- a/scheduler/src/cli/handler.rs
@@ -619,74 +687,21 @@ index e98c37a..84ccd01 100644
  pub(crate) fn handle_cli_llvm_cov_subcommand(
      trace_matches: &ArgMatches,
      config: &Config,
-diff --git a/scheduler/src/competitors/stateafl.rs b/scheduler/src/competitors/stateafl.rs
-index 2a2727a..cb7cf69 100644
---- a/scheduler/src/competitors/stateafl.rs
-+++ b/scheduler/src/competitors/stateafl.rs
-@@ -47,13 +47,14 @@ impl StateAflWorker {
- 
-     fn _loop(self, init_finished: mpsc::Sender<()>) {
-         let stateafl_config = self
--            .config
--            .stateafl
--            .as_ref()
--            .expect("Target has no StateAfl config");
--
--        let seed_dir = stateafl_config.input_dir.clone();
--        let workdir = self.config.general.stateafl_workdir();
-+        .config
-+        .stateafl
-+        .as_ref()
-+        .expect("Target has no StateAfl config");
-+    
-+    let seed_dir = stateafl_config.input_dir.clone();
-+    let workdir = self.config.general.stateafl_workdir();
-+    println!("workdir: {:?}", workdir);
-         fs::create_dir_all(&workdir).unwrap();
- 
-         let mut log_path = workdir.clone();
-@@ -70,7 +71,7 @@ impl StateAflWorker {
-             .unwrap();
-         let log_fd = log_file.into_raw_fd();
- 
--        let mut cmd = Command::new("/competitors/stateafl/afl-fuzz");
-+        let mut cmd = Command::new("/home/user/stateafl/afl-fuzz");
- 
-         unsafe {
-             cmd.stdout(Stdio::from_raw_fd(log_fd));
-@@ -211,12 +212,12 @@ impl StateAflWorker {
-             cmd.gid(jail_uid_gid.1);
-         }
- 
--        OpenOptions::new()
--            .write(true)
--            .open("/proc/sys/kernel/randomize_va_space")
--            .unwrap()
--            .write_all("0".as_bytes())
--            .unwrap();
-+        // OpenOptions::new()
-+        //     .write(true)
-+        //     .open("/proc/sys/kernel/randomize_va_space")
-+        //     .unwrap()
-+        //     .write_all("0".as_bytes())
-+        //     .unwrap();
- 
-         let mut child = None;
-         for try_idx in 0..6 {
-@@ -263,7 +264,7 @@ impl StateAflWorker {
-     pub fn run(self) -> WorkerProxy {
-         let (init_finshied_sender, init_finshied_receiver) = mpsc::channel::<()>();
-         let handle = thread::spawn(|| {
--            unshare_network_namespace(&self.config);
-+            // unshare_network_namespace(&self.config);
-             self._loop(init_finshied_sender)
-         });
-         init_finshied_receiver
 diff --git a/scheduler/src/config.rs b/scheduler/src/config.rs
-index 036e283..44653b6 100644
+index 036e283..b33f313 100644
 --- a/scheduler/src/config.rs
 +++ b/scheduler/src/config.rs
-@@ -289,6 +289,16 @@ pub struct StateAflConfig {
+@@ -214,6 +214,9 @@ pub struct SinkConfig {
+     /// The working directory that should be used.
+     pub working_dir: Option<PathBuf>,
+     pub send_sigterm: bool,
++    /// Treat sink as a persistent server that should be actively terminated
++    /// by the scheduler after producer/client is done.
++    pub persistent_server: bool,
+ }
+ 
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+@@ -289,6 +292,16 @@ pub struct StateAflConfig {
      pub enable_state_aware_mode: bool,
  }
  
@@ -697,22 +712,22 @@ index 036e283..44653b6 100644
 +    pub src_dir: PathBuf,
 +    pub cwd: PathBuf,
 +    pub reporter: String,
-+    pub send_sigterm: bool
++    pub send_sigterm: bool,
 +}
 +
  #[derive(Debug, Clone, Serialize)]
  pub struct VanillaConfig {
      /// Environment used during binary
-@@ -444,6 +454,8 @@ pub struct Config {
+@@ -444,6 +457,8 @@ pub struct Config {
      pub stateafl: Option<StateAflConfig>,
      /// Config for the SGFuzz fuzzer.
      pub sgfuzz: Option<SGFuzzConfig>,
-+    
-+    pub gcov: Option<GcovConfig>
++
++    pub gcov: Option<GcovConfig>,
  }
  
  impl Config {
-@@ -1028,6 +1040,7 @@ impl ConfigBuilder {
+@@ -1028,6 +1043,7 @@ impl ConfigBuilder {
                  "sink-cov",
                  "source",
                  "afl-net",
@@ -720,7 +735,7 @@ index 036e283..44653b6 100644
                  "state-afl",
                  "sgfuzz",
                  "vanilla",
-@@ -1290,6 +1303,26 @@ impl ConfigBuilder {
+@@ -1290,6 +1306,36 @@ impl ConfigBuilder {
          })
      }
  
@@ -732,7 +747,17 @@ index 036e283..44653b6 100644
 +        let cwd = self.get_attribute(yaml, "cwd")?;
 +        let reporter = self.get_attribute(yaml, "reporter")?;
 +        let send_sigterm = self.get_attribute::<Option<bool>>(yaml, "send-sigterm")?;
-+        ConfigBuilder::check_for_unparsed_keys(yaml, &["bin-path", "env", "src-dir", "reporter", "send-sigterm", "cwd"])?;
++        ConfigBuilder::check_for_unparsed_keys(
++            yaml,
++            &[
++                "bin-path",
++                "env",
++                "src-dir",
++                "reporter",
++                "send-sigterm",
++                "cwd",
++            ],
++        )?;
 +
 +        Ok(GcovConfig {
 +            bin_path,
@@ -747,7 +772,33 @@ index 036e283..44653b6 100644
      fn parse_state_afl_section(&self, yaml: &Yaml) -> Result<StateAflConfig> {
          let bin_path = self.get_attribute(yaml, "bin-path")?;
          let env: Option<Vec<(String, String)>> = self.get_attribute(yaml, "env")?;
-@@ -1477,6 +1510,13 @@ impl ConfigBuilder {
+@@ -1368,6 +1414,9 @@ impl ConfigBuilder {
+         let send_sigterm = self
+             .get_attribute::<Option<bool>>(yaml, "send-sigterm")?
+             .unwrap_or(false);
++        let persistent_server = self
++            .get_attribute::<Option<bool>>(yaml, "persistent-server")?
++            .unwrap_or(false);
+ 
+         ConfigBuilder::check_for_unparsed_keys(
+             yaml,
+@@ -1386,6 +1435,7 @@ impl ConfigBuilder {
+                 "server-ready-on",
+                 "working-dir",
+                 "send-sigterm",
++                "persistent-server",
+             ],
+         )
+         .context("Sink")?;
+@@ -1404,6 +1454,7 @@ impl ConfigBuilder {
+             server_ready_on,
+             working_dir,
+             send_sigterm,
++            persistent_server,
+         })
+     }
+ 
+@@ -1477,6 +1528,13 @@ impl ConfigBuilder {
              Some(self.parse_afl_net_section(aflnet_section)?)
          };
  
@@ -761,11 +812,11 @@ index 036e283..44653b6 100644
          let stateafl_section = &yaml["state-afl"];
          let stateafl_section = if stateafl_section.is_badvalue() {
              None
-@@ -1508,6 +1548,7 @@ impl ConfigBuilder {
+@@ -1508,6 +1566,7 @@ impl ConfigBuilder {
              sgfuzz: sgfuzz_section,
              sink_cov: sink_cov_config,
              vanilla: vanilla_config,
-+            gcov: gcov_config
++            gcov: gcov_config,
          };
          config.validate()?;
          Ok(config)
@@ -938,17 +989,17 @@ index 0000000..2d0c728
 +}
 \ No newline at end of file
 diff --git a/scheduler/src/coverage/mod.rs b/scheduler/src/coverage/mod.rs
-index bdedb83..b1e3e71 100644
+index bdedb83..0ed5e02 100644
 --- a/scheduler/src/coverage/mod.rs
 +++ b/scheduler/src/coverage/mod.rs
-@@ -10,6 +10,7 @@ pub mod classic;
+@@ -7,6 +7,7 @@ use crate::config::{Config, SinkCovConfig};
+ 
+ pub mod aflnet;
+ pub mod classic;
++pub mod grcov;
  pub mod networked;
  pub mod sgfuzz;
  pub mod stateafl;
-+pub mod grcov;
- 
- mod postprocess;
- pub use postprocess::postprocess_llvm_cov;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
 index 8886de7..4b5bdf3 100644
 --- a/scheduler/src/coverage/networked.rs
@@ -1338,6 +1389,121 @@ index 934c860..2f6fa0f 100644
  
      let mut crash_did_not_crash_ctr = 0;
  
+diff --git a/scheduler/src/fuzzer/common_networked.rs b/scheduler/src/fuzzer/common_networked.rs
+index a47528e..6ca891e 100644
+--- a/scheduler/src/fuzzer/common_networked.rs
++++ b/scheduler/src/fuzzer/common_networked.rs
+@@ -12,6 +12,31 @@ use crate::{
+ 
+ use super::common::ExecError;
+ 
++fn treat_sink_as_persistent_server(config: &Config) -> bool {
++    // Scheme A (automatic): source acts as client while sink is a server.
++    let auto_mode =
++        !config.source.is_server.unwrap_or(false) && config.sink.is_server.unwrap_or(false);
++    // Scheme B (explicit): sink.persistent-server in YAML.
++    config.sink.persistent_server || auto_mode
++}
++
++fn wait_for_persistent_consumer_termination(
++    client: &mut Client,
++    server: &mut Server,
++    timeout: Duration,
++) -> Result<sink::RunResult> {
++    let consumer = get_consumer(client, server);
++    match consumer.wait_for_child_termination(timeout, false, Some(Duration::from_millis(1))) {
++        Ok(res) => Ok(res),
++        Err(err) => {
++            log::warn!(
++                "Failed to drain persistent sink status gracefully: {err:#?}. Retrying with kill."
++            );
++            consumer.wait_for_child_termination(timeout, true, None)
++        }
++    }
++}
++
+ pub fn networked_common_calibration_run(
+     config: &Config,
+     source: &mut Source,
+@@ -59,6 +84,43 @@ pub fn networked_common_calibration_run(
+         WaitForPeerResult::Ready => (),
+     }
+ 
++    let persistent_sink = treat_sink_as_persistent_server(config);
++    if persistent_sink {
++        log::trace!(
++            "Treating sink as persistent server during calibration (sink.persistent-server={} source.is_server={:?} sink.is_server={:?})",
++            config.sink.persistent_server,
++            config.source.is_server,
++            config.sink.is_server
++        );
++
++        // For persistent servers, the producer/client completion is the run-completion signal.
++        let source_res = get_producer(&mut client, &mut server).wait_for_child_termination(
++            timeout,
++            false,
++        )?;
++        if !matches!(source_res, crate::source::RunResult::Terminated { .. }) {
++            log::trace!(
++                "Source finished abnormally during calibration ({source_res:?}); draining persistent sink state before returning."
++            );
++            if let Err(err) = wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
++            {
++                log::warn!("Draining persistent sink after source failure failed: {err:#?}");
++            }
++            return Err(CalibrationError::SourceExecutionFailed(source_res).into());
++        }
++
++        // Proactively terminate long-running sink to avoid treating "does not exit by itself"
++        // as a timeout.
++        let start_ts = Instant::now();
++        let sink_res =
++            wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)?;
++        log::trace!(
++            "wait_for_child_termination of persistent consumer took {:?}",
++            start_ts.elapsed()
++        );
++        return Ok(sink_res);
++    }
++
+     let start_ts = Instant::now();
+     let consumer = get_consumer(&mut client, &mut server);
+ 
+@@ -116,6 +178,34 @@ pub fn networked_common_run(
+         WaitForPeerResult::Ready => (),
+     }
+ 
++    let persistent_sink = treat_sink_as_persistent_server(config);
++    if persistent_sink {
++        log::trace!(
++            "Treating sink as persistent server during run (sink.persistent-server={} source.is_server={:?} sink.is_server={:?})",
++            config.sink.persistent_server,
++            config.source.is_server,
++            config.sink.is_server
++        );
++
++        let source_res = get_producer(&mut client, &mut server).wait_for_child_termination(
++            timeout,
++            false,
++        )?;
++        if !matches!(source_res, crate::source::RunResult::Terminated { .. }) {
++            log::trace!(
++                "Source finished abnormally during run ({source_res:?}); draining persistent sink state before returning."
++            );
++            if let Err(err) = wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
++            {
++                log::warn!("Draining persistent sink after source failure failed: {err:#?}");
++            }
++            return Err(ExecError::SourceError(source_res).into());
++        }
++
++        return wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
++            .map_err(Into::into);
++    }
++
+     let consumer = get_consumer(&mut client, &mut server);
+     let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
+ 
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
 index 728d127..a2d288b 100644
 --- a/scheduler/src/fuzzer/worker_impl/init.rs
@@ -1359,20 +1525,44 @@ index 728d127..a2d288b 100644
          self.sink.as_mut().unwrap().start()?;
          self.resize_bitmaps();
 diff --git a/scheduler/src/sink.rs b/scheduler/src/sink.rs
-index a4b0084..2cbb0e2 100644
+index a4b0084..449ad0d 100644
 --- a/scheduler/src/sink.rs
 +++ b/scheduler/src/sink.rs
-@@ -725,8 +725,8 @@ impl AflSink {
-             InputChannel::Stdin => unsafe {
-                 libc::dup2(self.input_file.0.as_raw_fd(), 0);
-             },
--            _ => unsafe {
--                libc::dup2(*DEV_NULL_FD, STDIN_FILENO);
-+            _ =>  {
-+                // libc::dup2(*DEV_NULL_FD, STDIN_FILENO);
-             },
+@@ -839,8 +839,19 @@ impl AflSink {
          }
-     }
+ 
+         log::trace!("Waiting for child pid");
+-        AflSink::wait_for_data(&[self.receive_fd.unwrap()], AFL_DEFAULT_TIMEOUT)
+-            .context("Failed to retrive child pid from forkserver")?;
++        if let Err(err) = AflSink::wait_for_data(&[self.receive_fd.unwrap()], AFL_DEFAULT_TIMEOUT)
++        {
++            let forkserver_waitpid_status = self
++                .forkserver_sid
++                .and_then(|sid| try_get_child_exit_reason(sid));
++            log::error!(
++                "Failed to retrieve child pid from forkserver. forkserver_sid={:?}, forkserver_waitpid_status={:?}, poll_error={:#?}",
++                self.forkserver_sid,
++                forkserver_waitpid_status,
++                err
++            );
++            return Err(err).context("Failed to retrive child pid from forkserver");
++        }
+         let ret = unsafe { libc::read(self.receive_fd.unwrap(), buf_ptr, 4) };
+         if ret != 4 {
+             error!("Failed to retrive child pid");
+@@ -993,6 +1004,12 @@ impl AflSink {
+ 
+         let child_msg = i32::from_le_bytes(buffer);
+         log::trace!("Child send exit message {}", child_msg);
++        log::debug!(
++            "Child raw exit message: dec={} hex=0x{:08x} bytes={:02x?}",
++            child_msg,
++            child_msg as u32,
++            buffer
++        );
+ 
+         if libc::WIFEXITED(child_msg) {
+             self.child_pid.take();
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
 index 549ac57..aafd5d1 100644
 --- a/scheduler/src/source.rs

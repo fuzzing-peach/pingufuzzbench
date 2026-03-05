@@ -25,6 +25,7 @@ sink:
     log-stdout: true
     log-stderr: true
     allow-unstable-sink: true
+    persistent-server: true
 
 gcov:
     bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
