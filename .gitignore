@@ -12,3 +12,4 @@ cert/**
 nohup*
 *.tar.gz
 vul
+temp

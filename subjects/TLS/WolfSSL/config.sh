@@ -197,7 +197,7 @@ function run_sgfuzz {
     mkdir -p $outdir/crashes
     rm -rf $outdir/crashes/*
 
-    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=4433
 
     SGFuzz_ARGS=(
@@ -220,7 +220,6 @@ function run_sgfuzz {
         -p 4433
         -i
         -x
-        -H freeAfterErrRet
     )
 
     ./examples/server/server "${SGFuzz_ARGS[@]}" -- "${WOLFSSL_ARGS[@]}"
@@ -458,6 +457,26 @@ function build_gcov {
 
     rm -rf a-conftest.gcno .git
     rm -rf a--.gcno .git
+
+    popd >/dev/null
+}
+
+function build_asan {
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/wolfssl target/asan/wolfssl
+    pushd target/asan/wolfssl >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O0 -g -fsanitize=address"
+    export CXXFLAGS="-O0 -g -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/server/server ${MAKE_OPT}
+
+    rm -rf .git
 
     popd >/dev/null
 }
