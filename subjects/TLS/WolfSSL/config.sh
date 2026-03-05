@@ -238,6 +238,7 @@ function run_sgfuzz {
         -d
         -r
         -V
+        -x
     )
 
     ./examples/server/server "${SGFuzz_ARGS[@]}" -- "${WOLFSSL_ARGS[@]}"
@@ -374,7 +375,7 @@ function build_asan {
     export CXXFLAGS="-O0 -g -fsanitize=address"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -509,7 +510,7 @@ function build_gcov {
     export CPPFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf a-conftest.gcno .git
@@ -530,7 +531,7 @@ function build_asan {
     export CXXFLAGS="-O0 -g -fsanitize=address"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
