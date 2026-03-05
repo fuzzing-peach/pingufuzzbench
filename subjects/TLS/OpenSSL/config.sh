@@ -46,13 +46,22 @@ function checkout {
 
 function replay {
     # the process launching order is confusing.
+    cert_dir=${HOME}/profuzzbench/cert
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./apps/openssl s_server \
-        -cert ${HOME}/profuzzbench/cert/server.crt \
-        -key ${HOME}/profuzzbench/cert/server.key \
-        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
-        -accept 4433 -4
+        -tls1_3 \
+        -key ${cert_dir}/server.key \
+        -cert ${cert_dir}/server.crt \
+        -CAfile ${cert_dir}/ca.crt \
+        -ech_key ${cert_dir}/echconfig.pem \
+        -alpn h2,http/1.1 \
+        -status \
+        -status_file ${cert_dir}/ocsp.der \
+        -num_tickets 4 \
+        -accept 4433 \
+        -naccept 1 \
+        -4
     wait
 }
 
@@ -102,9 +111,9 @@ function run_aflnet {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./apps/openssl s_server \
         -tls1_3 \
-        -CAfile ${cert_dir}/ca.crt \
-        -cert ${cert_dir}/server.crt \
         -key ${cert_dir}/server.key \
+        -cert ${cert_dir}/server.crt \
+        -CAfile ${cert_dir}/ca.crt \
         -ech_key ${cert_dir}/echconfig.pem \
         -alpn h2,http/1.1 \
         -status \
@@ -172,12 +181,12 @@ function run_stateafl {
     OPENSSL_ECH_CONFIG_LIST="${ech_config_list}" timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/4433 \
-        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none -t 1000 $fuzzer_args \
+        -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none -t 3000 $fuzzer_args \
         ./apps/openssl s_server \
         -tls1_3 \
-        -CAfile ${cert_dir}/ca.crt \
-        -cert ${cert_dir}/server.crt \
         -key ${cert_dir}/server.key \
+        -cert ${cert_dir}/server.crt \
+        -CAfile ${cert_dir}/ca.crt \
         -ech_key ${cert_dir}/echconfig.pem \
         -alpn h2,http/1.1 \
         -status \
@@ -292,9 +301,9 @@ function run_sgfuzz {
     OPENSSL_ARGS=(
         s_server
         -tls1_3
-        -CAfile "${cert_dir}/ca.crt"
         -key "${cert_dir}/server.key"
         -cert "${cert_dir}/server.crt"
+        -CAfile "${cert_dir}/ca.crt"
         -ech_key "${cert_dir}/echconfig.pem"
         -alpn "h2,http/1.1"
         -status
@@ -321,16 +330,17 @@ function run_sgfuzz {
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./apps/openssl s_server \
             -tls1_3 \
-            -cert ${cert_dir}/server.crt \
             -key ${cert_dir}/server.key \
+            -cert ${cert_dir}/server.crt \
             -CAfile ${cert_dir}/ca.crt \
             -ech_key ${cert_dir}/echconfig.pem \
             -alpn h2,http/1.1 \
             -status \
             -status_file ${cert_dir}/ocsp.der \
             -num_tickets 4 \
+            -accept 4433 \
             -naccept 1 \
-            -accept 4433 -4
+            -4
         wait
     }
 

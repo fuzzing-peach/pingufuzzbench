@@ -30,9 +30,16 @@ function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./examples/server/server \
+        -C 10 \
+        -p 4433 \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433 -V
+        -L C:h2,http/1.1 \
+        -s \
+        -e \
+        -d \
+        -r \
+        -V
     wait
 }
 
@@ -73,9 +80,15 @@ function run_aflnet {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
+        -C 10 \
+        -p 4433 \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433 -V
+        -L C:h2,http/1.1 \
+        -e \
+        -d \
+        -r \
+        -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -126,9 +139,16 @@ function run_stateafl {
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./examples/server/server \
+        -C 10 \
+        -p 4433 \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433 -V
+        -L C:h2,http/1.1 \
+        -s \
+        -e \
+        -d \
+        -r \
+        -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -217,13 +237,16 @@ function run_sgfuzz {
     )
 
     WOLFSSL_ARGS=(
+        -C 10
+        -p 4433
         -c ${HOME}/profuzzbench/cert/fullchain.crt
         -k ${HOME}/profuzzbench/cert/server.key
+        -L C:h2,http/1.1
+        -s
         -e
-        -p 4433
+        -d
+        -r
         -V
-        -i
-        -x
     )
 
     ./examples/server/server "${SGFuzz_ARGS[@]}" -- "${WOLFSSL_ARGS[@]}"
@@ -236,9 +259,16 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./examples/server/server \
+            -C 10 \
+            -p 4433 \
             -c ${HOME}/profuzzbench/cert/fullchain.crt \
             -k ${HOME}/profuzzbench/cert/server.key \
-            -e -p 4433 -V
+            -L C:h2,http/1.1 \
+            -s \
+            -e \
+            -d \
+            -r \
+            -V
 
         wait
         pkill -f testOnDemandRTSPServer
