@@ -11,9 +11,13 @@ ARG MAKE_OPT="-j4"
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG http_proxy=${HTTP_PROXY}
-ARG https_proxy=${HTTP_PROXY}
+ARG https_proxy=${HTTPS_PROXY}
 ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
 ENV NO_PROXY=${no_proxy}
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV http_proxy=${HTTP_PROXY}
+ENV https_proxy=${HTTPS_PROXY}
 
 ARG UID
 ARG GID

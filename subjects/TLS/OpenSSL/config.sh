@@ -12,8 +12,8 @@ function get_ech_config_list {
     if [ ! -x "${openssl_bin}" ]; then
         return 1
     fi
-    "${openssl_bin}" ech -in "${ech_pem}" -text 2>&1 | \
-        awk '/\[[^]]/{sub(/^[ \t]*/, ""); print; exit}'
+    # s_client -ech_config_list expects base64-encoded ECHConfigList.
+    awk '/BEGIN ECHCONFIG/{f=1;next}/END ECHCONFIG/{f=0}f' "${ech_pem}" | tr -d '\n'
 }
 
 function checkout {
