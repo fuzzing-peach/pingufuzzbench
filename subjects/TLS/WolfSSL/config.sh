@@ -35,11 +35,7 @@ function replay {
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
         -L C:h2,http/1.1 \
-        -s \
-        -e \
-        -d \
-        -r \
-        -V
+        -e -d -r -V
     wait
 }
 
@@ -85,10 +81,7 @@ function run_aflnet {
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
         -L C:h2,http/1.1 \
-        -e \
-        -d \
-        -r \
-        -V
+        -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -144,11 +137,7 @@ function run_stateafl {
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
         -L C:h2,http/1.1 \
-        -s \
-        -e \
-        -d \
-        -r \
-        -V
+        -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -237,16 +226,19 @@ function run_sgfuzz {
     )
 
     WOLFSSL_ARGS=(
-        -C 10
-        -p 4433
+        -C
+        10
+        -p
+        4433
         -c ${HOME}/profuzzbench/cert/fullchain.crt
         -k ${HOME}/profuzzbench/cert/server.key
-        -L C:h2,http/1.1
-        -s
+        -L
+        C:h2,http/1.1
         -e
         -d
         -r
         -V
+        -x
     )
 
     ./examples/server/server "${SGFuzz_ARGS[@]}" -- "${WOLFSSL_ARGS[@]}"
@@ -264,11 +256,7 @@ function run_sgfuzz {
             -c ${HOME}/profuzzbench/cert/fullchain.crt \
             -k ${HOME}/profuzzbench/cert/server.key \
             -L C:h2,http/1.1 \
-            -s \
-            -e \
-            -d \
-            -r \
-            -V
+            -e -d -r -V
 
         wait
         pkill -f testOnDemandRTSPServer
@@ -387,7 +375,7 @@ function build_asan {
     export CXXFLAGS="-O0 -g -fsanitize=address"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -522,7 +510,7 @@ function build_gcov {
     export CPPFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
-    ./configure --enable-static --enable-shared=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf a-conftest.gcno .git
@@ -543,7 +531,7 @@ function build_asan {
     export CXXFLAGS="-O0 -g -fsanitize=address"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git

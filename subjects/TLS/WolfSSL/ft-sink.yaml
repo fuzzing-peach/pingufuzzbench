@@ -15,7 +15,6 @@ sink:
             "/home/user/profuzzbench/cert/server.key",
             "-L",
             "C:h2,http/1.1",
-            "-s",
             "-e",
             "-d",
             "-r",

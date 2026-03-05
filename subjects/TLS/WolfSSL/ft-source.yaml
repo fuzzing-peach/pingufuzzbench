@@ -11,9 +11,10 @@ source:
     "/home/user/profuzzbench/cert/ca.crt",
     "-L",
     "C:h2,http/1.1",
-    "-s",
     "-W",
-    "1"
+    "1",
+    "-H",
+    "exitWithRet"
   ]
   working-dir: "/home/user/target/ft/generator/wolfssl"
   input-type: Tcp
