@@ -16,7 +16,10 @@ function checkout {
         git commit -m "apply sgfuzz patch"
     fi
 
-    git rebase "$@"
+    if [[ $# -gt 0 && -n "$1" ]]; then
+        git fetch --all --tags
+        git checkout "$1"
+    fi
 
     ./autogen.sh
 
