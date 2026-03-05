@@ -29,7 +29,7 @@ function replay {
         timeout -k 1s 3s ./examples/server/server \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433
+        -e -p 4433 -V
     wait
 }
 
@@ -72,7 +72,7 @@ function run_aflnet {
         ./examples/server/server \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433
+        -e -p 4433 -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -125,7 +125,7 @@ function run_stateafl {
         ./examples/server/server \
         -c ${HOME}/profuzzbench/cert/fullchain.crt \
         -k ${HOME}/profuzzbench/cert/server.key \
-        -e -p 4433
+        -e -p 4433 -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
@@ -218,6 +218,7 @@ function run_sgfuzz {
         -k ${HOME}/profuzzbench/cert/server.key
         -e
         -p 4433
+        -V
         -i
         -x
         -H freeAfterErrRet
@@ -235,7 +236,7 @@ function run_sgfuzz {
             timeout -k 1s 3s ./examples/server/server \
             -c ${HOME}/profuzzbench/cert/fullchain.crt \
             -k ${HOME}/profuzzbench/cert/server.key \
-            -e -p 4433
+            -e -p 4433 -V
 
         wait
         pkill -f testOnDemandRTSPServer
@@ -360,6 +361,8 @@ function build_asan {
     rm -rf .git
 
     popd >/dev/null
+
+
 }
 
 function build_pingu_generator {
