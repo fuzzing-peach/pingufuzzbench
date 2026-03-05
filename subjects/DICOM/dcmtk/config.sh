@@ -375,7 +375,7 @@ function build_ft_generator {
 
     mkdir build && cd build
     cmake ..
-    make ${MAKE_OPT}
+    make dcmqrti ${MAKE_OPT}
     
     popd >/dev/null
 }

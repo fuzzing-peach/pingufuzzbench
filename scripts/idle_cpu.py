@@ -100,8 +100,31 @@ def get_running_containers_allocated_cpus(online_cpus: List[int]) -> Set[int]:
     return allocated
 
 
-def get_output_allocated_cpus(online_cpus: List[int], output_dir: str) -> Set[int]:
-    """Collect logical CPUs recorded in output/*/attached_core files."""
+def get_running_container_names() -> Set[str]:
+    """Get the set of currently running container names."""
+    names: Set[str] = set()
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        for line in result.stdout.strip().split("\n"):
+            if line:
+                names.add(line)
+    except subprocess.SubprocessError:
+        print("Error running docker commands", file=sys.stderr)
+    return names
+
+
+def get_output_allocated_cpus(
+    online_cpus: List[int], output_dir: str, running_containers: Set[str]
+) -> Set[int]:
+    """
+    Collect logical CPUs from output/*/attached_core for running containers only.
+    Stopped containers are treated as released and therefore ignored.
+    """
     allocated: Set[int] = set()
     online = set(online_cpus)
     root = Path(output_dir)
@@ -109,6 +132,10 @@ def get_output_allocated_cpus(online_cpus: List[int], output_dir: str) -> Set[in
         return allocated
 
     for f in root.glob("*/attached_core"):
+        # Directory name is the container name used by scripts/run.sh.
+        # Ignore stale output from stopped containers.
+        if f.parent.name not in running_containers:
+            continue
         try:
             raw = f.read_text(encoding="utf-8").strip()
         except OSError:
@@ -168,8 +195,9 @@ def main() -> None:
     output_dir = sys.argv[3] if len(sys.argv) == 4 else "output"
 
     online_cpus = get_online_cpus()
+    running_containers = get_running_container_names()
     used_cpus = get_running_containers_allocated_cpus(online_cpus)
-    used_cpus.update(get_output_allocated_cpus(online_cpus, output_dir))
+    used_cpus.update(get_output_allocated_cpus(online_cpus, output_dir, running_containers))
     starts = find_available_cpu_groups(online_cpus, used_cpus, n, cores_per_container)
 
     if len(starts) < n:

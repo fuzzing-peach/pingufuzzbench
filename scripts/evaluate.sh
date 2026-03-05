@@ -10,7 +10,7 @@ docker_args=$(get_args_after_double_dash "$@")
 # Check if the pingu-eval image exists, if not, build it
 if ! docker image inspect pingu-eval:latest > /dev/null 2>&1; then
     log_success "[+] pingu-eval image does not exist. Building now..."
-    cmd="DOCKER_BUILDKIT=1 docker build --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t pingu-eval:latest $docker_args -f scripts/Dockerfile-eval ."
+    cmd="DOCKER_BUILDKIT=1 docker build --progress=plain --build-arg USER_ID="$(id -u)" --build-arg GROUP_ID="$(id -g)" -t pingu-eval:latest $docker_args -f scripts/Dockerfile-eval ."
     echo "[+] Building pingu-eval image with command: $cmd"
     eval $cmd
     if [[ $? -ne 0 ]]; then

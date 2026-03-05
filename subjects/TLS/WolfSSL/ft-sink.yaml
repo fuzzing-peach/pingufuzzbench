@@ -13,9 +13,13 @@ sink:
             "/home/user/profuzzbench/cert/fullchain.crt",
             "-k",
             "/home/user/profuzzbench/cert/server.key",
+            "-L",
+            "C:h2,http/1.1",
+            "-s",
             "-e",
             "-d",
             "-r",
+            "-V",
         ]
     working-dir: "/home/user/target/ft/consumer/wolfssl/"
     input-type: Tcp
@@ -25,6 +29,7 @@ sink:
     log-stdout: true
     log-stderr: true
     allow-unstable-sink: true
+    persistent-server: true
 
 gcov:
     bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"

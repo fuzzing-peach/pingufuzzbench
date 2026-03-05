@@ -1,0 +1,11 @@
+# Minimal non-interactive command script for dcmqrti
+# Feed with: dcmqrti ... < dcmqrti.stdin.txt
+
+help
+title
+database
+study
+series
+image
+echo
+quit
