@@ -16,7 +16,10 @@ function checkout {
         git commit -m "apply sgfuzz patch"
     fi
 
-    git rebase "$@"
+    if [[ $# -gt 0 && -n "$1" ]]; then
+        git fetch --all --tags
+        git checkout "$1"
+    fi
 
     ./autogen.sh
 
@@ -458,6 +461,26 @@ function build_gcov {
 
     rm -rf a-conftest.gcno .git
     rm -rf a--.gcno .git
+
+    popd >/dev/null
+}
+
+function build_asan {
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/wolfssl target/asan/wolfssl
+    pushd target/asan/wolfssl >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O0 -g -fsanitize=address -fno-omit-frame-pointer"
+    export CXXFLAGS="-O0 -g -fsanitize=address -fno-omit-frame-pointer"
+    export LDFLAGS="-fsanitize=address"
+
+    ./configure --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
+    make examples/server/server ${MAKE_OPT}
+
+    rm -rf .git
 
     popd >/dev/null
 }

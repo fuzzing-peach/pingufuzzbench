@@ -19,10 +19,10 @@ function in_subshell() {
         echo "[+] Running in subshell: $cmd"
         if [[ -n "$PFB_CPU_CORE" && "$PFB_CPU_CORE" != "x" ]]; then
             echo "[+] Running in cpu core: $PFB_CPU_CORE"
-            taskset -c $PFB_CPU_CORE bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
+            taskset -c $PFB_CPU_CORE bash -eo pipefail -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         else
             echo "[+] CPU_CORE is not set, running in any core"
-            bash -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
+            bash -eo pipefail -c "cd ${HOME}; source $BASE/$target_config; source $BASE/scripts/utils.sh; $cmd"
         fi
     ) || exit 1
 }

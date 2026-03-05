@@ -1,14 +1,46 @@
 #!/usr/bin/env bash
 
-function checkout {
-    if [ ! -d ".git-cache/openssl" ]; then
-        git clone https://github.com/openssl/openssl.git .git-cache/openssl
+OPENSSL_ECH_BRANCH="feature/ech"
+OPENSSL_ECH_BASELINE="d01cd520e52ab8bcdad27496209a27022679d970"
+
+function get_ech_config_list {
+    ech_pem="$1"
+    openssl_bin="$2"
+    if [ ! -f "${ech_pem}" ]; then
+        return 1
     fi
+    if [ ! -x "${openssl_bin}" ]; then
+        return 1
+    fi
+    "${openssl_bin}" ech -in "${ech_pem}" -text 2>&1 | \
+        awk '/\[[^]]/{sub(/^[ \t]*/, ""); print; exit}'
+}
+
+function checkout {
+    target_ref="${1:-$OPENSSL_ECH_BASELINE}"
+
+    if [ ! -d ".git-cache/openssl" ]; then
+        git clone --no-single-branch https://github.com/openssl/openssl.git .git-cache/openssl
+    fi
+
     mkdir -p repo
+    rm -rf repo/openssl
     cp -r .git-cache/openssl repo/openssl
+
     pushd repo/openssl >/dev/null
-    git checkout "$@"
-    git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch
+
+    git fetch origin "${OPENSSL_ECH_BRANCH}"
+    git checkout "${OPENSSL_ECH_BASELINE}"
+    git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch || return 1
+    git add .
+    git commit -m "apply fuzzing patch"
+    patch_commit=$(git rev-parse HEAD)
+
+    if [ "$target_ref" != "$OPENSSL_ECH_BASELINE" ]; then
+        git checkout "$target_ref"
+        git cherry-pick "$patch_commit"
+    fi
+
     popd >/dev/null
 }
 
@@ -53,6 +85,8 @@ function run_aflnet {
     timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+    cert_dir=${HOME}/profuzzbench/cert
+    ech_config_list=$(get_ech_config_list "${cert_dir}/echconfig.pem" "${HOME}/target/aflnet/openssl/apps/openssl" || true)
     pushd ${HOME}/target/aflnet/openssl >/dev/null
 
     mkdir -p $outdir
@@ -62,15 +96,23 @@ function run_aflnet {
     export FAKE_RANDOM=1 # fake_random is not working with -DFT_FUZZING enabled
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
-    timeout -k 0 --preserve-status $timeout \
+    OPENSSL_ECH_CONFIG_LIST="${ech_config_list}" timeout -k 0 --preserve-status $timeout \
         ${HOME}/aflnet/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none \
         ./apps/openssl s_server \
-        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
-        -cert ${HOME}/profuzzbench/cert/server.crt \
-        -key ${HOME}/profuzzbench/cert/server.key \
-        -accept 4433 -4
+        -tls1_3 \
+        -CAfile ${cert_dir}/ca.crt \
+        -cert ${cert_dir}/server.crt \
+        -key ${cert_dir}/server.key \
+        -ech_key ${cert_dir}/echconfig.pem \
+        -alpn h2,http/1.1 \
+        -status \
+        -status_file ${cert_dir}/ocsp.der \
+        -num_tickets 4 \
+        -accept 4433 \
+        -naccept 1 \
+        -4
 
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr -r . -s | grep \"[lb][a-z]*:\""
@@ -112,6 +154,8 @@ function run_stateafl {
     timeout=$3
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls-replay
+    cert_dir=${HOME}/profuzzbench/cert
+    ech_config_list=$(get_ech_config_list "${cert_dir}/echconfig.pem" "${HOME}/target/stateafl/openssl/apps/openssl" || true)
     pushd ${HOME}/target/stateafl/openssl >/dev/null
 
     mkdir -p $outdir
@@ -125,15 +169,23 @@ function run_stateafl {
     #     fuzzer_args="-b ${CPU_CORE}"
     # fi
 
-    timeout -k 0 --preserve-status $timeout \
+    OPENSSL_ECH_CONFIG_LIST="${ech_config_list}" timeout -k 0 --preserve-status $timeout \
         ${HOME}/stateafl/afl-fuzz -d -i $indir \
         -o $outdir -N tcp://127.0.0.1/4433 \
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 50 -m none -t 1000 $fuzzer_args \
         ./apps/openssl s_server \
-        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
-        -cert ${HOME}/profuzzbench/cert/server.crt \
-        -key ${HOME}/profuzzbench/cert/server.key \
-        -accept 4433 -4 > /tmp/fuzzing-output/stateafl.log 2>&1
+        -tls1_3 \
+        -CAfile ${cert_dir}/ca.crt \
+        -cert ${cert_dir}/server.crt \
+        -key ${cert_dir}/server.key \
+        -ech_key ${cert_dir}/echconfig.pem \
+        -alpn h2,http/1.1 \
+        -status \
+        -status_file ${cert_dir}/ocsp.der \
+        -num_tickets 4 \
+        -accept 4433 \
+        -naccept 1 \
+        -4 > /tmp/fuzzing-output/stateafl.log 2>&1
 
     cd ${HOME}/target/gcov/consumer/openssl
     # clear the gcov data before computing coverage
@@ -213,6 +265,8 @@ function run_sgfuzz {
     outdir=/tmp/fuzzing-output
     queue=${outdir}/replayable-queue
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
+    cert_dir=${HOME}/profuzzbench/cert
+    ech_config_list=$(get_ech_config_list "${cert_dir}/echconfig.pem" "${HOME}/target/sgfuzz/openssl/apps/openssl" || true)
     pushd ${HOME}/target/sgfuzz/openssl >/dev/null
 
     export HFND_TCP_PORT=4433
@@ -237,15 +291,22 @@ function run_sgfuzz {
 
     OPENSSL_ARGS=(
         s_server
-        -CAfile ${HOME}/profuzzbench/cert/ca.crt \
-        -key "${HOME}/profuzzbench/cert/server.key"
-        -cert "${HOME}/profuzzbench/cert/server.crt"
+        -tls1_3
+        -CAfile "${cert_dir}/ca.crt"
+        -key "${cert_dir}/server.key"
+        -cert "${cert_dir}/server.crt"
+        -ech_key "${cert_dir}/echconfig.pem"
+        -alpn "h2,http/1.1"
+        -status
+        -status_file "${cert_dir}/ocsp.der"
+        -num_tickets "4"
         -accept "4433"
+        -naccept "1"
         -4
     )
 
     # timeout -k 0 --preserve-status $timeout ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
-    ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
+    OPENSSL_ECH_CONFIG_LIST="${ech_config_list}" ./apps/openssl "${SGFuzz_ARGS[@]}" -- "${OPENSSL_ARGS[@]}"
     
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
     cov_cmd="gcovr -r . -s ${MAKE_OPT} | grep \"[lb][a-z]*:\""
@@ -259,9 +320,16 @@ function run_sgfuzz {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./apps/openssl s_server \
-            -cert ${HOME}/profuzzbench/cert/server.crt \
-            -key ${HOME}/profuzzbench/cert/server.key \
-            -CAfile ${HOME}/profuzzbench/cert/ca.crt \
+            -tls1_3 \
+            -cert ${cert_dir}/server.crt \
+            -key ${cert_dir}/server.key \
+            -CAfile ${cert_dir}/ca.crt \
+            -ech_key ${cert_dir}/echconfig.pem \
+            -alpn h2,http/1.1 \
+            -status \
+            -status_file ${cert_dir}/ocsp.der \
+            -num_tickets 4 \
+            -naccept 1 \
             -accept 4433 -4
         wait
     }
@@ -330,6 +398,8 @@ function run_ft {
     consumer="OpenSSL"
     generator=${GENERATOR:-$consumer}
     work_dir=/tmp/fuzzing-output
+    cert_dir=${HOME}/profuzzbench/cert
+    ech_config_list=$(get_ech_config_list "${cert_dir}/echconfig.pem" "${HOME}/target/ft/generator/openssl/apps/openssl")
     pushd ${HOME}/target/ft/ >/dev/null
 
     # synthesize the ft configuration yaml
@@ -341,6 +411,7 @@ function run_ft {
     rm "$temp_file"
     cat ${HOME}/profuzzbench/subjects/TLS/${generator}/ft-source.yaml >>ft.yaml
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/ft-sink.yaml >>ft.yaml
+    sed -i "s|__ECH_CONFIG_LIST__|${ech_config_list}|g" ft.yaml
 
     # running ft-net
     sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --purge ft.yaml fuzz -t ${timeout}s
@@ -445,6 +516,65 @@ function build_gcov {
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
+
+    popd >/dev/null
+}
+
+function build_asan {
+    target_ref="${1:-$OPENSSL_ECH_BASELINE}"
+
+    if [ ! -d ".git-cache/openssl" ]; then
+        git clone --no-single-branch https://github.com/openssl/openssl.git .git-cache/openssl
+    fi
+
+    mkdir -p repo
+    rm -rf repo/openssl-raw
+    cp -r .git-cache/openssl repo/openssl-raw
+
+    pushd repo/openssl-raw >/dev/null
+    git fetch origin "${OPENSSL_ECH_BRANCH}"
+    git checkout "${target_ref}"
+    popd >/dev/null
+
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/openssl-raw target/asan/openssl
+    pushd target/asan/openssl >/dev/null
+
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O0 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O0 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+
+    ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async
+    bear -- make ${MAKE_OPT}
+
+    rm -rf fuzz test .git doc
+
+    cert_dir=${HOME}/profuzzbench/cert
+    mkdir -p "${cert_dir}"
+
+    # ECH materials are needed when testing ECH-related handshake paths.
+    # Reuse existing files if present; otherwise generate via ASAN OpenSSL.
+    if ! compgen -G "${cert_dir}/*[Ee][Cc][Hh]*.pem" >/dev/null; then
+        ech_openssl="${HOME}/target/asan/openssl/apps/openssl"
+        if [ ! -x "${ech_openssl}" ]; then
+            echo "[!] Missing OpenSSL binary for ECH generation: ${ech_openssl}"
+            return 1
+        fi
+        if ! "${ech_openssl}" ech -help >/dev/null 2>&1; then
+            echo "[!] OpenSSL binary does not support 'ech' subcommand: ${ech_openssl}"
+            return 1
+        fi
+        "${ech_openssl}" ech \
+            -public_name localhost \
+            -out "${cert_dir}/echconfig.pem"
+        chmod 644 "${cert_dir}/echconfig.pem"
+        echo "[+] Generated ECH material: ${cert_dir}/echconfig.pem using ${ech_openssl}"
+    else
+        echo "[+] Found existing ECH material in ${cert_dir}, skip generation."
+    fi
 
     popd >/dev/null
 }

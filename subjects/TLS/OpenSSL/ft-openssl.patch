@@ -1,44 +1,44 @@
 diff --git a/apps/openssl.c b/apps/openssl.c
-index a3056c799f..a268df72d3 100644
+index 526f369..5cbdcc1 100644
 --- a/apps/openssl.c
 +++ b/apps/openssl.c
-@@ -233,7 +233,11 @@ static void setup_trace(const char *str)
- 
+@@ -240,7 +240,11 @@ static void setup_trace(const char *str)
  static char *help_argv[] = { "help", NULL };
+ static char *version_argv[] = { "version", NULL };
  
 -int main(int argc, char *argv[])
 +#ifdef SGFUZZ
-+int HonggfuzzNetDriver_main(int argc, char ** argv)
++int HonggfuzzNetDriver_main(int argc, char **argv)
 +#else
-+int main(int argc, char ** argv)
++int main(int argc, char **argv)
 +#endif
  {
      FUNCTION f, *fp;
      LHASH_OF(FUNCTION) *prog = NULL;
 diff --git a/apps/req.c b/apps/req.c
-index 926f0796bc..6be66baa1c 100644
+index 258e489..6159b7e 100644
 --- a/apps/req.c
 +++ b/apps/req.c
-@@ -42,7 +42,7 @@
- #define UTF8_IN            "utf8"
+@@ -43,7 +43,7 @@
+ #define UTF8_IN "utf8"
  
  #define DEFAULT_KEY_LENGTH 2048
--#define MIN_KEY_LENGTH     512
-+#define MIN_KEY_LENGTH     64
- #define DEFAULT_DAYS       30 /* default cert validity period in days */
- #define UNSET_DAYS         -2 /* -1 may be used for testing expiration checks */
- #define EXT_COPY_UNSET     -1
+-#define MIN_KEY_LENGTH 512
++#define MIN_KEY_LENGTH 64
+ #define DEFAULT_DAYS 30 /* default certificate validity period in days */
+ #define UNSET_DAYS -2 /* -1 may be used for testing expiration checks */
+ #define EXT_COPY_UNSET -1
 diff --git a/crypto/rand/rand_lib.c b/crypto/rand/rand_lib.c
-index 7c1c89ab70..654e9fe603 100644
+index e49098d..ac67616 100644
 --- a/crypto/rand/rand_lib.c
 +++ b/crypto/rand/rand_lib.c
-@@ -285,6 +285,13 @@ void RAND_add(const void *buf, int num, double randomness)
- # if !defined(OPENSSL_NO_DEPRECATED_1_1_0)
+@@ -314,6 +314,13 @@ void RAND_add(const void *buf, int num, double randomness)
+ #if !defined(OPENSSL_NO_DEPRECATED_1_1_0)
  int RAND_pseudo_bytes(unsigned char *buf, int num)
  {
 +#ifdef FT_FUZZING
-+    if (buf && num) {
-+        memset(buf, 0xcc, num);
++    if (buf != NULL && num > 0) {
++        memset(buf, 0xcc, (size_t)num);
 +    }
 +    return 1;
 +#endif
@@ -46,57 +46,57 @@ index 7c1c89ab70..654e9fe603 100644
      const RAND_METHOD *meth = RAND_get_rand_method();
  
      if (meth != NULL && meth->pseudorand != NULL)
-@@ -318,6 +325,10 @@ const RAND_METHOD *RAND_get_rand_method(void)
- # endif
+@@ -347,6 +354,10 @@ const RAND_METHOD *RAND_get_rand_method(void)
+ #endif
  #endif /* !FIPS_MODULE */
  
 +#ifdef FT_FUZZING
-+static char rand_char = 0x00;
++static unsigned char rand_char = 0x00;
 +#endif
 +
  /*
   * This function is not part of RAND_METHOD, so if we're not using
   * the default method, then just call RAND_bytes().  Otherwise make
-@@ -326,6 +337,14 @@ const RAND_METHOD *RAND_get_rand_method(void)
+@@ -355,6 +366,14 @@ const RAND_METHOD *RAND_get_rand_method(void)
  int RAND_priv_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
-                        unsigned int strength)
+     unsigned int strength)
  {
 +#ifdef FT_FUZZING
-+    if (buf && num) {
++    if (buf != NULL && num > 0) {
 +        memset(buf, rand_char, num);
 +        rand_char++;
 +    }
 +    return 1;
 +#endif
 +
+     RAND_GLOBAL *dgbl;
      EVP_RAND_CTX *rand;
  #if !defined(OPENSSL_NO_DEPRECATED_3_0) && !defined(FIPS_MODULE)
-     const RAND_METHOD *meth = RAND_get_rand_method();
-@@ -355,6 +374,14 @@ int RAND_priv_bytes(unsigned char *buf, int num)
+@@ -398,6 +417,14 @@ int RAND_priv_bytes(unsigned char *buf, int num)
  int RAND_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
-                   unsigned int strength)
+     unsigned int strength)
  {
 +#ifdef FT_FUZZING
-+    if (buf && num) {
++    if (buf != NULL && num > 0) {
 +        memset(buf, rand_char, num);
 +        rand_char++;
 +    }
 +    return 1;
 +#endif
 +
+     RAND_GLOBAL *dgbl;
      EVP_RAND_CTX *rand;
  #if !defined(OPENSSL_NO_DEPRECATED_3_0) && !defined(FIPS_MODULE)
-     const RAND_METHOD *meth = RAND_get_rand_method();
 diff --git a/include/crypto/rsa.h b/include/crypto/rsa.h
-index 949873d0ee..698a0d812f 100644
+index 0b853f9..e53fb28 100644
 --- a/include/crypto/rsa.h
 +++ b/include/crypto/rsa.h
 @@ -15,7 +15,7 @@
- # include <openssl/rsa.h>
- # include "crypto/types.h"
+ #include <openssl/rsa.h>
+ #include "crypto/types.h"
  
--#define RSA_MIN_MODULUS_BITS    512
-+#define RSA_MIN_MODULUS_BITS    64
+-#define RSA_MIN_MODULUS_BITS 512
++#define RSA_MIN_MODULUS_BITS 64
  
  typedef struct rsa_pss_params_30_st {
      int hash_algorithm_nid;
