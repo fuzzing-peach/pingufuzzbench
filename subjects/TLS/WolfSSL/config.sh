@@ -400,7 +400,8 @@ function build_pingu_generator {
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
-    make examples/client/client ${MAKE_OPT}
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make examples/client/client ${MAKE_OPT}
     cd examples/client
     extract-bc client
 
@@ -412,7 +413,6 @@ function build_pingu_generator {
         -ins=load,store,call,memcpy,trampoline,ret,icmp,memcmp -role=source -svf=1 -dump-svf=0 \
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
-        -svf-slice=backward -svf-slice-sources=send:1 \
         client.bc -o client_opt.bc
 
     llvm-dis client_opt.bc -o client_opt.ll
@@ -443,7 +443,8 @@ function build_pingu_consumer {
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
     ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
-    make examples/server/server ${MAKE_OPT}
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make examples/server/server ${MAKE_OPT}
     cd examples/server
     extract-bc server
 
@@ -455,7 +456,6 @@ function build_pingu_consumer {
         -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
         -ins=load,store,call,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
         -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
-        -svf-slice=forward -svf-slice-sources=recv:1 \
         server.bc -o server_opt.bc
 
     llvm-dis server_opt.bc -o server_opt.ll
