@@ -8,14 +8,33 @@ cd $(dirname $0)/..
 mkdir -p cert
 cd cert
 
+rm -f ca.key ca.crt ca.srl server.key server.csr server.crt fullchain.crt index.txt ocsp.der ech.pem server.ext
+
 # ca key and cert
 "${OPENSSL_BIN}" genrsa -out ca.key 4096
-"${OPENSSL_BIN}" req -new -x509 -days 3650 -key ca.key -out ca.crt -subj "/C=CN/ST=Beijing/L=Beijing/O=CA/OU=IT/CN=127.0.0.1" -addext "subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1"
+"${OPENSSL_BIN}" req -new -x509 -days 3650 -sha256 \
+    -key ca.key \
+    -out ca.crt \
+    -set_serial 1 \
+    -subj "/C=CN/ST=Beijing/L=Beijing/O=CA/OU=IT/CN=127.0.0.1" \
+    -addext "subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1"
 
 # server key and cert
 "${OPENSSL_BIN}" genrsa -out server.key 4096
 "${OPENSSL_BIN}" req -new -key server.key -out server.csr -subj "/C=CN/ST=Beijing/L=Beijing/O=Server/OU=IT/CN=127.0.0.1" -addext "subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1"
-"${OPENSSL_BIN}" x509 -req -sha256 -days 3650 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt 
+cat > server.ext <<'EOF'
+basicConstraints=CA:FALSE
+subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+EOF
+"${OPENSSL_BIN}" x509 -req -sha256 -days 3650 \
+    -in server.csr \
+    -CA ca.crt \
+    -CAkey ca.key \
+    -set_serial 2 \
+    -extfile server.ext \
+    -out server.crt
 
 # full chain
 cat server.crt ca.crt > fullchain.crt

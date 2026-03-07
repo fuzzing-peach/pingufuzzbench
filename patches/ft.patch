@@ -1001,10 +1001,10 @@ index bdedb83..0ed5e02 100644
  pub mod sgfuzz;
  pub mod stateafl;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..4b5bdf3 100644
+index 8886de7..be89f47 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
-@@ -1,26 +1,42 @@
+@@ -1,26 +1,58 @@
  use std::{
      cell::RefCell,
 -    fs,
@@ -1047,10 +1047,26 @@ index 8886de7..4b5bdf3 100644
 +use jail::jail::{internal_drop_privileges, Jail, JailBuilder};
 +use libc::{c_char, fork};
 +use nix::unistd::execve;
++
++fn install_idle_stdin() {
++    let mut pipe_fds = [0; 2];
++    let ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
++    if ret != 0 {
++        panic!("Failed to create idle stdin pipe");
++    }
++
++    unsafe {
++        libc::dup2(pipe_fds[0], libc::STDIN_FILENO);
++        libc::close(pipe_fds[0]);
++    }
++
++    // Keep the write end open so stdin stays blocking instead of becoming EOF.
++    let _write_end = pipe_fds[1];
++}
  
  unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()> {
      let mutations = entry.mutations();
-@@ -39,6 +55,252 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
+@@ -39,6 +71,256 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
      Ok(())
  }
  
@@ -1193,6 +1209,10 @@ index 8886de7..4b5bdf3 100644
 +                }
 +            }
 +
++            // Prevent OpenSSL s_server from seeing stdin EOF and exiting right
++            // after accept().
++            install_idle_stdin();
++
 +            // is child
 +            let mut argv: Vec<CString> = config
 +                .sink
@@ -1303,7 +1323,7 @@ index 8886de7..4b5bdf3 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +445,68 @@ pub fn compute_llvm_cov(
+@@ -183,3 +465,68 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -1372,138 +1392,6 @@ index 8886de7..4b5bdf3 100644
 +    }
 +    Ok(false)
 +}
-diff --git a/scheduler/src/fuzzer/common.rs b/scheduler/src/fuzzer/common.rs
-index 934c860..2f6fa0f 100644
---- a/scheduler/src/fuzzer/common.rs
-+++ b/scheduler/src/fuzzer/common.rs
-@@ -201,9 +201,9 @@ pub fn common_calibrate(
-         .unwrap_or(DEFAULT_CALIBRATION_TIMEOUT);
- 
-     let mut exec_durations = Vec::with_capacity(CALIBRATION_MEASURE_CYCLES.try_into().unwrap());
--    if config.sink.send_sigterm {
--        default_timeout *= 2;
--    }
-+    // if config.sink.send_sigterm {
-+    //     default_timeout *= 2;
-+    // }
- 
-     let mut crash_did_not_crash_ctr = 0;
- 
-diff --git a/scheduler/src/fuzzer/common_networked.rs b/scheduler/src/fuzzer/common_networked.rs
-index a47528e..6ca891e 100644
---- a/scheduler/src/fuzzer/common_networked.rs
-+++ b/scheduler/src/fuzzer/common_networked.rs
-@@ -12,6 +12,31 @@ use crate::{
- 
- use super::common::ExecError;
- 
-+fn treat_sink_as_persistent_server(config: &Config) -> bool {
-+    // Scheme A (automatic): source acts as client while sink is a server.
-+    let auto_mode =
-+        !config.source.is_server.unwrap_or(false) && config.sink.is_server.unwrap_or(false);
-+    // Scheme B (explicit): sink.persistent-server in YAML.
-+    config.sink.persistent_server || auto_mode
-+}
-+
-+fn wait_for_persistent_consumer_termination(
-+    client: &mut Client,
-+    server: &mut Server,
-+    timeout: Duration,
-+) -> Result<sink::RunResult> {
-+    let consumer = get_consumer(client, server);
-+    match consumer.wait_for_child_termination(timeout, false, Some(Duration::from_millis(1))) {
-+        Ok(res) => Ok(res),
-+        Err(err) => {
-+            log::warn!(
-+                "Failed to drain persistent sink status gracefully: {err:#?}. Retrying with kill."
-+            );
-+            consumer.wait_for_child_termination(timeout, true, None)
-+        }
-+    }
-+}
-+
- pub fn networked_common_calibration_run(
-     config: &Config,
-     source: &mut Source,
-@@ -59,6 +84,43 @@ pub fn networked_common_calibration_run(
-         WaitForPeerResult::Ready => (),
-     }
- 
-+    let persistent_sink = treat_sink_as_persistent_server(config);
-+    if persistent_sink {
-+        log::trace!(
-+            "Treating sink as persistent server during calibration (sink.persistent-server={} source.is_server={:?} sink.is_server={:?})",
-+            config.sink.persistent_server,
-+            config.source.is_server,
-+            config.sink.is_server
-+        );
-+
-+        // For persistent servers, the producer/client completion is the run-completion signal.
-+        let source_res = get_producer(&mut client, &mut server).wait_for_child_termination(
-+            timeout,
-+            false,
-+        )?;
-+        if !matches!(source_res, crate::source::RunResult::Terminated { .. }) {
-+            log::trace!(
-+                "Source finished abnormally during calibration ({source_res:?}); draining persistent sink state before returning."
-+            );
-+            if let Err(err) = wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
-+            {
-+                log::warn!("Draining persistent sink after source failure failed: {err:#?}");
-+            }
-+            return Err(CalibrationError::SourceExecutionFailed(source_res).into());
-+        }
-+
-+        // Proactively terminate long-running sink to avoid treating "does not exit by itself"
-+        // as a timeout.
-+        let start_ts = Instant::now();
-+        let sink_res =
-+            wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)?;
-+        log::trace!(
-+            "wait_for_child_termination of persistent consumer took {:?}",
-+            start_ts.elapsed()
-+        );
-+        return Ok(sink_res);
-+    }
-+
-     let start_ts = Instant::now();
-     let consumer = get_consumer(&mut client, &mut server);
- 
-@@ -116,6 +178,34 @@ pub fn networked_common_run(
-         WaitForPeerResult::Ready => (),
-     }
- 
-+    let persistent_sink = treat_sink_as_persistent_server(config);
-+    if persistent_sink {
-+        log::trace!(
-+            "Treating sink as persistent server during run (sink.persistent-server={} source.is_server={:?} sink.is_server={:?})",
-+            config.sink.persistent_server,
-+            config.source.is_server,
-+            config.sink.is_server
-+        );
-+
-+        let source_res = get_producer(&mut client, &mut server).wait_for_child_termination(
-+            timeout,
-+            false,
-+        )?;
-+        if !matches!(source_res, crate::source::RunResult::Terminated { .. }) {
-+            log::trace!(
-+                "Source finished abnormally during run ({source_res:?}); draining persistent sink state before returning."
-+            );
-+            if let Err(err) = wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
-+            {
-+                log::warn!("Draining persistent sink after source failure failed: {err:#?}");
-+            }
-+            return Err(ExecError::SourceError(source_res).into());
-+        }
-+
-+        return wait_for_persistent_consumer_termination(&mut client, &mut server, timeout)
-+            .map_err(Into::into);
-+    }
-+
-     let consumer = get_consumer(&mut client, &mut server);
-     let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
- 
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
 index 728d127..a2d288b 100644
 --- a/scheduler/src/fuzzer/worker_impl/init.rs
@@ -1525,10 +1413,45 @@ index 728d127..a2d288b 100644
          self.sink.as_mut().unwrap().start()?;
          self.resize_bitmaps();
 diff --git a/scheduler/src/sink.rs b/scheduler/src/sink.rs
-index a4b0084..449ad0d 100644
+index a4b0084..bb1a014 100644
 --- a/scheduler/src/sink.rs
 +++ b/scheduler/src/sink.rs
-@@ -839,8 +839,19 @@ impl AflSink {
+@@ -71,6 +71,22 @@ lazy_static! {
+     static ref DEV_NULL_FD: i32 = open_dev_null();
+ }
+ 
++fn install_idle_stdin() {
++    let mut pipe_fds = [0; 2];
++    let ret = unsafe { libc::pipe(pipe_fds.as_mut_ptr()) };
++    if ret != 0 {
++        panic!("Failed to create idle stdin pipe");
++    }
++
++    unsafe {
++        libc::dup2(pipe_fds[0], STDIN_FILENO);
++        libc::close(pipe_fds[0]);
++    }
++
++    // Keep the write end open so stdin stays blocking instead of becoming EOF.
++    let _write_end = pipe_fds[1];
++}
++
+ /// Reserver the fixed fds ids used to communicate with AFL.
+ /// If this is not done and we are allocating too many fds, such that we are ending
+ /// up in the fds id range used by AFL, things get messy if close, dup2, etc. are used on these fds.
+@@ -725,6 +741,11 @@ impl AflSink {
+             InputChannel::Stdin => unsafe {
+                 libc::dup2(self.input_file.0.as_raw_fd(), 0);
+             },
++            InputChannel::Tcp => {
++                // Some network servers (e.g. OpenSSL s_server) treat stdin EOF
++                // as a shutdown signal. Give them a blocking stdin instead.
++                install_idle_stdin();
++            }
+             _ => unsafe {
+                 libc::dup2(*DEV_NULL_FD, STDIN_FILENO);
+             },
+@@ -839,8 +860,19 @@ impl AflSink {
          }
  
          log::trace!("Waiting for child pid");
@@ -1550,7 +1473,7 @@ index a4b0084..449ad0d 100644
          let ret = unsafe { libc::read(self.receive_fd.unwrap(), buf_ptr, 4) };
          if ret != 4 {
              error!("Failed to retrive child pid");
-@@ -993,6 +1004,12 @@ impl AflSink {
+@@ -993,6 +1025,12 @@ impl AflSink {
  
          let child_msg = i32::from_le_bytes(buffer);
          log::trace!("Child send exit message {}", child_msg);
