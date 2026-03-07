@@ -2,7 +2,7 @@
 
 function checkout {
     if [ ! -d ".git-cache/wolfssl" ]; then
-        git clone https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
+        git clone --progress https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
     fi
 
     mkdir -p repo
@@ -17,7 +17,7 @@ function checkout {
     fi
 
     if [[ $# -gt 0 && -n "$1" ]]; then
-        git fetch --all --tags
+        git fetch --all --tags --progress
         git checkout "$1"
     fi
 

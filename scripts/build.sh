@@ -10,6 +10,20 @@ source scripts/utils.sh
 args=($(get_args_before_double_dash "$@"))
 docker_args=$(get_args_after_double_dash "$@")
 
+if [[ "$docker_args" =~ --build-arg[[:space:]]+HTTP_PROXY=([^[:space:]]+) ]]; then
+    http_proxy_val="${BASH_REMATCH[1]}"
+    if [[ ! "$docker_args" =~ --build-arg[[:space:]]+http_proxy= ]]; then
+        docker_args="${docker_args} --build-arg http_proxy=${http_proxy_val}"
+    fi
+fi
+
+if [[ "$docker_args" =~ --build-arg[[:space:]]+HTTPS_PROXY=([^[:space:]]+) ]]; then
+    https_proxy_val="${BASH_REMATCH[1]}"
+    if [[ ! "$docker_args" =~ --build-arg[[:space:]]+https_proxy= ]]; then
+        docker_args="${docker_args} --build-arg https_proxy=${https_proxy_val}"
+    fi
+fi
+
 opt_args=$(getopt -o f:t:v: -l fuzzer:,target:,version:,generator:,flags: --name "$0" -- "${args[@]}")
 if [ $? != 0 ]; then
     log_error "[!] Error in parsing shell arguments."
