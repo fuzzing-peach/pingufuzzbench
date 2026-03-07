@@ -1,32 +1,90 @@
 #!/usr/bin/env bash
 
-function checkout {
-    if [ ! -d ".git-cache/gnutls" ]; then
-        git clone https://github.com/gnutls/gnutls .git-cache/gnutls
+function ensure_local_nettle {
+    local bench_root="${HOME}/profuzzbench"
+    local nettle_prefix="${HOME}/local/nettle"
+    local nettle_ref="a2a06312b94f015ff8b061f0567de940338aadb4"
+    local nettle_pc_dir=""
+    local nettle_version_ok=0
+
+    if [ -f "${nettle_prefix}/lib/pkgconfig/nettle.pc" ]; then
+        nettle_pc_dir="${nettle_prefix}/lib/pkgconfig"
+    elif [ -f "${nettle_prefix}/lib64/pkgconfig/nettle.pc" ]; then
+        nettle_pc_dir="${nettle_prefix}/lib64/pkgconfig"
     fi
+
+    if [ -n "${nettle_pc_dir}" ]; then
+        if PKG_CONFIG_PATH="${nettle_pc_dir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" \
+            pkg-config --atleast-version=3.10 nettle; then
+            nettle_version_ok=1
+        fi
+    fi
+
+    if [ "${nettle_version_ok}" -eq 1 ]; then
+        export PKG_CONFIG_PATH="${nettle_pc_dir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+        export LD_LIBRARY_PATH="$(dirname "${nettle_pc_dir}")${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        return 0
+    fi
+
+    pushd "${bench_root}/repo/gnutls/devel/nettle" >/dev/null || return 1
+    git fetch --all --tags --prune || return 1
+    git checkout "${nettle_ref}" || return 1
+    sh .bootstrap || return 1
+    rm -rf "${nettle_prefix}"
+    ./configure --prefix="${nettle_prefix}" --disable-documentation || return 1
+    make -j ${MAKE_OPT} || return 1
+    make install || return 1
+    popd >/dev/null || return 1
+
+    if [ -f "${nettle_prefix}/lib/pkgconfig/nettle.pc" ]; then
+        nettle_pc_dir="${nettle_prefix}/lib/pkgconfig"
+    else
+        nettle_pc_dir="${nettle_prefix}/lib64/pkgconfig"
+    fi
+
+    export PKG_CONFIG_PATH="${nettle_pc_dir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+    export LD_LIBRARY_PATH="$(dirname "${nettle_pc_dir}")${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+}
+
+function prepare_gnutls_configure {
+    if [ -f ./bootstrap.conf ]; then
+        sed -i 's|^required_submodules=.*$|required_submodules="cligen devel/nettle devel/libtasn1"|' ./bootstrap.conf || return 1
+    fi
+
+    if [ ! -x ./configure ]; then
+        ./bootstrap --skip-po --no-git --gnulib-srcdir=/usr/share/gnulib || return 1
+    fi
+}
+
+function checkout {
+    target_ref="${1:-868ed4b}"
+
+    if [ ! -d ".git-cache/gnutls" ]; then
+        git clone https://github.com/gnutls/gnutls .git-cache/gnutls || return 1
+    else
+        git -C .git-cache/gnutls fetch --all --tags --prune || return 1
+    fi
+
+    pushd .git-cache/gnutls >/dev/null || return 1
+    git reset --hard HEAD || return 1
+    git clean -fdx || return 1
+    git checkout "${target_ref}" || return 1
+    prepare_gnutls_configure || return 1
+    popd >/dev/null || return 1
+
     mkdir -p repo
-    cp -r .git-cache/gnutls repo/gnutls
-    pushd repo/gnutls >/dev/null
+    rm -rf repo/gnutls
+    cp -r .git-cache/gnutls repo/gnutls || return 1
+    pushd repo/gnutls >/dev/null || return 1
 
-    git checkout e840a07
-    git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
+    git apply "${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch" || return 1
     git add .
-    git commit -m "apply fuzzing patch"
-    git rebase "$@"
-
-    # # Check if the checkout changed the commit
-    # current_commit=$(git rev-parse HEAD)
-    # echo "Checkout will result in a different commit than requested."
-    # echo "Requested: $@"
-    # echo "Current: ${current_commit:0:8}"
-    # git checkout "$@"
-    # git apply ${HOME}/profuzzbench/subjects/TLS/GnuTLS/fuzzing.patch
-    
-    ./bootstrap
+    git -c user.name=PinguFuzzBench -c user.email=pfb@example.com commit -m "apply fuzzing patch" || return 1
     popd >/dev/null
 }
 
 function replay {
+    export LD_LIBRARY_PATH="${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     ${HOME}/aflnet/aflnet-replay $1 TLS 5555 100 &
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./src/gnutls-serv \
@@ -44,6 +102,10 @@ function build_aflnet {
     cp -r repo/gnutls target/aflnet/gnutls
     pushd target/aflnet/gnutls >/dev/null
 
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
+    unset FAKETIME
     export AFL_USE_ASAN=1
     export ASAN_OPTIONS=detect_leaks=0
     export CC=${HOME}/aflnet/afl-clang-fast
@@ -52,8 +114,8 @@ function build_aflnet {
     export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no
-    make -j ${MAKE_OPT}
+    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
+    make -j ${MAKE_OPT} || return 1
 
     rm -rf .git
 
@@ -75,6 +137,7 @@ function run_aflnet {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export LD_LIBRARY_PATH="${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
@@ -89,6 +152,7 @@ function run_aflnet {
         -b -p 5555
 
     cd ${HOME}/target/gcov/consumer/gnutls
+    gcovr -r . -s -d >/dev/null 2>&1
     list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv ""
 
@@ -104,6 +168,9 @@ function build_stateafl {
     cp -r repo/gnutls target/stateafl/gnutls
     pushd target/stateafl/gnutls >/dev/null
 
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
     export ASAN_OPTIONS=detect_leaks=0
     export CC=$HOME/stateafl/afl-clang-fast
     export CXX=$HOME/stateafl/afl-clang-fast++
@@ -111,8 +178,8 @@ function build_stateafl {
     export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --enable-static --enable-shared=no
-    make -j ${MAKE_OPT}
+    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
+    make -j ${MAKE_OPT} || return 1
 
     rm -rf .git
 
@@ -133,6 +200,7 @@ function run_stateafl {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export LD_LIBRARY_PATH="${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
@@ -166,6 +234,9 @@ function build_sgfuzz {
     cp -r repo/gnutls target/sgfuzz/gnutls
     pushd target/sgfuzz/gnutls >/dev/null
 
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CXX=wllvm++
@@ -174,8 +245,8 @@ function build_sgfuzz {
 
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
-    ./configure --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140
-    make ${MAKE_OPT}
+    ./configure --disable-maintainer-mode --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140 || return 1
+    make ${MAKE_OPT} || return 1
 
     pushd src >/dev/null
     extract-bc gnutls-serv
@@ -218,6 +289,7 @@ function run_sgfuzz {
     export AFL_SKIP_CPUFREQ=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export LD_LIBRARY_PATH="${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=5555
     export HFND_FORK_MODE=1
@@ -257,6 +329,7 @@ function run_sgfuzz {
     cd ${HOME}/target/gcov/consumer/gnutls
 
     function replay {
+        export LD_LIBRARY_PATH="${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         ${HOME}/aflnet/afl-replay $1 TLS 5555 100 &
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./src/gnutls-serv \
@@ -283,6 +356,9 @@ function build_ft_generator {
     cp -r repo/gnutls target/ft/generator/gnutls
     pushd target/ft/generator/gnutls >/dev/null
 
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
     export FT_CALL_INJECTION=1
     export FT_HOOK_INS=branch,load,store,select,switch
     export CC=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast
@@ -292,8 +368,8 @@ function build_ft_generator {
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
-    ./configure --disable-tests --disable-doc --disable-shared
-    make ${MAKE_OPT}
+    ./configure --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    make ${MAKE_OPT} || return 1
 
     rm -rf .git
 
@@ -309,14 +385,17 @@ function build_ft_consumer {
     cp -r repo/gnutls target/ft/consumer/gnutls
     pushd target/ft/consumer/gnutls >/dev/null
 
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
     export CXX=${AFL_PATH}/afl-clang-fast++
     export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
 
-    ./configure --disable-tests --disable-doc --disable-shared
-    make ${MAKE_OPT}
+    ./configure --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    make ${MAKE_OPT} || return 1
 
     rm -rf .git
 
@@ -380,7 +459,7 @@ function build_pingu_generator {
     export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
 
     ./autogen.sh
-    ./configure --enable-static --enable-shared=no
+    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
     make examples/client/client ${MAKE_OPT}
 
     rm -rf .git
@@ -405,7 +484,7 @@ function build_pingu_consumer {
     export CXXFLAGS="-O3 -g -fsanitize=address"
 
     ./autogen.sh
-    ./configure --enable-static --enable-shared=no
+    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -449,12 +528,16 @@ function build_gcov {
     cp -r repo/gnutls target/gcov/consumer/gnutls
     pushd target/gcov/consumer/gnutls >/dev/null
 
-    export CFLAGS="${CFLAGS} -fprofile-arcs -ftest-coverage"
-    export CXXFLAGS="${CXXFLAGS} -fprofile-arcs -ftest-coverage"
-    export LDFLAGS="${LDFLAGS} -fprofile-arcs -ftest-coverage"
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
 
-    ./configure --enable-code-coverage --disable-tests --disable-doc --disable-shared
-    make ${MAKE_OPT}
+    unset FAKETIME
+    export CFLAGS="${CFLAGS:-} -fprofile-arcs -ftest-coverage"
+    export CXXFLAGS="${CXXFLAGS:-} -fprofile-arcs -ftest-coverage"
+    export LDFLAGS="${LDFLAGS:-} -fprofile-arcs -ftest-coverage"
+
+    ./configure --disable-maintainer-mode --enable-code-coverage --disable-tests --disable-doc --disable-shared || return 1
+    make ${MAKE_OPT} || return 1
 
     rm -rf .git a-conftest.gcno
 
@@ -463,7 +546,7 @@ function build_gcov {
 
 function install_dependencies {
     sudo -E apt update
-    sudo -E apt install -y dash git-core autoconf libtool gettext autopoint lcov \
+    sudo -E apt install -y dash git-core autoconf libtool gettext autopoint lcov gnulib \
                             nettle-dev libp11-kit-dev libtspi-dev libunistring-dev \
                             libtasn1-bin libtasn1-6-dev libidn2-0-dev gawk gperf \
                             libtss2-dev libunbound-dev dns-root-data bison gtk-doc-tools \

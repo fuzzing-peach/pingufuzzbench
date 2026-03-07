@@ -1,8 +1,8 @@
 diff --git a/lib/random.c b/lib/random.c
-index 080535a4a..9e428a8ce 100644
+index d6a8a91bd..7f494e91b 100644
 --- a/lib/random.c
 +++ b/lib/random.c
-@@ -169,6 +169,11 @@ int gnutls_rnd(gnutls_rnd_level_t level, void *data, size_t len)
+@@ -221,6 +221,11 @@ int gnutls_rnd(gnutls_rnd_level_t level, void *data, size_t len)
  	int ret;
  	FAIL_IF_LIB_ERROR;
  
@@ -14,7 +14,7 @@ index 080535a4a..9e428a8ce 100644
  	ret = _gnutls_rnd_init();
  	if (unlikely(ret < 0))
  		return gnutls_assert_val(ret);
-@@ -193,6 +198,9 @@ int gnutls_rnd(gnutls_rnd_level_t level, void *data, size_t len)
+@@ -245,6 +250,9 @@ int gnutls_rnd(gnutls_rnd_level_t level, void *data, size_t len)
   **/
  void gnutls_rnd_refresh(void)
  {
@@ -25,7 +25,7 @@ index 080535a4a..9e428a8ce 100644
  		_gnutls_rnd_ops.rnd_refresh(gl_tls_get(ctx_key));
  }
 diff --git a/src/serv.c b/src/serv.c
-index c5f807d03..4ff3cc482 100644
+index 86008c952..d4e8e00a5 100644
 --- a/src/serv.c
 +++ b/src/serv.c
 @@ -53,6 +53,10 @@
@@ -47,9 +47,9 @@ index c5f807d03..4ff3cc482 100644
 +		exit(1);
 +#endif
  	}
+ 	free(j);
  }
- 
-@@ -1137,7 +1144,7 @@ static void terminate(int sig)
+@@ -1138,7 +1145,7 @@ static void terminate(int sig)
  	*p++ = '\n';
  
  	write(STDERR_FILENO, buf, p - buf);
