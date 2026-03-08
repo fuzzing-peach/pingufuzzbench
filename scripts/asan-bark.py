@@ -32,6 +32,7 @@ CHECK_INTERVAL = 30  # 检查间隔（秒）
 STATE_FILE = "asan_monitor_state.json"  # 状态文件名
 LOG_FILE = "asan_monitor.log"  # 日志文件名
 MONITOR_DIRS = ["asan", "crashing", "replayable-crashes", "crashes"]  # 需要监控的目录名称列表
+IGNORED_DIRS = {"replayable-hangs"}  # 显式忽略的目录名称
 
 # ================================================
 
@@ -98,6 +99,8 @@ class AsanMonitor:
                 
                 # 检查是否有需要监控的子目录
                 for monitor_dir_name in MONITOR_DIRS:
+                    if monitor_dir_name in IGNORED_DIRS:
+                        continue
                     target_dir = item / monitor_dir_name
                     if target_dir.exists() and target_dir.is_dir():
                         # 获取该目录下的所有文件
@@ -105,6 +108,8 @@ class AsanMonitor:
                             files = set()
                             for file_path in target_dir.rglob("*"):
                                 if file_path.is_file():
+                                    if any(part in IGNORED_DIRS for part in file_path.parts):
+                                        continue
                                     # 保存相对于目标目录的路径
                                     rel_path = file_path.relative_to(target_dir)
                                     files.add(str(rel_path))
@@ -320,4 +325,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

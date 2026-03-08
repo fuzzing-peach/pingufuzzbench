@@ -39,6 +39,21 @@ fi
 
 log_success "[+] Build mode: ${profile}"
 docker_args=$(get_args_after_double_dash "$@")
+
+if [[ "$docker_args" =~ --build-arg[[:space:]]+HTTP_PROXY=([^[:space:]]+) ]]; then
+    http_proxy_val="${BASH_REMATCH[1]}"
+    if [[ ! "$docker_args" =~ --build-arg[[:space:]]+http_proxy= ]]; then
+        docker_args="${docker_args} --build-arg http_proxy=${http_proxy_val}"
+    fi
+fi
+
+if [[ "$docker_args" =~ --build-arg[[:space:]]+HTTPS_PROXY=([^[:space:]]+) ]]; then
+    https_proxy_val="${BASH_REMATCH[1]}"
+    if [[ ! "$docker_args" =~ --build-arg[[:space:]]+https_proxy= ]]; then
+        docker_args="${docker_args} --build-arg https_proxy=${https_proxy_val}"
+    fi
+fi
+
 log_success "[+] Building docker image: ${image}:latest"
 # If http proxy is required, passing:
 # --build-arg HTTP_PROXY=http://172.17.0.1:7890 --build-arg HTTPS_PROXY=http://172.17.0.1:7890 

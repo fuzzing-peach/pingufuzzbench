@@ -7,6 +7,8 @@ sink:
     [
       "-a",
       "--earlydata",
+      "--alpn=http/2",
+      "--ocsp-response=/home/user/profuzzbench/cert/ocsp.der",
       "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
       "--x509keyfile=/home/user/profuzzbench/cert/server.key",
       "--x509certfile=/home/user/profuzzbench/cert/server.crt",

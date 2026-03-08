@@ -3,6 +3,7 @@
 function ensure_local_nettle {
     local bench_root="${HOME}/profuzzbench"
     local nettle_prefix="${HOME}/local/nettle"
+    local nettle_repo="${HOME}/.git-cache/gnutls/devel/nettle"
     local nettle_ref="a2a06312b94f015ff8b061f0567de940338aadb4"
     local nettle_pc_dir=""
     local nettle_version_ok=0
@@ -11,6 +12,10 @@ function ensure_local_nettle {
         nettle_pc_dir="${nettle_prefix}/lib/pkgconfig"
     elif [ -f "${nettle_prefix}/lib64/pkgconfig/nettle.pc" ]; then
         nettle_pc_dir="${nettle_prefix}/lib64/pkgconfig"
+    fi
+
+    if [ ! -d "${nettle_repo}" ]; then
+        nettle_repo="${bench_root}/repo/gnutls/devel/nettle"
     fi
 
     if [ -n "${nettle_pc_dir}" ]; then
@@ -26,7 +31,9 @@ function ensure_local_nettle {
         return 0
     fi
 
-    pushd "${bench_root}/repo/gnutls/devel/nettle" >/dev/null || return 1
+    git config --global --add safe.directory "${nettle_repo}" || return 1
+
+    pushd "${nettle_repo}" >/dev/null || return 1
     git fetch --all --tags --prune || return 1
     git checkout "${nettle_ref}" || return 1
     sh .bootstrap || return 1
@@ -89,6 +96,8 @@ function replay {
     LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
         timeout -k 1s 3s ./src/gnutls-serv \
         -a -d 1000 --earlydata \
+        --alpn=http/2 \
+        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/cert/server.key \
@@ -114,7 +123,32 @@ function build_aflnet {
     export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
+    make -j ${MAKE_OPT} || return 1
+
+    rm -rf .git
+
+    popd >/dev/null
+}
+
+function build_asan {
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/gnutls target/asan/gnutls
+    pushd target/asan/gnutls >/dev/null
+
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
+
+    unset FAKETIME
+    export ASAN_OPTIONS=detect_leaks=0
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-g -O1 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-g -O1 -fsanitize=address -fno-omit-frame-pointer -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
     make -j ${MAKE_OPT} || return 1
 
     rm -rf .git
@@ -146,6 +180,8 @@ function run_aflnet {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none -t 2000 \
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
+        --alpn=http/2 \
+        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/cert/server.key \
@@ -178,7 +214,7 @@ function build_stateafl {
     export CXXFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
-    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no || return 1
     make -j ${MAKE_OPT} || return 1
 
     rm -rf .git
@@ -209,6 +245,8 @@ function run_stateafl {
         -P TLS -D 10000 -q 3 -s 3 -E -K -R -W 100 -m none \
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
+        --alpn=http/2 \
+        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/test.key.pem \
@@ -245,7 +283,7 @@ function build_sgfuzz {
 
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
-    ./configure --disable-maintainer-mode --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140 || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --enable-static --enable-shared=no --disable-tests --disable-doc --disable-fips140 || return 1
     make ${MAKE_OPT} || return 1
 
     pushd src >/dev/null
@@ -314,6 +352,8 @@ function run_sgfuzz {
         -a
         -d 1000
         --earlydata
+        --alpn=http/2
+        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt
         --x509certfile=${HOME}/profuzzbench/cert/server.crt
         --x509keyfile=${HOME}/profuzzbench/cert/server.key
@@ -334,6 +374,8 @@ function run_sgfuzz {
         LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
             timeout -k 1s 3s ./src/gnutls-serv \
             -a -d 1000 --earlydata \
+            --alpn=http/2 \
+            --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
             --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
             --x509certfile=${HOME}/profuzzbench/cert/server.crt \
             --x509keyfile=${HOME}/profuzzbench/test.key.pem \
@@ -368,7 +410,7 @@ function build_ft_generator {
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
-    ./configure --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
     make ${MAKE_OPT} || return 1
 
     rm -rf .git
@@ -394,7 +436,7 @@ function build_ft_consumer {
     export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
 
-    ./configure --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
     make ${MAKE_OPT} || return 1
 
     rm -rf .git
@@ -459,7 +501,7 @@ function build_pingu_generator {
     export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
 
     ./autogen.sh
-    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
     make examples/client/client ${MAKE_OPT}
 
     rm -rf .git
@@ -484,7 +526,7 @@ function build_pingu_consumer {
     export CXXFLAGS="-O3 -g -fsanitize=address"
 
     ./autogen.sh
-    ./configure --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
     make examples/server/server ${MAKE_OPT}
 
     rm -rf .git
@@ -536,7 +578,7 @@ function build_gcov {
     export CXXFLAGS="${CXXFLAGS:-} -fprofile-arcs -ftest-coverage"
     export LDFLAGS="${LDFLAGS:-} -fprofile-arcs -ftest-coverage"
 
-    ./configure --disable-maintainer-mode --enable-code-coverage --disable-tests --disable-doc --disable-shared || return 1
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --enable-code-coverage --disable-tests --disable-doc --disable-shared || return 1
     make ${MAKE_OPT} || return 1
 
     rm -rf .git a-conftest.gcno

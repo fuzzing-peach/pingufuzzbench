@@ -7,8 +7,12 @@ source:
     "localhost:4433", 
     "--rehandshake", 
     "--starttls", 
+    "--alpn=http/2",
+    "--ocsp",
     "-b",
     "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
+    "--x509certfile=/home/user/profuzzbench/cert/client.crt",
+    "--x509keyfile=/home/user/profuzzbench/cert/client.key",
     ]
   working-dir: "/home/user/target/ft/generator/gnutls"
   input-type: Tcp

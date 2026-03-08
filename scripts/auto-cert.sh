@@ -8,7 +8,10 @@ cd $(dirname $0)/..
 mkdir -p cert
 cd cert
 
-rm -f ca.key ca.crt ca.srl server.key server.csr server.crt fullchain.crt index.txt ocsp.der ech.pem server.ext
+rm -f ca.key ca.crt ca.srl \
+    server.key server.csr server.crt server.ext \
+    client.key client.csr client.crt client.ext \
+    fullchain.crt index.txt ocsp.der ech.pem
 
 # ca key and cert
 "${OPENSSL_BIN}" genrsa -out ca.key 4096
@@ -35,6 +38,23 @@ EOF
     -set_serial 2 \
     -extfile server.ext \
     -out server.crt
+
+# client key and cert
+"${OPENSSL_BIN}" genrsa -out client.key 4096
+"${OPENSSL_BIN}" req -new -key client.key -out client.csr -subj "/C=CN/ST=Beijing/L=Beijing/O=Client/OU=IT/CN=127.0.0.1" -addext "subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1"
+cat > client.ext <<'EOF'
+basicConstraints=CA:FALSE
+subjectAltName=DNS:localhost,DNS:127.0.0.1,IP:127.0.0.1
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth
+EOF
+"${OPENSSL_BIN}" x509 -req -sha256 -days 3650 \
+    -in client.csr \
+    -CA ca.crt \
+    -CAkey ca.key \
+    -set_serial 3 \
+    -extfile client.ext \
+    -out client.crt
 
 # full chain
 cat server.crt ca.crt > fullchain.crt
