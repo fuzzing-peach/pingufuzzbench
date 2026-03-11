@@ -116,11 +116,14 @@ function _build_quiche_with_bazel {
         )
         ;;
     gcov)
-        # Use Bazel-native coverage instrumentation to avoid ad-hoc compiler flag drift.
-        coverage_args+=(
-            "--collect_code_coverage"
-            "--instrumentation_filter=//quiche/..."
-            "--instrument_test_targets=false"
+        # Match ft-net-quicfuzzer style LLVM coverage instrumentation.
+        common_args+=(
+            "--copt=-fprofile-instr-generate"
+            "--cxxopt=-fprofile-instr-generate"
+            "--linkopt=-fprofile-instr-generate"
+            "--copt=-fcoverage-mapping"
+            "--cxxopt=-fcoverage-mapping"
+            "--linkopt=-fcoverage-mapping"
         )
         ;;
     *)
@@ -160,6 +163,65 @@ function _build_quiche_with_bazel {
     popd >/dev/null
 }
 
+function _select_llvm_cov_tool {
+    for c in llvm-cov-17 llvm-cov; do
+        if command -v "${c}" >/dev/null 2>&1; then
+            echo "${c}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+function _select_llvm_profdata_tool {
+    for c in llvm-profdata-17 llvm-profdata; do
+        if command -v "${c}" >/dev/null 2>&1; then
+            echo "${c}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+function _llvm_cov_summary_lines {
+    profile_raw=$1
+    profile_data=$2
+    bin_path=$3
+
+    llvm_cov_bin=$(_select_llvm_cov_tool) || return 1
+    llvm_profdata_bin=$(_select_llvm_profdata_tool) || return 1
+
+    if [ ! -f "${profile_raw}" ]; then
+        echo "lines: 0.0% (0 of 0)"
+        echo "branches: 0.0% (0 of 0)"
+        return 0
+    fi
+
+    "${llvm_profdata_bin}" merge -sparse "${profile_raw}" -o "${profile_data}" >/dev/null 2>&1 || return 1
+    "${llvm_cov_bin}" export --summary-only --instr-profile="${profile_data}" "${bin_path}" 2>/dev/null | python3 -c '
+import json, sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("lines: 0.0% (0 of 0)")
+    print("branches: 0.0% (0 of 0)")
+    raise SystemExit(0)
+
+totals = data.get("data", [{}])[0].get("totals", {})
+line = totals.get("lines", {})
+branch = totals.get("branches", {})
+l_cov = int(line.get("covered", 0) or 0)
+l_cnt = int(line.get("count", 0) or 0)
+b_cov = int(branch.get("covered", 0) or 0)
+b_cnt = int(branch.get("count", 0) or 0)
+l_per = (100.0 * l_cov / l_cnt) if l_cnt else 0.0
+b_per = (100.0 * b_cov / b_cnt) if b_cnt else 0.0
+print(f"lines: {l_per:.1f}% ({l_cov} of {l_cnt})")
+print(f"branches: {b_per:.1f}% ({b_cov} of {b_cnt})")
+'
+}
+
 function _prepare_quic_response_cache {
     cache_dir=$1
     mkdir -p "${cache_dir}"
@@ -181,6 +243,7 @@ function replay {
     fi
 
     LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_val}" \
+        LLVM_PROFILE_FILE="${PWD}/coverage.profraw" \
         "${server_bin}" \
         --quic_response_cache_dir="${cache_dir}" \
         --certificate_file="${cert_dir}/fullchain.crt" \
@@ -246,15 +309,22 @@ function run_aflnet {
         --port=4433 || true
 
     cd "${HOME}/target/gcov/gquiche"
-    find -L bazel-bin -name "*.gcda" -delete || true
-    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
-    gcov_common_opts="-r . --gcov-ignore-errors no_working_dir_found --gcov-ignore-errors source_not_found"
-    eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
+    if ! _select_llvm_cov_tool >/dev/null 2>&1 || ! _select_llvm_profdata_tool >/dev/null 2>&1; then
+        echo "[!] run_aflnet failed: llvm-cov/llvm-profdata not found"
+        popd >/dev/null
+        return 1
+    fi
+    coverage_bin=$(_resolve_quic_server "${PWD}" || true)
+    if [ -z "${coverage_bin}" ]; then
+        echo "[!] run_aflnet failed: coverage quic_server binary not found in ${PWD}/bazel-bin"
+        popd >/dev/null
+        return 1
+    fi
+    rm -f coverage.profraw coverage.profdata || true
+    cov_cmd="_llvm_cov_summary_lines \"${PWD}/coverage.profraw\" \"${PWD}/coverage.profdata\" \"${coverage_bin}\""
+    clean_cmd="rm -f \"${PWD}/coverage.profraw\" \"${PWD}/coverage.profdata\""
     list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
-    compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd"
-    mkdir -p "${outdir}/cov_html"
-    eval "gcovr ${gcov_common_opts} --html --html-details -o ${outdir}/cov_html/index.html" || true
+    compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd" "$clean_cmd"
 
     popd >/dev/null
 }
@@ -305,12 +375,20 @@ function build_asan {
 function build_gcov {
     _prepare_variant_dir "gcov"
     pushd "${HOME}/target/gcov/gquiche" >/dev/null
-    _build_quiche_with_bazel "${PWD}" "gcc" "g++" "gcov"
+    _build_quiche_with_bazel "${PWD}" "clang" "clang++" "gcov"
     popd >/dev/null
 }
 
 function install_dependencies {
     export DEBIAN_FRONTEND=noninteractive
+    # Ubuntu lunar is EOL; switch apt sources to old-releases to keep builds reproducible.
+    if [ -f /etc/apt/sources.list ]; then
+        sudo sed -i \
+            -e 's#http://mirrors.ustc.edu.cn/ubuntu#http://old-releases.ubuntu.com/ubuntu#g' \
+            -e 's#http://archive.ubuntu.com/ubuntu#http://old-releases.ubuntu.com/ubuntu#g' \
+            -e 's#http://security.ubuntu.com/ubuntu#http://old-releases.ubuntu.com/ubuntu#g' \
+            /etc/apt/sources.list || true
+    fi
     sudo apt-get update
     sudo apt-get install -y --no-install-recommends \
         libev-dev
