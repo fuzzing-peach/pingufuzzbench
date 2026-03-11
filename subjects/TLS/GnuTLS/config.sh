@@ -106,10 +106,10 @@ function replay {
 }
 
 function build_aflnet {
-    mkdir -p target/aflnet
-    rm -rf target/aflnet/*
-    cp -r repo/gnutls target/aflnet/gnutls
-    pushd target/aflnet/gnutls >/dev/null
+    mkdir -p ${HOME}/target/aflnet
+    rm -rf ${HOME}/target/aflnet/*
+    cp -r repo/gnutls ${HOME}/target/aflnet/gnutls
+    pushd ${HOME}/target/aflnet/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -132,10 +132,10 @@ function build_aflnet {
 }
 
 function build_asan {
-    mkdir -p target/asan
-    rm -rf target/asan/*
-    cp -r repo/gnutls target/asan/gnutls
-    pushd target/asan/gnutls >/dev/null
+    mkdir -p ${HOME}/target/asan
+    rm -rf ${HOME}/target/asan/*
+    cp -r repo/gnutls ${HOME}/target/asan/gnutls
+    pushd ${HOME}/target/asan/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -199,10 +199,10 @@ function run_aflnet {
 }
 
 function build_stateafl {
-    mkdir -p target/stateafl
-    rm -rf target/stateafl/*
-    cp -r repo/gnutls target/stateafl/gnutls
-    pushd target/stateafl/gnutls >/dev/null
+    mkdir -p ${HOME}/target/stateafl
+    rm -rf ${HOME}/target/stateafl/*
+    cp -r repo/gnutls ${HOME}/target/stateafl/gnutls
+    pushd ${HOME}/target/stateafl/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -267,10 +267,10 @@ function run_stateafl {
 
 
 function build_sgfuzz {
-    mkdir -p target/sgfuzz
-    rm -rf target/sgfuzz/*
-    cp -r repo/gnutls target/sgfuzz/gnutls
-    pushd target/sgfuzz/gnutls >/dev/null
+    mkdir -p ${HOME}/target/sgfuzz
+    rm -rf ${HOME}/target/sgfuzz/*
+    cp -r repo/gnutls ${HOME}/target/sgfuzz/gnutls
+    pushd ${HOME}/target/sgfuzz/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -393,10 +393,10 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    mkdir -p target/ft/generator
-    rm -rf target/ft/generator/*
-    cp -r repo/gnutls target/ft/generator/gnutls
-    pushd target/ft/generator/gnutls >/dev/null
+    mkdir -p ${HOME}/target/ft/generator
+    rm -rf ${HOME}/target/ft/generator/*
+    cp -r repo/gnutls ${HOME}/target/ft/generator/gnutls
+    pushd ${HOME}/target/ft/generator/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -409,6 +409,7 @@ function build_ft_generator {
     export CXXFLAGS="-g -O3 -DNDEBUG -DFT_FUZZING -DFT_GENERATOR"
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+    export LD_LIBRARY_PATH="${HOME}/fuzztruction-net/target/release:${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
     ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
     make ${MAKE_OPT} || return 1
@@ -422,10 +423,10 @@ function build_ft_consumer {
     sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/ft-net.conf /etc/ld.so.conf.d/
     sudo ldconfig
 
-    mkdir -p target/ft/consumer
-    rm -rf target/ft/consumer/*
-    cp -r repo/gnutls target/ft/consumer/gnutls
-    pushd target/ft/consumer/gnutls >/dev/null
+    mkdir -p ${HOME}/target/ft/consumer
+    rm -rf ${HOME}/target/ft/consumer/*
+    cp -r repo/gnutls ${HOME}/target/ft/consumer/gnutls
+    pushd ${HOME}/target/ft/consumer/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
@@ -457,7 +458,7 @@ function run_ft {
     # synthesize the ft configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft-common.yaml >"$temp_file"
     cat "$temp_file" >ft-gnutls.yaml
     printf "\n" >>ft-gnutls.yaml
     rm "$temp_file"
@@ -565,10 +566,10 @@ function run_pingu {
 }
 
 function build_gcov {
-    mkdir -p target/gcov/consumer
-    rm -rf target/gcov/consumer/*
-    cp -r repo/gnutls target/gcov/consumer/gnutls
-    pushd target/gcov/consumer/gnutls >/dev/null
+    mkdir -p ${HOME}/target/gcov/consumer
+    rm -rf ${HOME}/target/gcov/consumer/*
+    cp -r repo/gnutls ${HOME}/target/gcov/consumer/gnutls
+    pushd ${HOME}/target/gcov/consumer/gnutls >/dev/null
 
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1

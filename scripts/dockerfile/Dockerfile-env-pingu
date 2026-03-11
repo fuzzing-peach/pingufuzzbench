@@ -1,0 +1,230 @@
+# https://github.com/fuzzing-peach/pingufuzzbench
+FROM ghcr.io/fuzzing-peach/fuzztruction-llvm_debug:llvmorg-17.0.6 AS llvm
+
+FROM ubuntu:24.04
+
+ARG ZH_CN
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG PINGU_TOKEN
+ARG http_proxy=${HTTP_PROXY}    
+ARG https_proxy=${HTTP_PROXY}
+ARG MAKE_OPT="-j4"
+
+ENV ZH_CN=${ZH_CN}
+
+ENV no_proxy="localhost,127.0.0.1,192.168.0.0/16,172.16.0.0/12,10.0.0.0/8"
+ENV NO_PROXY=${no_proxy}
+
+ARG CARGO_BUILD_JOBS="4"
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+
+# Change the Ubuntu package mirror
+RUN apt update && apt install -y apt-transport-https ca-certificates
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        sed -i 's@//.*archive.ubuntu.com@//mirrors.nju.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirrors.nju.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        apt clean; \
+    fi
+
+# LLVM-17
+RUN apt update && apt install -y --no-install-recommends wget gnupg2 && rm -rf /var/lib/apt/lists
+RUN echo deb http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
+RUN echo deb-src http://apt.llvm.org/lunar/ llvm-toolchain-lunar-17 main >> /etc/apt/sources.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+
+# TODO: 精简安装包
+# Install common dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=type=cache,target=/var/cache/apt --mount=type=cache,target=/var/lib/apt \
+    apt update -y && yes | unminimize && apt-mark hold "llvm-*" && apt-mark hold "clang-*" && \
+    apt install -y \
+    apt-utils git build-essential mold curl libc++-dev sudo libtool libtool-bin libz-dev libz3-dev libglib2.0-dev graphviz-dev bison flex automake libpixman-1-dev cgroup-tools \
+    cmake bear autoconf pkg-config gdb strace clangd-17 \
+    python3 python3-pip python3-venv \
+    openssh-server openssl libssl-dev libgnutls28-dev \
+    libcap-dev libpcap-dev tcpdump \
+    rsync autopoint gperf texinfo gettext \
+    vim nano screen htop man wget httpie bash-completion ripgrep iputils-ping iproute2 telnet net-tools ncat netcat-traditional \
+    zsh autojump fzf \
+    && rm -rf /var/lib/apt/lists
+
+RUN ln -sf /usr/bin/clang-17 /usr/bin/clang && \
+    ln -sf /usr/bin/clang++-17 /usr/bin/clang++ && \
+    ln -sf /usr/bin/llvm-config-17 /usr/bin/llvm-config && \
+    ln -sf /usr/bin/clangd-17 /usr/bin/clangd
+
+RUN clangd --version
+
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple gcovr; \
+    else \
+        pip3 install --break-system-packages gcovr; \
+    fi
+
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        pip3 install --break-system-packages -i https://mirrors.aliyun.com/pypi/simple wllvm; \
+    else \
+        pip3 install --break-system-packages wllvm; \
+    fi
+
+# Copy prebuilt custom LLVM version
+# Avoid file/dir conflicts with distro-provided clang resource files.
+RUN rm -rf /usr/lib/clang/17
+COPY --from=llvm /llvm/usr/ /usr/
+
+RUN chmod 777 /tmp
+
+# Users
+##############
+# Add a new user
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+ENV USER_ID=${USER_ID}
+ENV GROUP_ID=${GROUP_ID}
+
+RUN userdel $(getent passwd ${USER_ID} | cut -d: -f1) || true
+RUN groupdel $(getent group ${GROUP_ID} | cut -d: -f1) || true
+RUN groupadd -g ${GROUP_ID} user && \
+    useradd -u ${USER_ID} -rm -d /home/user -s /usr/bin/zsh -g user -G sudo user -p "$(openssl passwd -1 user)" && \
+    echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Use user AS default username
+USER user
+WORKDIR /home/user
+ENV HOME=/home/user
+
+RUN git config --global http.version HTTP/1.1 && \
+    git config --global user.name Kherrisan && \
+    git config --global user.email zdkscope@qq.com
+
+# Rust
+ENV RUSTUP_DIST_SERVER=https://rsproxy.cn
+ENV RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y --default-toolchain stable
+    
+COPY --chown=${USER_ID}:${GROUP_ID} scripts/cargo.toml ${HOME}/.cargo/
+
+##############
+# End of user setup
+
+# Code
+##############
+
+# Environments and fuzzer tools
+##############
+
+COPY patches /tmp/patches
+
+# AFLNet
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git clone https://gitee.com/kherrisan/aflnet.git aflnet; \
+    else \
+        git clone https://github.com/AFLNet/AFLNet.git aflnet; \
+    fi && \
+    cd aflnet && \
+    git checkout 6d86ca0cf6852cfa7a776a77fb7886d8bee46c14 && \
+    git apply /tmp/patches/aflnet.patch && \
+    make clean all ${MAKE_OPT} && \
+    cd llvm_mode && make ${MAKE_OPT}
+
+# # Some cargo dependencies are downloaded via github, so we need to configure the mirror
+# RUN if [ "${ZH_CN}" = "true" ]; then \
+#         git config --global url."https://github.moeyy.xyz/https://github.com/".insteadOf https://github.com/; \
+#     fi
+
+# Pingu
+RUN --mount=type=cache,target=/home/user/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cargo/registry,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cargo/git,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cache/pingu-src,uid=${USER_ID},gid=${GROUP_ID} \
+    git config --global url."https://x-access-token:${PINGU_TOKEN}@github.com/".insteadOf "https://github.com/" && \
+    git config --global --add url."https://x-access-token:${PINGU_TOKEN}@github.com/".insteadOf "git@github.com:" && \
+    if [ -d "${HOME}/.cache/pingu-src/.git" ]; then \
+        git -C "${HOME}/.cache/pingu-src" remote set-url origin https://github.com/Kherrisan/pingu.git && \
+        git -C "${HOME}/.cache/pingu-src" fetch --all --prune --tags --progress && \
+        default_branch="$(git -C "${HOME}/.cache/pingu-src" symbolic-ref --quiet --short refs/remotes/origin/HEAD | sed 's#^origin/##')" && \
+        default_branch="${default_branch:-main}" && \
+        git -C "${HOME}/.cache/pingu-src" checkout -B "${default_branch}" "origin/${default_branch}" && \
+        git -C "${HOME}/.cache/pingu-src" reset --hard "origin/${default_branch}" && \
+        git -C "${HOME}/.cache/pingu-src" clean -ffd && \
+        git -C "${HOME}/.cache/pingu-src" submodule sync --recursive && \
+        git -C "${HOME}/.cache/pingu-src" submodule update --init --recursive --force --progress; \
+    else \
+        git clone --recurse-submodules --progress https://github.com/Kherrisan/pingu.git "${HOME}/.cache/pingu-src"; \
+    fi
+
+# SVF
+ENV SVF_PROFILE="Release"
+RUN git clone --progress https://github.com/SVF-tools/SVF.git SVF && \
+    cd SVF && \
+    git checkout 197a6590 && \
+    git apply /tmp/patches/SVF.patch && \
+    cmake -S . -B ${SVF_PROFILE}-build \
+        -DCMAKE_C_FLAGS="-Wno-error=unused-variable -Wno-error=return-type" \
+        -DCMAKE_CXX_FLAGS="-Wno-error=unused-variable -Wno-error=return-type -frtti" \
+        -DCMAKE_BUILD_TYPE=${SVF_PROFILE} \
+        -DLLVM_DIR="$(llvm-config --cmakedir)" \
+        -DLLVM_CONFIG="$(command -v llvm-config)" && \
+    cmake --build ${SVF_PROFILE}-build ${MAKE_OPT}
+
+# Build pingu-fuzzer and pingu-agent
+RUN --mount=type=cache,target=/home/user/.rustup,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cargo/registry,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cargo/git,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cache/pip,uid=${USER_ID},gid=${GROUP_ID} \
+    --mount=type=cache,target=/home/user/.cache/pingu-src,uid=${USER_ID},gid=${GROUP_ID} \
+    cd "${HOME}/.cache/pingu-src" && \
+    ${HOME}/.cargo/bin/cargo build --workspace -p pingu-fuzzer -p pingu-agent --release && \
+    cd "${HOME}/.cache/pingu-src/pingu-agent/pass" && \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build ${MAKE_OPT} && \
+    cd "${HOME}/.cache/pingu-src" && \
+    python3 -m venv .venv && \
+    . .venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install -r pingu-solver/requirements.txt && \
+    cd "${HOME}/.cache/pingu-src/pingu-solver/tools" && \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build build ${MAKE_OPT} && \
+    rm -rf "${HOME}/pingu" && \
+    mkdir -p "${HOME}/pingu" && \
+    rsync -a --delete "${HOME}/.cache/pingu-src/" "${HOME}/pingu/"
+
+RUN if [ "${ZH_CN}" = "true" ]; then \
+        git clone https://gitee.com/kherrisan/libfaketime.git; \
+    else \
+        git clone https://github.com/wolfcw/libfaketime.git; \
+    fi && \
+    cd libfaketime && \
+    make -j
+
+RUN sudo ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" | sudo tee /etc/timezone
+
+RUN sudo touch /etc/ld.so.conf.d/ft-net.conf && \
+    echo "${HOME}/fuzztruction-net/generator/pass" | sudo tee "/etc/ld.so.conf.d/ft-net.conf" && \
+    sudo ldconfig
+
+# Build libgcov_preload.so
+COPY scripts/gcov_preload.c gcov_preload.c
+RUN gcc -shared -fpic gcov_preload.c -o libgcov_preload.so
+
+COPY scripts/fake_random.c fake_random.c
+RUN gcc -shared -fpic fake_random.c -g -o libfake_random.so
+
+# For deterministic timestamps
+RUN git clone https://github.com/stateafl/libfaketime-asan-fixed libfaketime-asan-fixed && \
+    cd libfaketime-asan-fixed && \
+    git checkout 7e46ea4 && \
+    cd src && \
+    make ${MAKE_OPT} && \
+    cp libfaketime.so.1 ${HOME}/libfaketime.so.1
+
+RUN sudo touch "/etc/ld.so.conf.d/custom.conf" && \
+    echo "${HOME}" | sudo tee "/etc/ld.so.conf.d/custom.conf" && \
+    sudo ldconfig
+
+# Disable ASLR
+RUN echo "kernel.randomize_va_space = 0" | sudo tee -a /etc/sysctl.d/01-disable-aslr.conf && \
+    sudo sysctl -p /etc/sysctl.d/01-disable-aslr.conf

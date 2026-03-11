@@ -328,7 +328,7 @@ function run_ft {
     # synthesize the ft configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft-common.yaml >"$temp_file"
     cat "$temp_file" >ft.yaml
     printf "\n" >>ft.yaml
     rm "$temp_file"
@@ -418,7 +418,7 @@ function build_pingu_generator {
     llvm-dis client_opt.bc -o client_opt.ll
     sed -i 's/optnone //g' client_opt.ll
 
-    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/release -Wl,-rpath,${HOME}/pingu/target/release \
         -lpingu_agent -fsanitize=address \
         client_opt.ll -o client
 
@@ -461,7 +461,7 @@ function build_pingu_consumer {
     llvm-dis server_opt.bc -o server_opt.ll
     sed -i 's/optnone //g' server_opt.ll
 
-    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/release -Wl,-rpath,${HOME}/pingu/target/release \
         -lpingu_agent -fsanitize=address \
         server_opt.ll -o server
 
@@ -474,12 +474,24 @@ function run_pingu {
     consumer="WolfSSL"
     generator=${2-$consumer}
     work_dir=/tmp/fuzzing-output
+    local pingu_bin=${HOME}/pingu/target/release/pingu
+    if [ ! -x "${pingu_bin}" ]; then
+        pingu_bin=${HOME}/pingu/target/debug/pingu
+    fi
     pushd ${HOME}/target/pingu/ >/dev/null
 
     # synthesize the pingu configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|$work_dir|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/pingu.yaml >"$temp_file"
+    local pingu_common_cfg=${HOME}/profuzzbench/pingu-common.yaml
+    if [ ! -f "${pingu_common_cfg}" ]; then
+        pingu_common_cfg=${HOME}/profuzzbench/pingu.yaml
+    fi
+    sed -e "s|WORK-DIRECTORY|$work_dir|g" \
+        -e "s|UID|$(id -u)|g" \
+        -e "s|GID|$(id -g)|g" \
+        -e "s|TIMEOUT|${timeout}s|g" \
+        "${pingu_common_cfg}" >"$temp_file"
     cat "$temp_file" >pingu.yaml
     printf "\n" >>pingu.yaml
     rm "$temp_file"
@@ -487,10 +499,10 @@ function run_pingu {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
 
     # running pingu
-    sudo timeout ${timeout}s ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
+    sudo "${pingu_bin}" pingu.yaml -vvv --purge fuzz
 
     # collecting coverage results
-    sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap --purge
+    sudo "${pingu_bin}" pingu.yaml -vvv gcov --pcap --purge
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl

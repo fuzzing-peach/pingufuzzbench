@@ -1,0 +1,62 @@
+work-directory: "WORK-DIRECTORY"
+input-directory: "/home/user/pingu/no-inputs"
+timeout: TIMEOUT
+target-port: 4455
+jail-uid: UID
+jail-gid: GID
+seed: 0
+target: wolfssl
+svf-so-path: "/home/user/pingu/target/debug/libsvf_sys.so"
+
+monitor:
+  url: "http://124.222.154.81:8086"
+  org: "None"
+  bucket: "pingu"
+  token: "0n_R5JUbtI4Aeez8dbYM4oPhtOclQg6qknWy5rZko8nm7GazjEbOEYQoTsW6chjsEMdaOJgOxT5jChGlnSRhvA=="
+  http-proxy: "http://202.112.23.167:8080"
+
+stages:
+  deterministic:
+    enable: true
+  target-state:
+    beta-routing-threshold: 0.1
+    sink-cmplog:
+      enable: true
+    source-block:
+      enable: true
+
+svf:
+  llvm-path: "/usr"
+  svf-path: "/home/user/SVF"
+  z3-path: "/home/user/SVF/z3.obj"
+  build-mode: "Release"
+
+solver:
+  clangd-path: "/usr/bin/clangd"
+  extract-snippet-path: "/home/user/pingu/pingu-solver/tools/build/extract-snippet"
+  sut: "wolfssl"
+  protocol: "tls"
+  max-rounds: 10
+  max-solution-candidates: 3
+  solver-cwd: "/home/user/pingu/pingu-solver"
+  py-path: "/home/user/pingu/.venv/bin/python3"
+  solver-py-path: "/home/user/pingu/pingu-solver/src/solver.py"
+  llm:
+    openai-model: "x-ai/grok-4.1-fast"
+    openai-api-key: "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"
+    openai-api-base-url: "https://openrouter.ai/api/v1"
+    openai-use-responses-api: false
+    http-proxy: "http://172.17.0.1:9870"
+    seed: 123
+    env:
+      - LANGSMITH_TRACING: true
+      - LANGSMITH_ENDPOINT: https://api.smith.langchain.com
+      - LANGSMITH_API_KEY: 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
+      - LANGSMITH_PROJECT: pingu-solver
+
+scheduler:
+  katz-centrality:
+    alpha: 0.001
+    max-iter: 1000
+  proximity-weighted-alignment:
+    lambda: 0.1

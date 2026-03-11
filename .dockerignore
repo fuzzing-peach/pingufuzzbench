@@ -7,3 +7,10 @@ archive
 *-archive
 ft-*
 volume
+.env
+.git-cache
+repo
+target
+temp
+exp-archive
+old-archive
