@@ -1,0 +1,79 @@
+diff --git a/quiche/quic/core/quic_default_clock.cc b/quiche/quic/core/quic_default_clock.cc
+index 208687b64..70e314cae 100644
+--- a/quiche/quic/core/quic_default_clock.cc
++++ b/quiche/quic/core/quic_default_clock.cc
+@@ -4,10 +4,60 @@
+ 
+ #include "quiche/quic/core/quic_default_clock.h"
+ 
++#include <cstdint>
++#include <cstdlib>
++#include <ctime>
++
+ #include "absl/time/clock.h"
+ 
+ namespace quic {
+ 
++namespace {
++
++inline int64_t RealNowMicros() { return absl::GetCurrentTimeNanos() / 1000; }
++
++inline bool ParseFakeTimeMicros(int64_t* out) {
++  const char* fake = std::getenv("FAKE_TIME");
++  if (fake == nullptr || fake[0] == '\0') {
++    return false;
++  }
++
++  std::tm tm = {};
++  if (strptime(fake, "%Y-%m-%d %H:%M:%S", &tm) == nullptr) {
++    return false;
++  }
++
++  const time_t seconds = mktime(&tm);
++  if (seconds == static_cast<time_t>(-1)) {
++    return false;
++  }
++
++  *out = static_cast<int64_t>(seconds) * INT64_C(1000000);
++  return true;
++}
++
++inline int64_t EffectiveNowMicros() {
++  static thread_local bool initialized = false;
++  static thread_local bool use_fake_time = false;
++  static thread_local int64_t fake_base_micros = 0;
++  static thread_local int64_t real_base_micros = 0;
++
++  if (!initialized) {
++    initialized = true;
++    real_base_micros = RealNowMicros();
++    use_fake_time = ParseFakeTimeMicros(&fake_base_micros);
++  }
++
++  if (!use_fake_time) {
++    return RealNowMicros();
++  }
++
++  const int64_t real_delta = RealNowMicros() - real_base_micros;
++  return fake_base_micros + real_delta;
++}
++
++}  // namespace
++
+ QuicDefaultClock* QuicDefaultClock::Get() {
+   static QuicDefaultClock* clock = new QuicDefaultClock();
+   return clock;
+@@ -16,11 +66,11 @@ QuicDefaultClock* QuicDefaultClock::Get() {
+ QuicTime QuicDefaultClock::ApproximateNow() const { return Now(); }
+ 
+ QuicTime QuicDefaultClock::Now() const {
+-  return CreateTimeFromMicroseconds(absl::GetCurrentTimeNanos() / 1000);
++  return CreateTimeFromMicroseconds(EffectiveNowMicros());
+ }
+ 
+ QuicWallTime QuicDefaultClock::WallNow() const {
+-  return QuicWallTime::FromUNIXMicroseconds(absl::GetCurrentTimeNanos() / 1000);
++  return QuicWallTime::FromUNIXMicroseconds(EffectiveNowMicros());
+ }
+ 
+ }  // namespace quic
