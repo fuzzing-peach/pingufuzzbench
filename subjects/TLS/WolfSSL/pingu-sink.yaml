@@ -35,6 +35,8 @@ sink:
   allow-unstable-sink: true
 
 gcov:
+  reporter: "gcovr"
+  timeout: 1s
   bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
   env:
     - FAKE_RANDOM: "1"

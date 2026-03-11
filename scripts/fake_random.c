@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/random.h>
 
 // Seed for the pseudo-random number generator
 // Should be stable across different runs
@@ -18,11 +19,13 @@ static int random_ref_cnt = 0;
 typedef int (*orig_open_f_type)(const char *pathname, int flags, ...);
 typedef ssize_t (*orig_read_f_type)(int fd, void *buf, size_t count);
 typedef int (*orig_close_f_type)(int fd);
+typedef ssize_t (*orig_getrandom_f_type)(void *buf, size_t buflen, unsigned int flags);
 
 // Static variables to hold the original function pointers
 static orig_open_f_type orig_open = NULL;
 static orig_read_f_type orig_read = NULL;
 static orig_close_f_type orig_close = NULL;
+static orig_getrandom_f_type orig_getrandom = NULL;
 
 // Function to check DEBUG environment variable and print debug information
 static void debug(const char *format, ...) {
@@ -148,6 +151,29 @@ int close(int fd)
     }
 
     return orig_close(fd);
+}
+
+ssize_t getrandom(void *buf, size_t buflen, unsigned int flags)
+{
+    (void)flags;
+    debug("[FAKE_RANDOM] getrandom(%p, %zu, %u)\n", buf, buflen, flags);
+
+    if (orig_getrandom == NULL) {
+        orig_getrandom = (orig_getrandom_f_type)dlsym(RTLD_NEXT, "getrandom");
+    }
+
+    if (getenv("FAKE_RANDOM") != NULL) {
+        for (size_t i = 0; i < buflen; i++) {
+            ((unsigned char *)buf)[i] = rand_r(&fake_random_seed) % 256;
+        }
+        return (ssize_t)buflen;
+    }
+
+    if (orig_getrandom != NULL) {
+        return orig_getrandom(buf, buflen, flags);
+    }
+
+    return -1;
 }
 
 static unsigned int g_rand_initialized = 0;
