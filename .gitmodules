@@ -1,3 +1,9 @@
 [submodule "fuzztruction-llvm"]
 	path = fuzztruction-llvm
 	url = https://github.com/fuzzing-peach/fuzztruction-llvm.git
+[submodule "ft-net"]
+	path = ft-net
+	url = https://github.com/fuzztruction/fuzztruction-net-experiments.git
+[submodule "ft-net-quicfuzzer"]
+	path = ft-net-quicfuzzer
+	url = https://github.com/QUICTester/Fuzztruction-Net_QUIC_experiment.git

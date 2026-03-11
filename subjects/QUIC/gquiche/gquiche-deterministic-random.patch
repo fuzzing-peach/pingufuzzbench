@@ -1,0 +1,101 @@
+diff --git a/quiche/common/quiche_random.cc b/quiche/common/quiche_random.cc
+index 12eeac203..93a364e16 100644
+--- a/quiche/common/quiche_random.cc
++++ b/quiche/common/quiche_random.cc
+@@ -1,5 +1,7 @@
+ #include "quiche/common/quiche_random.h"
+ 
++#include <cerrno>
++#include <cstdlib>
+ #include <cstdint>
+ #include <cstring>
+ 
+@@ -9,6 +11,56 @@ namespace quiche {
+ 
+ namespace {
+ 
++inline bool UseDeterministicRandom() {
++  const char* env = std::getenv("FAKE_RANDOM");
++  return env != nullptr && env[0] != '\0' && env[0] != '0';
++}
++
++inline uint64_t DeterministicSplitMix64(uint64_t* state) {
++  uint64_t z = (*state += UINT64_C(0x9E3779B97F4A7C15));
++  z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
++  z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
++  return z ^ (z >> 31);
++}
++
++inline uint64_t DeterministicSeedFromEnv() {
++  const char* seed_str = std::getenv("FAKERANDOM_SEED");
++  if (seed_str == nullptr || seed_str[0] == '\0') {
++    return UINT64_C(0x243B50D243B50D);
++  }
++  char* end = nullptr;
++  errno = 0;
++  const unsigned long long parsed = strtoull(seed_str, &end, 0);
++  if (errno != 0 || end == seed_str) {
++    return UINT64_C(0x243B50D243B50D);
++  }
++  return static_cast<uint64_t>(parsed);
++}
++
++inline uint64_t DeterministicNext64() {
++  static thread_local bool initialized = false;
++  static thread_local uint64_t state = 0;
++  if (!initialized) {
++    state = DeterministicSeedFromEnv();
++    initialized = true;
++  }
++  return DeterministicSplitMix64(&state);
++}
++
++inline void DeterministicFill(void* data, size_t len) {
++  while (len >= sizeof(uint64_t)) {
++    const uint64_t value = DeterministicNext64();
++    memcpy(data, &value, sizeof(uint64_t));
++    data = reinterpret_cast<char*>(data) + sizeof(uint64_t);
++    len -= sizeof(uint64_t);
++  }
++  if (len > 0) {
++    QUICHE_DCHECK_LT(len, sizeof(uint64_t));
++    const uint64_t value = DeterministicNext64();
++    memcpy(data, &value, len);
++  }
++}
++
+ // Insecure randomness in DefaultRandom uses an implementation of
+ // xoshiro256++ 1.0 based on code in the public domain from
+ // <http://prng.di.unimi.it/xoshiro256plusplus.c>.
+@@ -56,6 +108,10 @@ class DefaultQuicheRandom : public QuicheRandom {
+ };
+ 
+ void DefaultQuicheRandom::RandBytes(void* data, size_t len) {
++  if (UseDeterministicRandom()) {
++    DeterministicFill(data, len);
++    return;
++  }
+   RAND_bytes(reinterpret_cast<uint8_t*>(data), len);
+ }
+ 
+@@ -66,6 +122,10 @@ uint64_t DefaultQuicheRandom::RandUint64() {
+ }
+ 
+ void DefaultQuicheRandom::InsecureRandBytes(void* data, size_t len) {
++  if (UseDeterministicRandom()) {
++    DeterministicFill(data, len);
++    return;
++  }
+   while (len >= sizeof(uint64_t)) {
+     uint64_t random_bytes64 = Xoshiro256PlusPlus();
+     memcpy(data, &random_bytes64, sizeof(uint64_t));
+@@ -80,6 +140,9 @@ void DefaultQuicheRandom::InsecureRandBytes(void* data, size_t len) {
+ }
+ 
+ uint64_t DefaultQuicheRandom::InsecureRandUint64() {
++  if (UseDeterministicRandom()) {
++    return DeterministicNext64();
++  }
+   return Xoshiro256PlusPlus();
+ }
+ 

@@ -1,5 +1,5 @@
 diff --git a/afl-fuzz.c b/afl-fuzz.c
-index 04d5fae..12132e2 100644
+index 04d5fae..039bed8 100644
 --- a/afl-fuzz.c
 +++ b/afl-fuzz.c
 @@ -66,6 +66,7 @@
@@ -301,17 +301,20 @@ index 04d5fae..12132e2 100644
        case 'n': /* dumb mode */
  
          if (dumb_mode) FATAL("Multiple -n options not supported");
-@@ -10329,6 +10458,9 @@ int main(int argc, char** argv) {
+@@ -10329,6 +10458,12 @@ int main(int argc, char** argv) {
          } else if (!strcmp(optarg, "IPP")) {
            extract_requests = &extract_requests_ipp;
            extract_response_codes = &extract_response_codes_ipp;
 +        } else if (!strcmp(optarg, "MQTT")) {
 +          extract_requests = &extract_requests_mqtt;
 +          extract_response_codes = &extract_response_codes_mqtt;
++        } else if (!strcmp(optarg, "NOP")) {
++          extract_requests = &extract_requests_nop;
++          extract_response_codes = &extract_response_codes_nop;
          } else {
            FATAL("%s protocol is not supported yet!", optarg);
          }
-@@ -10420,6 +10552,7 @@ int main(int argc, char** argv) {
+@@ -10420,6 +10555,7 @@ int main(int argc, char** argv) {
  
    //if (!protocol_selected) FATAL("Please specify the protocol to be tested using the -P option");
  
@@ -319,7 +322,7 @@ index 04d5fae..12132e2 100644
    setup_signal_handlers();
    check_asan_opts();
  
-@@ -10470,7 +10603,7 @@ int main(int argc, char** argv) {
+@@ -10470,7 +10606,7 @@ int main(int argc, char** argv) {
  #endif /* HAVE_AFFINITY */
  
    check_crash_handling();
@@ -328,7 +331,7 @@ index 04d5fae..12132e2 100644
    check_cpu_governor();
  
    setup_post();
-@@ -10495,8 +10628,6 @@ int main(int argc, char** argv) {
+@@ -10495,8 +10631,6 @@ int main(int argc, char** argv) {
  
    check_binary(argv[optind]);
  
@@ -338,10 +341,10 @@ index 04d5fae..12132e2 100644
      use_argv = get_qemu_argv(argv[0], argv + optind, argc - optind);
    else
 diff --git a/aflnet.c b/aflnet.c
-index 3df6638..5de7270 100644
+index 3df6638..01cced8 100644
 --- a/aflnet.c
 +++ b/aflnet.c
-@@ -13,6 +13,125 @@
+@@ -13,6 +13,154 @@
  
  // Protocol-specific functions for extracting requests and responses
  
@@ -464,11 +467,40 @@ index 3df6638..5de7270 100644
 +	return regions;
 +}
 +
++region_t* extract_requests_nop(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
++{
++  unsigned int region_count = 0;
++  region_t *regions = NULL;
++
++  if ((region_count == 0) && (buf_size > 0)) {
++    regions = (region_t *)ck_realloc(regions, sizeof(region_t));
++    regions[0].start_byte = 0;
++    regions[0].end_byte = buf_size - 1;
++    regions[0].state_sequence = NULL;
++    regions[0].state_count = 0;
++    region_count = 1;
++  }
++
++  *region_count_ref = region_count;
++  return regions;
++}
++
++unsigned int* extract_response_codes_nop(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref)
++{
++  unsigned int* state_sequence = NULL;
++  state_sequence = (unsigned int *)ck_realloc(state_sequence, 3 * sizeof(unsigned int));
++  state_sequence[0] = 0;
++  state_sequence[1] = 1;
++  state_sequence[2] = 0;
++  *state_count_ref = 2;
++  return state_sequence;
++}
++
  region_t* extract_requests_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref)
  {
     char *mem;
 diff --git a/aflnet.h b/aflnet.h
-index 99ccf0f..6179a85 100644
+index 99ccf0f..8a20ec7 100644
 --- a/aflnet.h
 +++ b/aflnet.h
 @@ -57,7 +57,7 @@ KHASH_INIT(hms, khint32_t, state_info_t *, 1, kh_int_hash_func, kh_int_hash_equa
@@ -480,14 +512,25 @@ index 99ccf0f..6179a85 100644
  unsigned int* extract_response_codes_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  unsigned int* extract_response_codes_ssh(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  unsigned int* extract_response_codes_tls(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
-@@ -71,6 +71,7 @@ unsigned int* extract_response_codes_http(unsigned char* buf, unsigned int buf_s
+@@ -69,8 +69,10 @@ unsigned int* extract_response_codes_dtls12(unsigned char* buf, unsigned int buf
+ unsigned int* extract_response_codes_sip(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
+ unsigned int* extract_response_codes_http(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  unsigned int* extract_response_codes_ipp(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
++unsigned int* extract_response_codes_nop(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  extern unsigned int* (*extract_response_codes)(unsigned char* buf, unsigned int buf_size, unsigned int* state_count_ref);
  
 +region_t* extract_requests_mqtt(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
  region_t* extract_requests_smtp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
  region_t* extract_requests_ssh(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
  region_t* extract_requests_tls(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+@@ -82,6 +84,7 @@ region_t* extract_requests_dtls12(unsigned char* buf, unsigned int buf_size, uns
+ region_t* extract_requests_sip(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+ region_t* extract_requests_http(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+ region_t* extract_requests_ipp(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
++region_t* extract_requests_nop(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+ extern region_t* (*extract_requests)(unsigned char* buf, unsigned int buf_size, unsigned int* region_count_ref);
+ 
+ // Network communication functions
 diff --git a/convert-pcap-replay-format.py b/convert-pcap-replay-format.py
 index 2e7968c..03aea53 100755
 --- a/convert-pcap-replay-format.py

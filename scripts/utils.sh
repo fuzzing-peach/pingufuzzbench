@@ -93,11 +93,13 @@ function compute_coverage {
   step=$3
   covfile=$4
   cov_cmd=$5
-  clean_cmd=$6
+  clean_cmd=${6:-}
+  has_testcase=0
+  last_case=""
 
   # delete the existing coverage file
-  rm $covfile || true
-  touch $covfile
+  rm "$covfile" || true
+  touch "$covfile"
 
   if [ -n "$clean_cmd" ]; then
     eval "$clean_cmd"     
@@ -106,11 +108,18 @@ function compute_coverage {
   # output the header of the coverage file which is in the CSV format
   # Time: timestamp, l_per/b_per and l_abs/b_abs: line/branch coverage in percentage and absolutate number
   echo "time,l_abs,l_per,b_abs,b_per"
-  echo "time,l_abs,l_per,b_abs,b_per" >>$covfile
+  echo "time,l_abs,l_per,b_abs,b_per" >>"$covfile"
+
+  # If replayable queue is empty, keep header only and return.
+  if [ -z "$testcases" ]; then
+    return 0
+  fi
 
   # process other testcases
   count=0
   for f in $testcases; do
+    has_testcase=1
+    last_case="$f"
     echo "replaying $f"
     time=$(stat -c %Y $f)
     "$replayer" "$f" || true
@@ -131,7 +140,7 @@ function compute_coverage {
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
     b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
     echo "$time,$l_abs,$l_per,$b_abs,$b_per"
-    echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>$covfile
+    echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>"$covfile"
 
     if [ -n "$clean_cmd" ]; then
         eval "$clean_cmd"        
@@ -139,8 +148,8 @@ function compute_coverage {
   done
 
   # output cov data for the last testcase(s) if step > 1
-  if [[ $step -gt 1 ]]; then
-    time=$(stat -c %Y $f)
+  if [[ $step -gt 1 && $has_testcase -eq 1 ]]; then
+    time=$(stat -c %Y "$last_case")
 
     # Run the coverage command if provided, otherwise use default gcovr command
     if [ -n "$cov_cmd" ]; then
@@ -154,7 +163,7 @@ function compute_coverage {
     b_per=$(echo "$cov_data" | grep branch | cut -d" " -f2 | rev | cut -c2- | rev)
     b_abs=$(echo "$cov_data" | grep branch | cut -d" " -f3 | cut -c2-)
     echo "$time,$l_abs,$l_per,$b_abs,$b_per"
-    echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>$covfile
+    echo "$time,$l_abs,$l_per,$b_abs,$b_per" >>"$covfile"
   fi
 }
 

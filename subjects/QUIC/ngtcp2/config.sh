@@ -1,23 +1,41 @@
 #!/usr/bin/env bash
 
 function checkout {
+    ngtcp2_baseline="28d3126"
+    target_ref="${1:-$ngtcp2_baseline}"
+
     mkdir -p repo
 
     if [ ! -d ".git-cache/ngtcp2" ]; then
         git clone --recursive https://github.com/ngtcp2/ngtcp2 .git-cache/ngtcp2
+    else
+        pushd .git-cache/ngtcp2 >/dev/null
+        git fetch --all --tags
+        popd >/dev/null
     fi
     cp -r .git-cache/ngtcp2 repo/ngtcp2
     pushd repo/ngtcp2 >/dev/null
-    git checkout "$@"
-    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/quicfuzz-ngtcp2.patch
+    git checkout "${ngtcp2_baseline}"
+    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/quicfuzz-ngtcp2.patch || return 1
+    git add .
+    git commit -m "apply quicfuzz-ngtcp2 patch"
+    patch_commit=$(git rev-parse HEAD)
+    if [ "${target_ref}" != "${ngtcp2_baseline}" ]; then
+        git checkout "${target_ref}"
+        git cherry-pick "${patch_commit}" || return 1
+    fi
     popd >/dev/null
 
     if [ ! -d ".git-cache/wolfssl" ]; then
-        git clone --depth 1 -b v5.7.0-stable https://github.com/wolfSSL/wolfssl .git-cache/wolfssl
+        git clone https://github.com/wolfSSL/wolfssl .git-cache/wolfssl
+    else
+        pushd .git-cache/wolfssl >/dev/null
+        git fetch --all --tags
+        popd >/dev/null
     fi
     cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
-    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/quicfuzz-wolfssl.patch
+    git checkout b3f08f3
     popd >/dev/null
 
     if [ ! -d ".git-cache/nghttp3" ]; then
@@ -25,28 +43,230 @@ function checkout {
     fi
     cp -r .git-cache/nghttp3 repo/nghttp3
     pushd repo/nghttp3 >/dev/null
-    git checkout 6bcfffb
+    git checkout 21526d7
     git submodule update --init --recursive
-    pushd lib/sfparse >/dev/null
-    git checkout 6e15726
     popd >/dev/null
-    popd >/dev/null
+}
+
+function replay {
+    cert_dir=${HOME}/profuzzbench/cert
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        ./examples/wsslserver 127.0.0.1 4433 \
+        ${cert_dir}/server.key \
+        ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
+    server_pid=$!
+    sleep 1
+    timeout -s INT -k 1s 5s ${HOME}/aflnet/aflnet-replay "$1" NOP 4433 100 || true
+    kill -INT ${server_pid} >/dev/null 2>&1 || true
+    wait ${server_pid} || true
 }
 
 function build_aflnet {
-    echo "Not implemented"
+    mkdir -p target/aflnet
+    rm -rf target/aflnet/*
+    cp -r repo/ngtcp2 target/aflnet/
+    cp -r repo/wolfssl target/aflnet/
+    cp -r repo/nghttp3 target/aflnet/
+
+    pushd target/aflnet/wolfssl >/dev/null
+    autoreconf -i
+    export CC=${HOME}/aflnet/afl-clang-fast
+    export CXX=${HOME}/aflnet/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-harden --enable-ech
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/aflnet/nghttp3 >/dev/null
+    autoreconf -i
+    export CC=${HOME}/aflnet/afl-clang-fast
+    export CXX=${HOME}/aflnet/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    ./configure --prefix=${PWD}/build --enable-lib-only
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/aflnet/ngtcp2 >/dev/null
+    autoreconf -i
+    export CC=${HOME}/aflnet/afl-clang-fast
+    export CXX=${HOME}/aflnet/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    export PKG_CONFIG_PATH=${HOME}/target/aflnet/wolfssl/build/lib/pkgconfig:${HOME}/target/aflnet/nghttp3/build/lib/pkgconfig
+    ./configure --with-wolfssl --disable-shared --enable-static --enable-asan
+    make ${MAKE_OPT} check
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        echo "[!] build_aflnet failed: ${PWD}/examples/wsslserver was not generated"
+        return 1
+    fi
+    popd >/dev/null
 }
 
 function run_aflnet {
-    echo "Not implemented"
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
+    cert_dir=${HOME}/profuzzbench/cert
+
+    pushd ${HOME}/target/aflnet/ngtcp2 >/dev/null
+
+    mkdir -p $outdir
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    timeout -s INT -k 1s --preserve-status $timeout \
+        ${HOME}/aflnet/afl-fuzz \
+        -d -i ${indir} -o ${outdir} -N "udp://127.0.0.1/4433 " \
+        -P NOP -D 10000 -q 3 -s 3 -K -R -W 100 -m none \
+        -- \
+        ${HOME}/target/aflnet/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
+        ${cert_dir}/server.key \
+        ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
+
+    cd ${HOME}/target/gcov/ngtcp2
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
+    # Resolve relative source paths referenced by crypto/shared.gcda.
+    ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
+    mkdir -p ${HOME}/target/gcov/lib
+    if [ ! -e ${HOME}/target/gcov/lib/ngtcp2_macro.h ]; then
+        ln -s ${HOME}/target/gcov/ngtcp2/lib/ngtcp2_macro.h ${HOME}/target/gcov/lib/ngtcp2_macro.h
+    fi
+    # Choose a gcov backend based on gcno format:
+    # - GCC-style gcno (e.g., B33*) => use gcov
+    # - LLVM gcno (e.g., 408*) => use llvm-cov gcov
+    gcov_exec="gcov"
+    sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
+    if [ -n "${sample_gcno}" ] && gcov-dump "${sample_gcno}" 2>/dev/null | head -n 1 | grep -q "408\\*"; then
+        gcov_exec="llvm-cov-17 gcov"
+    fi
+    gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
+    eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
+    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
+    mkdir -p ${outdir}/cov_html
+    eval "gcovr ${gcov_common_opts} --html --html-details -o ${outdir}/cov_html/index.html" || true
+
+    popd >/dev/null
 }
 
 function build_stateafl {
-    echo "Not implemented"
+    mkdir -p target/stateafl
+    rm -rf target/stateafl/*
+    cp -r repo/ngtcp2 target/stateafl/
+    cp -r repo/wolfssl target/stateafl/
+    cp -r repo/nghttp3 target/stateafl/
+
+    pushd target/stateafl/wolfssl >/dev/null
+    autoreconf -i
+    export CC=${HOME}/stateafl/afl-clang-fast
+    export CXX=${HOME}/stateafl/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-harden --enable-ech
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/stateafl/nghttp3 >/dev/null
+    autoreconf -i
+    export CC=${HOME}/stateafl/afl-clang-fast
+    export CXX=${HOME}/stateafl/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    ./configure --prefix=${PWD}/build --enable-lib-only
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/stateafl/ngtcp2 >/dev/null
+    autoreconf -i
+    export CC=${HOME}/stateafl/afl-clang-fast
+    export CXX=${HOME}/stateafl/afl-clang-fast++
+    export AFL_USE_ASAN=1
+    export CFLAGS="-g -O2 -fsanitize=address"
+    export CXXFLAGS="-g -O2 -fsanitize=address"
+    export LDFLAGS="-fsanitize=address"
+    export PKG_CONFIG_PATH=${HOME}/target/stateafl/wolfssl/build/lib/pkgconfig:${HOME}/target/stateafl/nghttp3/build/lib/pkgconfig
+    ./configure --with-wolfssl --disable-shared --enable-static --enable-asan
+    make ${MAKE_OPT}
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        echo "[!] build_stateafl failed: ${PWD}/examples/wsslserver was not generated"
+        return 1
+    fi
+    popd >/dev/null
 }
 
 function run_stateafl {
-    echo "Not implemented"
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
+    cert_dir=${HOME}/profuzzbench/cert
+
+    pushd ${HOME}/target/stateafl/ngtcp2 >/dev/null
+
+    mkdir -p $outdir
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
+    export AFL_PRELOAD=libfake_random.so
+    export FAKE_RANDOM=1
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    timeout -s INT -k 1s --preserve-status $timeout \
+        ${HOME}/stateafl/afl-fuzz \
+        -d -i ${indir} -o ${outdir} -N "udp://127.0.0.1/4433 " \
+        -P NOP -D 10000 -q 3 -s 3 -K -R -W 100 -m none \
+        -- \
+        ${HOME}/target/stateafl/ngtcp2/examples/wsslserver 127.0.0.1 4433 \
+        ${cert_dir}/server.key \
+        ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
+
+    cd ${HOME}/target/gcov/ngtcp2
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
+    ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
+    mkdir -p ${HOME}/target/gcov/lib
+    if [ ! -e ${HOME}/target/gcov/lib/ngtcp2_macro.h ]; then
+        ln -s ${HOME}/target/gcov/ngtcp2/lib/ngtcp2_macro.h ${HOME}/target/gcov/lib/ngtcp2_macro.h
+    fi
+    gcov_exec="gcov"
+    sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
+    if [ -n "${sample_gcno}" ] && gcov-dump "${sample_gcno}" 2>/dev/null | head -n 1 | grep -q "408\\*"; then
+        gcov_exec="llvm-cov-17 gcov"
+    fi
+    gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
+    eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
+    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
+    mkdir -p ${outdir}/cov_html
+    eval "gcovr ${gcov_common_opts} --html --html-details -o ${outdir}/cov_html/index.html" || true
+
+    popd >/dev/null
 }
 
 function build_sgfuzz {
@@ -78,7 +298,7 @@ function build_quicfuzz {
 
     pushd target/quicfuzz/wolfssl >/dev/null
     autoreconf -i
-    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-harden --disable-ech
+    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-harden --enable-ech
     make ${MAKE_OPT} && make install
     popd >/dev/null
 
@@ -117,7 +337,7 @@ function run_quicfuzz {
     export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
 
-    timeout -k 0 --preserve-status $timeout \
+    timeout -s INT -k 1s --preserve-status $timeout \
         ${HOME}/quic-fuzz/aflnet/afl-fuzz \
         -d -i ${indir} -o ${outdir} -N udp://127.0.0.1/4433 \
         -y -m none -P QUIC -q 3 -s 3 -E -K \
@@ -142,7 +362,7 @@ function build_gcov {
 
     pushd target/gcov/wolfssl >/dev/null
     autoreconf -i
-    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-keylog-export --disable-ech
+    ./configure --prefix=${PWD}/build --enable-all --enable-aesni --enable-keylog-export --enable-ech
     make ${MAKE_OPT} && make install
     popd >/dev/null
 
@@ -154,8 +374,8 @@ function build_gcov {
 
     pushd target/gcov/ngtcp2 >/dev/null
     autoreconf -i
-    export CC=clang
-    export CXX=clang++
+    export CC=gcc
+    export CXX=g++
     export PKG_CONFIG_PATH=${HOME}/target/gcov/wolfssl/build/lib/pkgconfig:${HOME}/target/gcov/nghttp3/build/lib/pkgconfig
     export CFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
@@ -166,5 +386,9 @@ function build_gcov {
 }
 
 function install_dependencies {
-    echo "No dependencies"
+    sudo mkdir -p /var/lib/apt/lists/partial
+    sudo apt-get update
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libev-dev
+    sudo rm -rf /var/lib/apt/lists/*
 }

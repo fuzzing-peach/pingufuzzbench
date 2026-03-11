@@ -25,7 +25,7 @@ index d6a8a91bd..7f494e91b 100644
  		_gnutls_rnd_ops.rnd_refresh(gl_tls_get(ctx_key));
  }
 diff --git a/src/serv.c b/src/serv.c
-index 86008c952..d4e8e00a5 100644
+index 86008c952..28635900f 100644
 --- a/src/serv.c
 +++ b/src/serv.c
 @@ -53,6 +53,10 @@
@@ -39,17 +39,7 @@ index 86008c952..d4e8e00a5 100644
  /* konqueror cannot handle sending the page in multiple
   * pieces.
   */
-@@ -185,6 +189,9 @@ static void listener_free(const void *elt)
- 		shutdown(j->fd, 2);
- 		close(j->fd);
- 		gnutls_deinit(j->tls_session);
-+#if defined(FT_FUZZING) && !defined(SGFUZZ)
-+		exit(1);
-+#endif
- 	}
- 	free(j);
- }
-@@ -1138,7 +1145,7 @@ static void terminate(int sig)
+@@ -1138,7 +1142,7 @@ static void terminate(int sig)
  	*p++ = '\n';
  
  	write(STDERR_FILENO, buf, p - buf);

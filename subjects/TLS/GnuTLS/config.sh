@@ -97,7 +97,6 @@ function replay {
         timeout -k 1s 3s ./src/gnutls-serv \
         -a -d 1000 --earlydata \
         --alpn=http/2 \
-        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/cert/server.key \
@@ -181,7 +180,6 @@ function run_aflnet {
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
         --alpn=http/2 \
-        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
         --x509keyfile=${HOME}/profuzzbench/cert/server.key \
@@ -207,7 +205,6 @@ function build_stateafl {
     ensure_local_nettle || return 1
     prepare_gnutls_configure || return 1
 
-    export ASAN_OPTIONS=detect_leaks=0
     export CC=$HOME/stateafl/afl-clang-fast
     export CXX=$HOME/stateafl/afl-clang-fast++
     export CFLAGS="-g -O3 -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
@@ -246,10 +243,9 @@ function run_stateafl {
         ./src/gnutls-serv \
         -a -d 1000 --earlydata \
         --alpn=http/2 \
-        --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
         --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
         --x509certfile=${HOME}/profuzzbench/cert/server.crt \
-        --x509keyfile=${HOME}/profuzzbench/test.key.pem \
+        --x509keyfile=${HOME}/profuzzbench/cert/server.key \
         -b -p 5555
     
     cd ${HOME}/target/gcov/consumer/gnutls
@@ -375,7 +371,6 @@ function run_sgfuzz {
             timeout -k 1s 3s ./src/gnutls-serv \
             -a -d 1000 --earlydata \
             --alpn=http/2 \
-            --ocsp-response=${HOME}/profuzzbench/cert/ocsp.der \
             --x509cafile=${HOME}/profuzzbench/cert/ca.crt \
             --x509certfile=${HOME}/profuzzbench/cert/server.crt \
             --x509keyfile=${HOME}/profuzzbench/test.key.pem \
