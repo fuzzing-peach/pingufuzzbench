@@ -43,7 +43,8 @@ function checkout {
 
 function replay {
     ${HOME}/aflnet/aflnet-replay $1 TLS 4433 100 &
-    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+    LD_PRELOAD=libgcov_preload.so:libfake_random.so \
+        FAKE_RANDOM=1 FAKE_TIME="2026-02-01 12:00:00" \
         timeout -k 1s 3s ./examples/server/server \
         -C 10 \
         -p 4433 \
@@ -82,8 +83,11 @@ function run_aflnet {
     mkdir -p $outdir
 
     export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export FAKE_TIME="2026-02-01 12:00:00"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
@@ -138,8 +142,11 @@ function run_stateafl {
     mkdir -p $outdir
 
     export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
     export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export FAKE_TIME="2026-02-01 12:00:00"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -k 0 --preserve-status $timeout \
@@ -264,7 +271,8 @@ function run_sgfuzz {
 
     function replay {
         ${HOME}/aflnet/afl-replay $1 TLS 4433 100 &
-        LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+        LD_PRELOAD=libgcov_preload.so:libfake_random.so \
+            FAKE_RANDOM=1 FAKE_TIME="2026-02-01 12:00:00" \
             timeout -k 1s 3s ./examples/server/server \
             -C 10 \
             -p 4433 \

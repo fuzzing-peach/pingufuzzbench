@@ -9,5 +9,5 @@ monitor:
   url: "http://124.222.154.81:8086"
   org: "None"
   bucket: "pingu" 
-  token: "0n_R5JUbtI4Aeez8dbYM4oPhtOclQg6qknWy5rZko8nm7GazjEbOEYQoTsW6chjsEMdaOJgOxT5jChGlnSRhvA=="
+  token: "<REDACTED>"
   http-proxy: "http://202.112.23.167:8080"
