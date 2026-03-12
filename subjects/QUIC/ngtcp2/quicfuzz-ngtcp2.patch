@@ -1,30 +1,11 @@
-diff --git a/examples/util_wolfssl.cc b/examples/util_wolfssl.cc
-index 1afbaec4..6fdff148 100644
---- a/examples/util_wolfssl.cc
-+++ b/examples/util_wolfssl.cc
-@@ -42,8 +42,15 @@ namespace ngtcp2 {
- namespace util {
- 
- int generate_secure_random(std::span<uint8_t> data) {
--  if (wolfSSL_RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
--    return -1;
-+  static uint8_t deterministic_random = 1;
-+
-+  for (size_t i = 0; i < data.size(); ++i) {
-+    data[i] = deterministic_random;
-+  }
-+
-+  deterministic_random += 1;
-+  if (deterministic_random == 255) {
-+    deterministic_random = 1;
-   }
- 
-   return 0;
 diff --git a/examples/util.cc b/examples/util.cc
-index c9904df1..9e6228a8 100644
+index c9904df1..c9e18e08 100644
 --- a/examples/util.cc
 +++ b/examples/util.cc
-@@ -41,6 +41,8 @@
+@@ -38,9 +38,11 @@
+ #include <netdb.h>
+ #include <sys/mman.h>
+ 
 +#include <cerrno>
  #include <cassert>
  #include <cstring>
@@ -33,25 +14,28 @@ index c9904df1..9e6228a8 100644
  #include <chrono>
  #include <array>
  #include <iostream>
-@@ -143,20 +145,95 @@ std::mt19937 make_mt19937() {
-  auto *fake_random = std::getenv("FAKE_RANDOM");
-  if (fake_random != nullptr && fake_random[0] != '\0' &&
-      std::strcmp(fake_random, "0") != 0) {
-    auto *seed_env = std::getenv("FAKERANDOM_SEED");
-    unsigned long seed_value = 1;
-    if (seed_env != nullptr && seed_env[0] != '\0') {
-      errno = 0;
-      char *end = nullptr;
-      auto parsed = std::strtoul(seed_env, &end, 0);
-      if (errno == 0 && end != seed_env && end != nullptr && *end == '\0') {
-        seed_value = parsed;
-      }
-    }
-    return std::mt19937(static_cast<std::mt19937::result_type>(seed_value));
-  }
+@@ -139,24 +141,96 @@ std::string format_durationf(uint64_t ns) {
+ }
  
-  std::random_device rd;
-  return std::mt19937(rd());
+ std::mt19937 make_mt19937() {
++  auto *fake_random = std::getenv("FAKE_RANDOM");
++  if (fake_random != nullptr && fake_random[0] != '\0' &&
++      std::strcmp(fake_random, "0") != 0) {
++    auto *seed_env = std::getenv("FAKERANDOM_SEED");
++    unsigned long seed_value = 1;
++    if (seed_env != nullptr && seed_env[0] != '\0') {
++      errno = 0;
++      char *end = nullptr;
++      auto parsed = std::strtoul(seed_env, &end, 0);
++      if (errno == 0 && end != seed_env && end != nullptr && *end == '\0') {
++        seed_value = parsed;
++      }
++    }
++    return std::mt19937(static_cast<std::mt19937::result_type>(seed_value));
++  }
++
+   std::random_device rd;
+   return std::mt19937(rd());
  }
  
 -ngtcp2_tstamp timestamp() {
@@ -129,3 +113,25 @@ index c9904df1..9e6228a8 100644
  bool numeric_host(const char *hostname) {
    return numeric_host(hostname, AF_INET) || numeric_host(hostname, AF_INET6);
  }
+diff --git a/examples/util_wolfssl.cc b/examples/util_wolfssl.cc
+index 1afbaec4..6fdff148 100644
+--- a/examples/util_wolfssl.cc
++++ b/examples/util_wolfssl.cc
+@@ -42,8 +42,15 @@ namespace ngtcp2 {
+ namespace util {
+ 
+ int generate_secure_random(std::span<uint8_t> data) {
+-  if (wolfSSL_RAND_bytes(data.data(), static_cast<int>(data.size())) != 1) {
+-    return -1;
++  static uint8_t deterministic_random = 1;
++
++  for (size_t i = 0; i < data.size(); ++i) {
++    data[i] = deterministic_random;
++  }
++
++  deterministic_random += 1;
++  if (deterministic_random == 255) {
++    deterministic_random = 1;
+   }
+ 
+   return 0;
