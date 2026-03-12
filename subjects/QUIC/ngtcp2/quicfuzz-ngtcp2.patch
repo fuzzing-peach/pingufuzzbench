@@ -1,3 +1,118 @@
+diff --git a/examples/util.cc b/examples/util.cc
+index c9904df1..c9e18e08 100644
+--- a/examples/util.cc
++++ b/examples/util.cc
+@@ -38,9 +38,11 @@
+ #include <netdb.h>
+ #include <sys/mman.h>
+ 
++#include <cerrno>
+ #include <cassert>
+ #include <cstring>
+ #include <cstdlib>
++#include <ctime>
+ #include <chrono>
+ #include <array>
+ #include <iostream>
+@@ -139,24 +141,96 @@ std::string format_durationf(uint64_t ns) {
+ }
+ 
+ std::mt19937 make_mt19937() {
++  auto *fake_random = std::getenv("FAKE_RANDOM");
++  if (fake_random != nullptr && fake_random[0] != '\0' &&
++      std::strcmp(fake_random, "0") != 0) {
++    auto *seed_env = std::getenv("FAKERANDOM_SEED");
++    unsigned long seed_value = 1;
++    if (seed_env != nullptr && seed_env[0] != '\0') {
++      errno = 0;
++      char *end = nullptr;
++      auto parsed = std::strtoul(seed_env, &end, 0);
++      if (errno == 0 && end != seed_env && end != nullptr && *end == '\0') {
++        seed_value = parsed;
++      }
++    }
++    return std::mt19937(static_cast<std::mt19937::result_type>(seed_value));
++  }
++
+   std::random_device rd;
+   return std::mt19937(rd());
+ }
+ 
+-ngtcp2_tstamp timestamp() {
++namespace {
++ngtcp2_tstamp realtime_steady_clock_now() {
+   return static_cast<ngtcp2_tstamp>(
+     std::chrono::duration_cast<std::chrono::nanoseconds>(
+       std::chrono::steady_clock::now().time_since_epoch())
+       .count());
+ }
+ 
+-ngtcp2_tstamp system_clock_now() {
++ngtcp2_tstamp realtime_system_clock_now() {
+   return static_cast<ngtcp2_tstamp>(
+     std::chrono::floor<std::chrono::nanoseconds>(
+       std::chrono::system_clock::now().time_since_epoch())
+       .count());
+ }
+ 
++std::optional<ngtcp2_tstamp> parse_fake_time() {
++  auto *fake_time = std::getenv("FAKE_TIME");
++  if (fake_time == nullptr || fake_time[0] == '\0') {
++    return std::nullopt;
++  }
++
++  std::tm tm = {};
++  if (strptime(fake_time, "%Y-%m-%d %H:%M:%S", &tm) == nullptr) {
++    return std::nullopt;
++  }
++
++  auto seconds = mktime(&tm);
++  if (seconds == static_cast<time_t>(-1)) {
++    return std::nullopt;
++  }
++
++  return static_cast<ngtcp2_tstamp>(seconds) * 1000000000ull;
++}
++
++ngtcp2_tstamp effective_time_now(ngtcp2_tstamp realtime_now,
++                                 ngtcp2_tstamp fallback_now) {
++  struct {
++    bool initialized;
++    bool use_fake_time;
++    ngtcp2_tstamp fake_base;
++    ngtcp2_tstamp realtime_base;
++  } static state = {false, false, 0, 0};
++
++  if (!state.initialized) {
++    state.initialized = true;
++    state.realtime_base = realtime_now;
++    if (auto fake = parse_fake_time(); fake) {
++      state.use_fake_time = true;
++      state.fake_base = *fake;
++    }
++  }
++
++  if (!state.use_fake_time) {
++    return fallback_now;
++  }
++
++  return state.fake_base + (realtime_now - state.realtime_base);
++}
++} // namespace
++
++ngtcp2_tstamp timestamp() {
++  auto now = realtime_steady_clock_now();
++  return effective_time_now(now, now);
++}
++
++ngtcp2_tstamp system_clock_now() {
++  auto steady_now = realtime_steady_clock_now();
++  return effective_time_now(steady_now, realtime_system_clock_now());
++}
++
+ bool numeric_host(const char *hostname) {
+   return numeric_host(hostname, AF_INET) || numeric_host(hostname, AF_INET6);
+ }
 diff --git a/examples/util_wolfssl.cc b/examples/util_wolfssl.cc
 index 1afbaec4..6fdff148 100644
 --- a/examples/util_wolfssl.cc
