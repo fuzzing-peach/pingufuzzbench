@@ -22,8 +22,8 @@ ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirrors.nju.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirrors.nju.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
         apt clean; \
     fi
 
@@ -138,6 +138,7 @@ RUN --mount=type=cache,target=/home/user/.rustup,uid=${USER_ID},gid=${GROUP_ID} 
     --mount=type=cache,target=/home/user/.cargo/registry,uid=${USER_ID},gid=${GROUP_ID} \
     --mount=type=cache,target=/home/user/.cargo/git,uid=${USER_ID},gid=${GROUP_ID} \
     --mount=type=cache,target=/home/user/.cache/pingu-src,uid=${USER_ID},gid=${GROUP_ID} \
+    test -n "$PINGU_TOKEN" && \
     git config --global url."https://x-access-token:${PINGU_TOKEN}@github.com/".insteadOf "https://github.com/" && \
     git config --global --add url."https://x-access-token:${PINGU_TOKEN}@github.com/".insteadOf "git@github.com:" && \
     if [ -d "${HOME}/.cache/pingu-src/.git" ]; then \
