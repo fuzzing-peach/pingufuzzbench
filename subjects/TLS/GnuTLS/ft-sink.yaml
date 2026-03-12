@@ -3,6 +3,7 @@ sink:
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
+    - LD_LIBRARY_PATH: "/home/user/local/nettle/lib64:/home/user/local/nettle/lib"
   arguments:
     [
       "-a",
@@ -31,5 +32,6 @@ gcov:
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
+    - LD_LIBRARY_PATH: "/home/user/local/nettle/lib64:/home/user/local/nettle/lib"
   src-dir: "/home/user/target/gcov/consumer/gnutls"
   reporter: gcovr

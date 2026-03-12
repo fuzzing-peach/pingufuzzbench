@@ -11,7 +11,7 @@ PinguFuzzBench is a specialized benchmark for cryptographic network protocol fuz
 ### 📁 Root Directory
 - **README.md** - Main documentation with complete usage guide
 - **pingu.yaml** - Pingu fuzzer configuration template
-- **ft.yaml** - Fuzztruction configuration template
+- **ft-common.yaml** - Fuzztruction configuration template
 - **LICENSE** - Repository license
 - **figures/** - Generated coverage plots and visualizations
 - **docs/** - Architecture diagrams (pingubench.drawio.svg)

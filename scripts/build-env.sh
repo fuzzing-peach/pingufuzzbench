@@ -37,6 +37,11 @@ if [[ -n "$fuzzer" ]]; then
     dockerfile="dockerfile/Dockerfile-env-${fuzzer}"
 fi
 
+if [[ "$fuzzer" == "pingu" && -z "${PINGU_TOKEN:-}" ]]; then
+    log_error "[!] PINGU_TOKEN is required when building the pingu environment"
+    exit 1
+fi
+
 log_success "[+] Build mode: ${profile}"
 docker_args=$(get_args_after_double_dash "$@")
 
@@ -51,6 +56,12 @@ if [[ "$docker_args" =~ --build-arg[[:space:]]+HTTPS_PROXY=([^[:space:]]+) ]]; t
     https_proxy_val="${BASH_REMATCH[1]}"
     if [[ ! "$docker_args" =~ --build-arg[[:space:]]+https_proxy= ]]; then
         docker_args="${docker_args} --build-arg https_proxy=${https_proxy_val}"
+    fi
+fi
+
+if [[ "$fuzzer" == "pingu" && -n "${PINGU_TOKEN:-}" ]]; then
+    if [[ ! "$docker_args" =~ --build-arg[[:space:]]+PINGU_TOKEN= ]]; then
+        docker_args="${docker_args} --build-arg PINGU_TOKEN=${PINGU_TOKEN}"
     fi
 fi
 

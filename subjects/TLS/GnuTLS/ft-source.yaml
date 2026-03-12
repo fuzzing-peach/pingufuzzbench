@@ -3,6 +3,7 @@ source:
   env:
     - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/target/release:/home/user/local/nettle/lib64:/home/user/local/nettle/lib"
   arguments: [
     "localhost:4433", 
     "--rehandshake", 

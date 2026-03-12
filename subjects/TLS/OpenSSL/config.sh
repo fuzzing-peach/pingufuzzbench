@@ -415,7 +415,7 @@ function run_ft {
     # synthesize the ft configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft-common.yaml >"$temp_file"
     cat "$temp_file" >ft.yaml
     printf "\n" >>ft.yaml
     rm "$temp_file"

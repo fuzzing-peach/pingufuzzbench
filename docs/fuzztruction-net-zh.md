@@ -16,7 +16,7 @@ Fuzztruction-Net 是一个学术原型的网络协议模糊测试工具。与传
 fuzztruction-net/
 ├── Cargo.toml                 # Rust workspace 配置
 ├── README.md                  # 项目说明
-├── ft.yaml                    # FT-Net 通用配置模板
+├── ft-common.yaml             # FT-Net 通用配置模板
 ├── target/                    # 构建产物目录
 │   ├── debug/                # Debug 构建
 │   └── release/              # Release 构建
@@ -107,7 +107,7 @@ cargo build --release          # Release 构建
 
 FT-Net 使用 YAML 配置文件定义目标和配置。配置由三部分组成：
 
-#### 1. 通用配置（ft.yaml）
+#### 1. 通用配置（ft-common.yaml）
 ```yaml
 work-directory: "/tmp/fuzzing-output"   # 工作目录
 input-directory: "/home/user/no-inputs" # 输入目录
@@ -280,7 +280,7 @@ function run_ft {
     sed -e "s|WORK-DIRECTORY|${work_dir}|g" \
         -e "s|UID|$(id -u)|g" \
         -e "s|GID|$(id -g)|g" \
-        ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+        ${HOME}/profuzzbench/ft-common.yaml >"$temp_file"
     cat "$temp_file" >ft.yaml
     printf "\n" >>ft.yaml
     rm "$temp_file"
