@@ -310,10 +310,12 @@ function build_sgfuzz {
     export CC=wllvm
     export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
-    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-std=gnu++20 -O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
     python3 ${HOME}/sgfuzz/sanitizer/State_machine_instrument.py .
     autoreconf -i
     export PKG_CONFIG_PATH=${HOME}/target/sgfuzz/wolfssl/build/lib/pkgconfig:${HOME}/target/sgfuzz/nghttp3/build/lib/pkgconfig
+    # wolfssl is static-only here; ngtcp2's wolfSSL_is_quic link check needs libm.
+    export LIBS="-lm"
     ./configure --with-wolfssl --disable-shared --enable-static
     make ${MAKE_OPT}
 
