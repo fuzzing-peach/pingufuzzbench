@@ -206,6 +206,9 @@ for i in $(seq 1 $times); do
         --security-opt seccomp=unconfined \
         --security-opt apparmor=unconfined \
         --sysctl net.ipv4.tcp_tw_reuse=1 \
+        --sysctl fs.mqueue.msgsize_max=65536 \
+        --sysctl fs.mqueue.msg_max=1024 \
+        --sysctl fs.mqueue.queues_max=1024 \
         ${afl_env_args} \
         --user $(id -u):$(id -g) \
         -v /etc/localtime:/etc/localtime:ro \
