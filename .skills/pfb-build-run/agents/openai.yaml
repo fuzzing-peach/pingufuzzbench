@@ -1,0 +1,4 @@
+interface:
+  display_name: "PFB Build Run"
+  short_description: "Build env/image and run fuzzing jobs with reproducible docker commands"
+  default_prompt: "Use this skill to build env images, build target images, run fuzzing campaigns, and provide manual docker run command templates with mounts/env/privilege/resource settings."
