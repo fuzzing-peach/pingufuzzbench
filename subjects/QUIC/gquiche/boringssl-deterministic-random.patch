@@ -1,0 +1,97 @@
+diff --git a/crypto/rand/urandom.cc b/crypto/rand/urandom.cc
+index 1d9062f..22862b7 100644
+--- a/crypto/rand/urandom.cc
++++ b/crypto/rand/urandom.cc
+@@ -24,6 +24,7 @@
+ #if defined(OPENSSL_RAND_URANDOM)
+ 
+ #include <assert.h>
++#include <cstdlib>
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <stdio.h>
+@@ -134,6 +135,51 @@ static void maybe_set_extra_getrandom_flags(void) {
+ 
+ static CRYPTO_once_t rand_once = CRYPTO_ONCE_INIT;
+ 
++static int use_deterministic_random() {
++  const char *env = getenv("FAKE_RANDOM");
++  return env != nullptr && env[0] != '\0' && env[0] != '0';
++}
++
++static uint64_t deterministic_seed_from_env() {
++  const char *seed_str = getenv("FAKERANDOM_SEED");
++  if (seed_str == nullptr || seed_str[0] == '\0') {
++    return UINT64_C(0x243B50D243B50D);
++  }
++  char *end = nullptr;
++  errno = 0;
++  unsigned long long parsed = strtoull(seed_str, &end, 0);
++  if (errno != 0 || end == seed_str) {
++    return UINT64_C(0x243B50D243B50D);
++  }
++  return static_cast<uint64_t>(parsed);
++}
++
++static uint64_t deterministic_splitmix64(uint64_t *state) {
++  uint64_t z = (*state += UINT64_C(0x9E3779B97F4A7C15));
++  z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
++  z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
++  return z ^ (z >> 31);
++}
++
++static void deterministic_fill(uint8_t *out, size_t len) {
++  static thread_local int initialized = 0;
++  static thread_local uint64_t state = 0;
++  if (!initialized) {
++    state = deterministic_seed_from_env();
++    initialized = 1;
++  }
++  while (len >= sizeof(uint64_t)) {
++    uint64_t v = deterministic_splitmix64(&state);
++    OPENSSL_memcpy(out, &v, sizeof(v));
++    out += sizeof(v);
++    len -= sizeof(v);
++  }
++  if (len > 0) {
++    uint64_t v = deterministic_splitmix64(&state);
++    OPENSSL_memcpy(out, &v, len);
++  }
++}
++
+ // init_once initializes the state of this module to values previously
+ // requested. This is the only function that modifies |urandom_fd|, which may be
+ // read safely after calling the once.
+@@ -300,6 +346,10 @@ void CRYPTO_init_sysrand(void) { CRYPTO_once(&rand_once, init_once); }
+ 
+ // CRYPTO_sysrand puts |requested| random bytes into |out|.
+ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
++  if (use_deterministic_random()) {
++    deterministic_fill(out, requested);
++    return;
++  }
+   if (!fill_with_entropy(out, requested, /*block=*/1, /*seed=*/0)) {
+     perror("entropy fill failed");
+     abort();
+@@ -307,6 +357,10 @@ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
+ }
+ 
+ void CRYPTO_sysrand_for_seed(uint8_t *out, size_t requested) {
++  if (use_deterministic_random()) {
++    deterministic_fill(out, requested);
++    return;
++  }
+   if (!fill_with_entropy(out, requested, /*block=*/1, /*seed=*/1)) {
+     perror("entropy fill failed");
+     abort();
+@@ -314,6 +368,10 @@ void CRYPTO_sysrand_for_seed(uint8_t *out, size_t requested) {
+ }
+ 
+ int CRYPTO_sysrand_if_available(uint8_t *out, size_t requested) {
++  if (use_deterministic_random()) {
++    deterministic_fill(out, requested);
++    return 1;
++  }
+   if (fill_with_entropy(out, requested, /*block=*/0, /*seed=*/0)) {
+     return 1;
+   } else if (errno == EAGAIN) {

@@ -216,9 +216,16 @@ function build_pingu_consumer {
 }
 
 function run_pingu {
-    timeout=$1
     consumer="WolfSSL"
-    generator=${2-$consumer}
+    replay_step=${1:-1}
+    gcov_step=${2:-1}
+    timeout=${3:-300}
+    if [ "${4:-}" = "--" ]; then
+        generator=${5:-$consumer}
+    else
+        generator=${4:-$consumer}
+    fi
+
     work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/pingu/ >/dev/null
 
@@ -233,13 +240,27 @@ function run_pingu {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
 
     # running pingu
-    sudo timeout ${timeout}s ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
+    sudo timeout "${timeout}s" ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
 
-    # collecting coverage results
-    sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap --purge
+    # Collect coverage with replay/gcov steps.
+    replay_dir=""
+    for d in "${work_dir}/replayable-queue" "${work_dir}/queue" "${work_dir}/pcap" "${work_dir}/pcaps"; do
+        if [ -d "${d}" ]; then
+            replay_dir="${d}"
+            break
+        fi
+    done
+    if [ -n "${replay_dir}" ]; then
+        list_cmd="find ${replay_dir} -maxdepth 1 -type f | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    else
+        list_cmd="echo ''"
+    fi
+
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl
+    cov_cmd="sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap >/dev/null 2>&1 || true; gcovr -r . -s | grep '[lb][a-z]*:'"
+    compute_coverage true "$list_cmd" "${gcov_step}" "${work_dir}/coverage.csv" "$cov_cmd"
     grcov --threads 2 -s . -t html -o ${work_dir}/cov_html .
 
     popd >/dev/null

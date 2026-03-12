@@ -2,6 +2,7 @@
 
 function checkout {
     gquiche_baseline="243b50d"
+    boringssl_ref="0.20250415.0"
     target_ref="${1:-$gquiche_baseline}"
 
     if [ -n "${HTTP_PROXY:-}" ]; then
@@ -40,6 +41,12 @@ function checkout {
     git checkout "${gquiche_baseline}"
     git apply ${HOME}/profuzzbench/subjects/QUIC/gquiche/gquiche-deterministic-random.patch || return 1
     git apply ${HOME}/profuzzbench/subjects/QUIC/gquiche/gquiche-deterministic-time.patch || return 1
+    if ! grep -q 'local_path_override(module_name = "boringssl", path = "../boringssl")' MODULE.bazel; then
+        cat >>MODULE.bazel <<'EOF'
+
+local_path_override(module_name = "boringssl", path = "../boringssl")
+EOF
+    fi
     git add .
     git commit -m "apply deterministic random/time patches for gquiche"
     patch_commit=$(git rev-parse HEAD)
@@ -49,6 +56,24 @@ function checkout {
     fi
     git submodule update --init --recursive
     popd >/dev/null
+
+    boringssl_archive=".git-cache/boringssl-${boringssl_ref}.tar.gz"
+    boringssl_url="https://github.com/google/boringssl/releases/download/${boringssl_ref}/boringssl-${boringssl_ref}.tar.gz"
+    if [ ! -f "${boringssl_archive}" ]; then
+        mkdir -p .git-cache
+        if ! curl -fL "${boringssl_url}" -o "${boringssl_archive}"; then
+            echo "[!] boringssl download failed with current proxy env, retrying without proxy"
+            env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+                curl -fL "${boringssl_url}" -o "${boringssl_archive}" || return 1
+        fi
+    fi
+
+    rm -rf repo/boringssl
+    tar -xzf "${boringssl_archive}" -C repo
+    mv "repo/boringssl-${boringssl_ref}" repo/boringssl
+    pushd repo/boringssl >/dev/null
+    patch -p1 < ${HOME}/profuzzbench/subjects/QUIC/gquiche/boringssl-deterministic-random.patch || return 1
+    popd >/dev/null
 }
 
 function _prepare_variant_dir {
@@ -56,6 +81,7 @@ function _prepare_variant_dir {
     mkdir -p "target/${variant}"
     rm -rf target/${variant}/*
     cp -r repo/gquiche "target/${variant}/gquiche"
+    cp -r repo/boringssl "target/${variant}/boringssl"
 }
 
 function _resolve_quic_server {
@@ -108,7 +134,7 @@ function _build_quiche_with_bazel {
     coverage_args=()
 
     case "$mode" in
-    asan | aflnet)
+    asan | aflnet | stateafl)
         common_args+=(
             "--copt=-fsanitize=address"
             "--cxxopt=-fsanitize=address"
@@ -222,6 +248,47 @@ print(f"branches: {b_per:.1f}% ({b_cov} of {b_cnt})")
 '
 }
 
+function _llvm_cov_summary_lines_dir {
+    profile_dir=$1
+    profile_data=$2
+    bin_path=$3
+
+    llvm_cov_bin=$(_select_llvm_cov_tool) || return 1
+    llvm_profdata_bin=$(_select_llvm_profdata_tool) || return 1
+
+    raw_list=$(find "${profile_dir}" -maxdepth 1 -type f -name '*.profraw' 2>/dev/null | sort || true)
+    if [ -z "${raw_list}" ]; then
+        echo "lines: 0.0% (0 of 0)"
+        echo "branches: 0.0% (0 of 0)"
+        return 0
+    fi
+
+    # shellcheck disable=SC2086
+    "${llvm_profdata_bin}" merge -sparse ${raw_list} -o "${profile_data}" >/dev/null 2>&1 || return 1
+    "${llvm_cov_bin}" export --summary-only --instr-profile="${profile_data}" "${bin_path}" 2>/dev/null | python3 -c '
+import json, sys
+
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("lines: 0.0% (0 of 0)")
+    print("branches: 0.0% (0 of 0)")
+    raise SystemExit(0)
+
+totals = data.get("data", [{}])[0].get("totals", {})
+line = totals.get("lines", {})
+branch = totals.get("branches", {})
+l_cov = int(line.get("covered", 0) or 0)
+l_cnt = int(line.get("count", 0) or 0)
+b_cov = int(branch.get("covered", 0) or 0)
+b_cnt = int(branch.get("count", 0) or 0)
+l_per = (100.0 * l_cov / l_cnt) if l_cnt else 0.0
+b_per = (100.0 * b_cov / b_cnt) if b_cnt else 0.0
+print(f"lines: {l_per:.1f}% ({l_cov} of {l_cnt})")
+print(f"branches: {b_per:.1f}% ({b_cov} of {b_cnt})")
+'
+}
+
 function _prepare_quic_response_cache {
     cache_dir=$1
     mkdir -p "${cache_dir}"
@@ -233,7 +300,7 @@ function _prepare_quic_response_cache {
 function replay {
     cert_dir=${HOME}/profuzzbench/cert
     cache_dir=${PWD}/quic_response_cache
-    fake_time_val=${FAKE_TIME:-${FAKETIME:-2025-12-01 11:11:11}}
+    fake_time_value="${FAKE_TIME:-2026-03-11 12:00:00}"
     _prepare_quic_response_cache "${cache_dir}"
 
     server_bin=$(_resolve_quic_server "${PWD}" || true)
@@ -242,8 +309,12 @@ function replay {
         return 1
     fi
 
-    LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_val}" \
-        LLVM_PROFILE_FILE="${PWD}/coverage.profraw" \
+    profile_dir="${PWD}/coverage-profraw"
+    mkdir -p "${profile_dir}"
+    case_tag=$(basename "$1" | tr -c 'A-Za-z0-9._-' '_')
+
+    LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
+        LLVM_PROFILE_FILE="${profile_dir}/${case_tag}.profraw" \
         "${server_bin}" \
         --quic_response_cache_dir="${cache_dir}" \
         --certificate_file="${cert_dir}/fullchain.crt" \
@@ -269,12 +340,17 @@ function run_aflnet {
     replay_step=$1
     gcov_step=$2
     timeout=$3
+    if [ "${3:-}" = "--" ]; then
+        replay_step=${4:-$1}
+        gcov_step=${5:-$2}
+        timeout=${6:-300s}
+    fi
     outdir=/tmp/fuzzing-output
     indir=${HOME}/profuzzbench/subjects/QUIC/gquiche/in-quic
     cert_dir=${HOME}/profuzzbench/cert
 
     if [ ! -d "${indir}" ]; then
-        indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2_seed
+        indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
     fi
 
     pushd "${HOME}/target/aflnet/gquiche" >/dev/null
@@ -294,7 +370,7 @@ function run_aflnet {
     export AFL_NO_UI=1
     unset AFL_PRELOAD
     export FAKE_RANDOM=1
-    export FAKE_TIME=${FAKE_TIME:-${FAKETIME:-2025-12-01 11:11:11}}
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -s INT -k 1s --preserve-status "${timeout}" \
@@ -320,21 +396,91 @@ function run_aflnet {
         popd >/dev/null
         return 1
     fi
-    rm -f coverage.profraw coverage.profdata || true
-    cov_cmd="_llvm_cov_summary_lines \"${PWD}/coverage.profraw\" \"${PWD}/coverage.profdata\" \"${coverage_bin}\""
-    clean_cmd="rm -f \"${PWD}/coverage.profraw\" \"${PWD}/coverage.profdata\""
+    # Reset profiling artifacts once, then keep accumulating across replays.
+    rm -rf coverage-profraw
+    rm -f coverage.profdata || true
+    cov_cmd="_llvm_cov_summary_lines_dir \"${PWD}/coverage-profraw\" \"${PWD}/coverage.profdata\" \"${coverage_bin}\""
     list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd" "$clean_cmd"
+    compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd"
 
     popd >/dev/null
 }
 
 function build_stateafl {
-    echo "Not implemented"
+    _prepare_variant_dir "stateafl"
+    pushd "${HOME}/target/stateafl/gquiche" >/dev/null
+    export AFL_USE_ASAN=1
+    _build_quiche_with_bazel "${PWD}" "${HOME}/stateafl/afl-clang-fast" "${HOME}/stateafl/afl-clang-fast++" "stateafl"
+    popd >/dev/null
 }
 
 function run_stateafl {
-    echo "Not implemented"
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    if [ "${3:-}" = "--" ]; then
+        replay_step=${4:-$1}
+        gcov_step=${5:-$2}
+        timeout=${6:-300s}
+    fi
+    outdir=/tmp/fuzzing-output
+    indir=${HOME}/profuzzbench/subjects/QUIC/gquiche/in-quic
+    cert_dir=${HOME}/profuzzbench/cert
+
+    if [ ! -d "${indir}" ]; then
+        indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
+    fi
+
+    pushd "${HOME}/target/stateafl/gquiche" >/dev/null
+    mkdir -p "${outdir}"
+
+    cache_dir=${PWD}/quic_response_cache
+    _prepare_quic_response_cache "${cache_dir}"
+    server_bin=$(_resolve_quic_server "${PWD}" || true)
+    if [ -z "${server_bin}" ]; then
+        echo "[!] run_stateafl failed: quic_server binary not found"
+        popd >/dev/null
+        return 1
+    fi
+
+    export AFL_SKIP_CPUFREQ=1
+    export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
+    unset AFL_PRELOAD
+    export FAKE_RANDOM=1
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
+
+    timeout -s INT -k 1s --preserve-status "${timeout}" \
+        "${HOME}/stateafl/afl-fuzz" \
+        -d -i "${indir}" -o "${outdir}" -N "udp://127.0.0.1/4433 " \
+        -P NOP -D 10000 -q 3 -s 3 -K -R -W 100 -m none \
+        -- \
+        "${server_bin}" \
+        --quic_response_cache_dir="${cache_dir}" \
+        --certificate_file="${cert_dir}/fullchain.crt" \
+        --key_file="${cert_dir}/server.key" \
+        --port=4433 || true
+
+    cd "${HOME}/target/gcov/gquiche"
+    if ! _select_llvm_cov_tool >/dev/null 2>&1 || ! _select_llvm_profdata_tool >/dev/null 2>&1; then
+        echo "[!] run_stateafl failed: llvm-cov/llvm-profdata not found"
+        popd >/dev/null
+        return 1
+    fi
+    coverage_bin=$(_resolve_quic_server "${PWD}" || true)
+    if [ -z "${coverage_bin}" ]; then
+        echo "[!] run_stateafl failed: coverage quic_server binary not found in ${PWD}/bazel-bin"
+        popd >/dev/null
+        return 1
+    fi
+    rm -rf coverage-profraw
+    rm -f coverage.profdata || true
+    cov_cmd="_llvm_cov_summary_lines_dir \"${PWD}/coverage-profraw\" \"${PWD}/coverage.profdata\" \"${coverage_bin}\""
+    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    compute_coverage replay "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd"
+
+    popd >/dev/null
 }
 
 function build_sgfuzz {

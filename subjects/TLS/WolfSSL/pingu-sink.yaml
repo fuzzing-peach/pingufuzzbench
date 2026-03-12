@@ -40,5 +40,5 @@ gcov:
   bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
   env:
     - FAKE_RANDOM: "1"
-    - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
+    - LD_PRELOAD: "libgcov_preload.so"
   src-dir: "/home/user/target/gcov/consumer/wolfssl"
