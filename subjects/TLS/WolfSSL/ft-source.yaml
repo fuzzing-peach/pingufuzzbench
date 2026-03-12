@@ -1,7 +1,6 @@
 source:
   bin-path: "/home/user/target/ft/generator/wolfssl/examples/client/client"
   env:
-    - LD_PRELOAD: "libfake_random.so"
     - FAKE_RANDOM: "1"
   arguments: [
     "-r", 
