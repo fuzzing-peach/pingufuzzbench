@@ -54,17 +54,11 @@ function checkout {
 
 function replay {
     cert_dir=${HOME}/profuzzbench/cert
-    if [ "${USE_FAKE_ENV:-0}" = "1" ]; then
-        fake_time_value="${FAKE_TIME:-2026-03-11 12:00:00}"
-        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
-            ./examples/wsslserver 127.0.0.1 4433 \
-            ${cert_dir}/server.key \
-            ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
-    else
+    fake_time_value="${FAKE_TIME:-2026-03-11 12:00:00}"
+    LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
         ./examples/wsslserver 127.0.0.1 4433 \
-            ${cert_dir}/server.key \
-            ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
-    fi
+        ${cert_dir}/server.key \
+        ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
     server_pid=$!
     sleep 1
     timeout -s INT -k 1s 5s ${HOME}/aflnet/aflnet-replay "$1" NOP 4433 100 || true
@@ -128,7 +122,7 @@ function run_aflnet {
     gcov_step=$2
     timeout=$3
     outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed-replay
     cert_dir=${HOME}/profuzzbench/cert
 
     pushd ${HOME}/target/aflnet/ngtcp2 >/dev/null
@@ -138,14 +132,8 @@ function run_aflnet {
     export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
     export AFL_NO_UI=1
-    if [ "${USE_FAKE_ENV:-0}" = "1" ]; then
-        export FAKE_RANDOM=1
-        export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
-    else
-        unset AFL_PRELOAD
-        unset FAKE_RANDOM
-        unset FAKE_TIME
-    fi
+    export FAKE_RANDOM=1
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -s INT -k 1s --preserve-status $timeout \
@@ -240,7 +228,7 @@ function run_stateafl {
     gcov_step=$2
     timeout=$3
     outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2-seed-replay
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed-replay
     cert_dir=${HOME}/profuzzbench/cert
 
     pushd ${HOME}/target/stateafl/ngtcp2 >/dev/null
@@ -344,7 +332,7 @@ function run_quicfuzz {
     gcov_step=$2
     timeout=$3
     outdir=/tmp/fuzzing-output
-    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/ngtcp2_seed
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed
     pushd ${HOME}/target/quicfuzz/ngtcp2 >/dev/null
 
     mkdir -p $outdir

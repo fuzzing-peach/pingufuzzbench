@@ -1,0 +1,4 @@
+interface:
+  display_name: "Init Seed Capture"
+  short_description: "Capture protocol-valid seed and seed-replay from real client/server traffic"
+  default_prompt: "Use this skill to generate initial seed and seed-replay files by launching a target image container, running server/client communication, tcpdump capture, and payload extraction."
