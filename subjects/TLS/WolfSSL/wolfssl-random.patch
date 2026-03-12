@@ -2,15 +2,14 @@ diff --git a/wolfcrypt/src/random.c b/wolfcrypt/src/random.c
 index 6886a5869..cab4091ee 100644
 --- a/wolfcrypt/src/random.c
 +++ b/wolfcrypt/src/random.c
-@@ -72,6 +72,7 @@ This library contains implementation for the random number generator.
-     #include <wolfssl/wolfcrypt/rng_bank.h>
- #endif
+@@ -70,5 +70,6 @@
+ #include <wolfssl/wolfcrypt/random.h>
  #include <wolfssl/wolfcrypt/cpuid.h>
 +#include <stdlib.h>
- 
- #ifndef WC_NO_RNG /* if not FIPS and RNG is disabled then do not compile */
- 
-@@ -1351,6 +1352,22 @@ int wc_RNG_GenerateBlock(WC_RNG* rng, byte* output, word32 sz)
+ #ifdef HAVE_ENTROPY_MEMUSE
+ #include <wolfssl/wolfcrypt/sha3.h>
+ #if defined(__APPLE__) || defined(__MACH__)
+@@ -2002,6 +2003,22 @@ int wc_RNG_GenerateBlock(WC_RNG* rng, byte* output, word32 sz)
      if (sz == 0)
          return 0;
  

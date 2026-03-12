@@ -21,6 +21,21 @@ function checkout {
         git checkout "$1"
     fi
 
+    for patch_file in \
+        "${HOME}/profuzzbench/subjects/TLS/WolfSSL/wolfssl-random.patch" \
+        "${HOME}/profuzzbench/subjects/TLS/WolfSSL/wolfssl-time.patch"; do
+        if [ -f "${patch_file}" ]; then
+            if git apply --check "${patch_file}" >/dev/null 2>&1; then
+                git apply "${patch_file}"
+            elif git apply -R --check "${patch_file}" >/dev/null 2>&1; then
+                log_info "[*] Patch already applied: ${patch_file}"
+            else
+                log_error "[!] Patch failed to apply cleanly: ${patch_file}"
+                return 1
+            fi
+        fi
+    done
+
     ./autogen.sh
 
     popd >/dev/null
@@ -84,7 +99,7 @@ function run_aflnet {
         -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
     mkdir -p ${outdir}/cov_html
@@ -140,7 +155,7 @@ function run_stateafl {
         -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
-    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
     mkdir -p ${outdir}/cov_html
@@ -470,9 +485,19 @@ function build_pingu_consumer {
 }
 
 function run_pingu {
-    timeout=$1
+    local timeout
     consumer="WolfSSL"
-    generator=${2-$consumer}
+    local replay_step="${1:-1}"
+    local gcov_step="${2:-1}"
+    if [[ "${replay_step}" =~ ^[0-9]+$ ]] && [[ "${gcov_step}" =~ ^[0-9]+$ ]] && [[ "${3:-}" =~ ^[0-9]+$ ]]; then
+        # New dispatcher order: replay_step gcov_step timeout [generator]
+        timeout=$3
+        generator=${4-$consumer}
+    else
+        # Legacy order: timeout [generator]
+        timeout=${1:-600}
+        generator=${2-$consumer}
+    fi
     work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/pingu/ >/dev/null
 
@@ -486,8 +511,13 @@ function run_pingu {
     cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
 
+<<<<<<< HEAD
     # running pingu
     sudo timeout ${timeout}s ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
+=======
+    # running pingu (campaign duration is controlled externally)
+    sudo timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
+>>>>>>> c8f4cd6... Fix: wolfssl patch apply and queue-based coverage
 
     # collecting coverage results
     sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap --purge
