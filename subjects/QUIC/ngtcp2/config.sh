@@ -36,6 +36,10 @@ function checkout {
     cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
     git checkout b3f08f3
+    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/wolfssl-random.patch || return 1
+    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/wolfssl-time.patch || return 1
+    git add .
+    git commit -m "apply wolfssl deterministic random/time patches"
     popd >/dev/null
 
     if [ ! -d ".git-cache/nghttp3" ]; then
@@ -50,10 +54,17 @@ function checkout {
 
 function replay {
     cert_dir=${HOME}/profuzzbench/cert
-    LD_PRELOAD=libgcov_preload.so:libfake_random.so FAKE_RANDOM=1 \
+    if [ "${USE_FAKE_ENV:-0}" = "1" ]; then
+        fake_time_value="${FAKE_TIME:-2026-03-11 12:00:00}"
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
+            ./examples/wsslserver 127.0.0.1 4433 \
+            ${cert_dir}/server.key \
+            ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
+    else
         ./examples/wsslserver 127.0.0.1 4433 \
-        ${cert_dir}/server.key \
-        ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
+            ${cert_dir}/server.key \
+            ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
+    fi
     server_pid=$!
     sleep 1
     timeout -s INT -k 1s 5s ${HOME}/aflnet/aflnet-replay "$1" NOP 4433 100 || true
@@ -127,8 +138,14 @@ function run_aflnet {
     export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
     export AFL_NO_UI=1
-    export AFL_PRELOAD=libfake_random.so
-    export FAKE_RANDOM=1
+    if [ "${USE_FAKE_ENV:-0}" = "1" ]; then
+        export FAKE_RANDOM=1
+        export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+    else
+        unset AFL_PRELOAD
+        unset FAKE_RANDOM
+        unset FAKE_TIME
+    fi
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -s INT -k 1s --preserve-status $timeout \
@@ -158,7 +175,7 @@ function run_aflnet {
     fi
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
     eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
-    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="find ${outdir}/queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
     mkdir -p ${outdir}/cov_html
@@ -260,7 +277,7 @@ function run_stateafl {
     fi
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
     eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
-    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="find ${outdir}/queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
     mkdir -p ${outdir}/cov_html
