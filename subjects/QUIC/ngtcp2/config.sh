@@ -163,7 +163,7 @@ function run_aflnet {
     fi
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
     eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
-    list_cmd="find ${outdir}/queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
     mkdir -p ${outdir}/cov_html
@@ -238,8 +238,8 @@ function run_stateafl {
     export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
     export AFL_NO_UI=1
-    export AFL_PRELOAD=libfake_random.so
     export FAKE_RANDOM=1
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -s INT -k 1s --preserve-status $timeout \
@@ -265,7 +265,7 @@ function run_stateafl {
     fi
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
     eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
-    list_cmd="find ${outdir}/queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
     mkdir -p ${outdir}/cov_html
@@ -275,11 +275,167 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
-    echo "Not implemented"
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/ngtcp2 target/sgfuzz/ngtcp2
+    cp -r repo/wolfssl target/sgfuzz/wolfssl
+    cp -r repo/nghttp3 target/sgfuzz/nghttp3
+
+    pushd target/sgfuzz/wolfssl >/dev/null
+    unset LLVM_COMPILER
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O2 -g"
+    export CXXFLAGS="-O2 -g"
+    autoreconf -i
+    ./configure --prefix=${PWD}/build --enable-static --enable-shared=no --enable-all --enable-aesni --enable-harden --enable-ech
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/sgfuzz/nghttp3 >/dev/null
+    unset LLVM_COMPILER
+    export CC=clang
+    export CXX=clang++
+    export CFLAGS="-O2 -g"
+    export CXXFLAGS="-O2 -g"
+    autoreconf -i
+    ./configure --prefix=${PWD}/build --enable-lib-only
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd target/sgfuzz/ngtcp2 >/dev/null
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    python3 ${HOME}/sgfuzz/sanitizer/State_machine_instrument.py .
+    autoreconf -i
+    export PKG_CONFIG_PATH=${HOME}/target/sgfuzz/wolfssl/build/lib/pkgconfig:${HOME}/target/sgfuzz/nghttp3/build/lib/pkgconfig
+    ./configure --with-wolfssl --disable-shared --enable-static
+    make ${MAKE_OPT}
+
+    pushd examples >/dev/null
+    extract-bc wsslserver
+
+    export SGFUZZ_USE_HF_MAIN=1
+    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/ngtcp2/enum_types.txt
+    opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
+        -passes="sgfuzz-source" -debug-pass-manager wsslserver.bc -o wsslserver_opt.bc
+
+    llvm-dis-17 wsslserver_opt.bc -o wsslserver_opt.ll
+    sed -i 's/optnone //g;s/optnone//g' wsslserver_opt.ll
+
+    clang wsslserver_opt.ll -o wsslserver \
+        -fsanitize=address \
+        -fsanitize=fuzzer \
+        -DFT_FUZZING \
+        -DSGFUZZ \
+        -lsFuzzer \
+        -lhfnetdriver \
+        -lhfcommon \
+        -L${HOME}/target/sgfuzz/ngtcp2/lib/.libs \
+        -lngtcp2 \
+        -L${HOME}/target/sgfuzz/ngtcp2/crypto/wolfssl/.libs \
+        -lngtcp2_crypto_wolfssl \
+        -L${HOME}/target/sgfuzz/nghttp3/build/lib \
+        -lnghttp3 \
+        -L${HOME}/target/sgfuzz/wolfssl/build/lib \
+        -lwolfssl \
+        -lev \
+        -ldl \
+        -lm \
+        -lz \
+        -lpthread \
+        -lstdc++
+
+    popd >/dev/null
+    rm -rf .git
+    popd >/dev/null
 }
 
 function run_sgfuzz {
-    echo "Not implemented"
+    replay_step=$1
+    gcov_step=$2
+    timeout=$3
+    outdir=/tmp/fuzzing-output
+    queue=${outdir}/replayable-queue
+    indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed
+    cert_dir=${HOME}/profuzzbench/cert
+
+    pushd ${HOME}/target/sgfuzz/ngtcp2/examples >/dev/null
+
+    mkdir -p ${queue}
+    rm -rf ${queue}/*
+    mkdir -p ${outdir}/crashes
+    rm -rf ${outdir}/crashes/*
+
+    export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export AFL_NO_AFFINITY=1
+    export HFND_TCP_PORT=4433
+    export HFND_FORK_MODE=1
+    export FAKE_RANDOM=1
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+
+    SGFuzz_ARGS=(
+        -max_len=100000
+        -close_fd_mask=3
+        -shrink=1
+        -reload=30
+        -print_final_stats=1
+        -detect_leaks=0
+        -max_total_time=${timeout}
+        -fork=1
+        -artifact_prefix="${outdir}/crashes/"
+        "${queue}"
+        "${indir}"
+    )
+
+    WSSLSERVER_ARGS=(
+        127.0.0.1
+        4433
+        ${cert_dir}/server.key
+        ${cert_dir}/fullchain.crt
+        --initial-pkt-num=0
+    )
+
+    ./wsslserver "${SGFuzz_ARGS[@]}" -- "${WSSLSERVER_ARGS[@]}"
+
+    python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
+
+    cd ${HOME}/target/gcov/ngtcp2
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
+    ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
+    mkdir -p ${HOME}/target/gcov/lib
+    if [ ! -e ${HOME}/target/gcov/lib/ngtcp2_macro.h ]; then
+        ln -s ${HOME}/target/gcov/ngtcp2/lib/ngtcp2_macro.h ${HOME}/target/gcov/lib/ngtcp2_macro.h
+    fi
+
+    function replay {
+        timeout -s INT -k 1s 5s ${HOME}/aflnet/afl-replay "$1" NOP 4433 100 &
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}" \
+            timeout -s INT -k 1s 5s ./examples/wsslserver 127.0.0.1 4433 \
+            ${cert_dir}/server.key \
+            ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
+        wait || true
+    }
+
+    gcov_exec="gcov"
+    sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
+    if [ -n "${sample_gcno}" ] && gcov-dump "${sample_gcno}" 2>/dev/null | head -n 1 | grep -q "408\\*"; then
+        gcov_exec="llvm-cov-17 gcov"
+    fi
+    gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
+    cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
+    list_cmd="find ${queue} -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
+
+    mkdir -p ${outdir}/cov_html
+    eval "gcovr ${gcov_common_opts} --html --html-details -o ${outdir}/cov_html/index.html" || true
+
+    popd >/dev/null
 }
 
 function build_ft_generator {
@@ -341,6 +497,8 @@ function run_quicfuzz {
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
     export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
+    export FAKE_RANDOM=1
+    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
 
     timeout -s INT -k 1s --preserve-status $timeout \
         ${HOME}/quic-fuzz/aflnet/afl-fuzz \
