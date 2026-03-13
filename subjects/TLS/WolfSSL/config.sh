@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 function checkout {
+    local wolfssl_baseline="b3f08f3"
     if [ ! -d ".git-cache/wolfssl" ]; then
         git clone --progress https://github.com/wolfssl/wolfssl.git .git-cache/wolfssl
     fi
@@ -19,6 +20,9 @@ function checkout {
     if [[ $# -gt 0 && -n "$1" ]]; then
         git fetch --all --tags --progress
         git checkout "$1"
+    else
+        git fetch --all --tags --progress
+        git checkout "${wolfssl_baseline}"
     fi
 
     for patch_file in \
@@ -507,28 +511,35 @@ function run_pingu {
         generator=${2-$consumer}
     fi
     work_dir=/tmp/fuzzing-output
+    local pingu_bin=${HOME}/pingu/target/release/pingu
+    if [ ! -x "${pingu_bin}" ]; then
+        pingu_bin=${HOME}/pingu/target/debug/pingu
+    fi
     pushd ${HOME}/target/pingu/ >/dev/null
 
     # synthesize the pingu configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|$work_dir|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/pingu.yaml >"$temp_file"
+    local pingu_common_cfg=${HOME}/profuzzbench/pingu-common.yaml
+    if [ ! -f "${pingu_common_cfg}" ]; then
+        pingu_common_cfg=${HOME}/profuzzbench/pingu.yaml
+    fi
+    sed -e "s|WORK-DIRECTORY|$work_dir|g" \
+        -e "s|UID|$(id -u)|g" \
+        -e "s|GID|$(id -g)|g" \
+        -e "s|TIMEOUT|${timeout}s|g" \
+        "${pingu_common_cfg}" >"$temp_file"
     cat "$temp_file" >pingu.yaml
     printf "\n" >>pingu.yaml
     rm "$temp_file"
     cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
 
-<<<<<<< HEAD
-    # running pingu
-    sudo timeout ${timeout}s ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
-=======
     # running pingu (campaign duration is controlled externally)
     sudo timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
->>>>>>> c8f4cd6... Fix: wolfssl patch apply and queue-based coverage
 
     # collecting coverage results
-    sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap --purge
+    sudo "${pingu_bin}" pingu.yaml -vvv gcov --pcap --purge
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl
