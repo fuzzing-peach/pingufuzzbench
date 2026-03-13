@@ -107,7 +107,7 @@ function run_aflnet {
         -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
-    list_cmd="ls -1 ${outdir}/queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
     mkdir -p ${outdir}/cov_html
@@ -166,7 +166,7 @@ function run_stateafl {
         -e -d -r -V
 
     cd ${HOME}/target/gcov/consumer/wolfssl
-    list_cmd="ls -1 ${outdir}/queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+    list_cmd="ls -1 ${outdir}/replayable-queue/id* | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     clean_cmd="rm -f ${HOME}/target/gcov/consumer/wolfssl/build/bin/ACME_STORE/*"
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "" "$clean_cmd"
     mkdir -p ${outdir}/cov_html
@@ -355,7 +355,7 @@ function run_ft {
     # synthesize the ft configuration yaml
     # according to the targeted fuzzer and generated
     temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft.yaml >"$temp_file"
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/ft-common.yaml >"$temp_file"
     cat "$temp_file" >ft.yaml
     printf "\n" >>ft.yaml
     rm "$temp_file"
@@ -373,6 +373,8 @@ function run_ft {
     mkdir -p ${work_dir}/cov_html
     gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
+    cp -f ft.yaml ${work_dir}/ft.yaml
+    
     popd >/dev/null
 }
 

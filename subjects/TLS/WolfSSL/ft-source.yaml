@@ -2,6 +2,7 @@ source:
   bin-path: "/home/user/target/ft/generator/wolfssl/examples/client/client"
   env:
     - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-02-01 12:00:00"
   arguments: [
     "-r", 
     "-p", 

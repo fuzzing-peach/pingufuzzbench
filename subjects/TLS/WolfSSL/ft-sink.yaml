@@ -2,6 +2,7 @@ sink:
     bin-path: "/home/user/target/ft/consumer/wolfssl/examples/server/server"
     env:
         - FAKE_RANDOM: "1"
+        - FAKE_TIME: "2026-02-01 12:00:00"
     arguments:
         [
             "-C",
