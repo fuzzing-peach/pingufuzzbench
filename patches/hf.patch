@@ -1,8 +1,7 @@
 diff --git a/libhfnetdriver/netdriver.c b/libhfnetdriver/netdriver.c
-index 3e11f71a..777ad02a 100644
 --- a/libhfnetdriver/netdriver.c
 +++ b/libhfnetdriver/netdriver.c
-@@ -2,7 +2,9 @@
+@@ -2,9 +2,12 @@
  
  #include <arpa/inet.h>
  #include <errno.h>
@@ -11,8 +10,11 @@ index 3e11f71a..777ad02a 100644
 +#include <libgen.h>
  #include <netinet/in.h>
  #include <netinet/tcp.h>
++#include <poll.h>
  #include <stdbool.h>
-@@ -32,9 +34,14 @@
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -32,9 +35,16 @@
  __attribute__((visibility("default"))) __attribute__((used))
  const char *const LIBHFNETDRIVER_module_netdriver = _HF_NETDRIVER_SIG;
  
@@ -27,10 +29,25 @@ index 3e11f71a..777ad02a 100644
 +#define HFND_FORK_MODE_CHILD_ENV "HFND_FORK_MODE_CHILD"
 +#define HFND_STATE_DUMP_FILES_ENV "HFND_STATE_DUMP_FILES"
 +#define HFND_STATE_DUMP_DIR_ENV   "HFND_STATE_DUMP_DIR"
++#define HFND_TESTCASE_BUDGET_MS_ENV "HFND_TESTCASE_BUDGET_MS"
++#define HFND_TESTCASE_BUDGET_MS_DEFAULT 50U
  
  /* Define this to use receiving timeouts
  #define HFND_RECVTIME 10
-@@ -63,6 +70,21 @@ static struct {
+@@ -60,9 +70,34 @@
+         },
+ };
+ 
++static uint32_t hfnd_testcase_budget_ms = HFND_TESTCASE_BUDGET_MS_DEFAULT;
++
++static uint64_t netDriver_nowMonotonicMs(void) {
++    struct timespec ts = {};
++    if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
++        PLOG_F("clock_gettime(CLOCK_MONOTONIC)");
++    }
++    return ((uint64_t)ts.tv_sec * 1000ULL) + ((uint64_t)ts.tv_nsec / 1000000ULL);
++}
++
  extern int HonggfuzzNetDriver_main(int argc, char **argv);
  
  static void *netDriver_mainProgram(void *unused HF_ATTR_UNUSED) {
@@ -52,7 +69,7 @@ index 3e11f71a..777ad02a 100644
      int ret = HonggfuzzNetDriver_main(hfnd_globals.argc_server, hfnd_globals.argv_server);
      LOG_I("Honggfuzz Net Driver (pid=%d): HonggfuzzNetDriver_main() function exited with: %d",
          (int)getpid(), ret);
-@@ -174,7 +196,7 @@ static int netDriver_sockConnAddr(
+@@ -174,7 +209,7 @@
  #endif /* defined(SOL_TCP) && defined(TCP_QUICKACK) */
      }
  
@@ -61,7 +78,7 @@ index 3e11f71a..777ad02a 100644
  
      LOG_D("Connecting to '%s'", files_sockAddrToStr(addr, socklen));
      if (TEMP_FAILURE_RETRY(connect(sock, addr, socklen)) == -1) {
-@@ -225,6 +247,18 @@ __attribute__((weak)) int HonggfuzzNetDriverArgsForServer(
+@@ -225,6 +260,18 @@
              argv[i]      = argv[0];
              *server_argc = argc - i;
              *server_argv = &argv[i];
@@ -80,7 +97,7 @@ index 3e11f71a..777ad02a 100644
              return i;
          }
      }
-@@ -312,6 +346,137 @@ static bool netDriver_connAndAssign(
+@@ -312,6 +359,137 @@
      return false;
  }
  
@@ -218,7 +235,7 @@ index 3e11f71a..777ad02a 100644
  static bool netDriver_checkIfServerReady(int argc, char **argv) {
      struct sockaddr_storage addr     = {.ss_family = AF_UNSPEC};
      int                     type     = SOCK_STREAM;
-@@ -384,10 +549,24 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {
+@@ -384,10 +562,37 @@
      /* Make sure LIBHFNETDRIVER_module_netdriver (NetDriver signature) is used */
      LOG_D("Module: %s", LIBHFNETDRIVER_module_netdriver);
  
@@ -233,6 +250,19 @@ index 3e11f71a..777ad02a 100644
          *argc, *argv, &hfnd_globals.argc_server, &hfnd_globals.argv_server);
  
 -    netDriver_initNsIfNeeded();
++    const char *budget_str = getenv(HFND_TESTCASE_BUDGET_MS_ENV);
++    if (budget_str) {
++        errno                 = 0;
++        unsigned long budgetl = strtoul(budget_str, NULL, 10);
++        if (errno != 0 || budgetl < 1 || budgetl > 600000UL) {
++            LOG_F("Invalid %s='%s' (expected 1..600000 ms)", HFND_TESTCASE_BUDGET_MS_ENV,
++                budget_str);
++        }
++        hfnd_testcase_budget_ms = (uint32_t)budgetl;
++    }
++    LOG_I("Honggfuzz Net Driver (pid=%d): testcase budget set to %" PRIu32 " ms", (int)getpid(),
++        hfnd_testcase_budget_ms);
++
 +    if (getenv(HFND_FORK_MODE_ENV) && !getenv(HFND_FORK_MODE_CHILD_ENV)) {
 +        // If the fork mode is enabled, and we are not in the child process,
 +        // set the FORK_MODE_CHILD_ENV flag to true, leaving it to the child process
@@ -244,17 +274,92 @@ index 3e11f71a..777ad02a 100644
      netDriver_startOriginalProgramInThread();
      for (;;) {
          if (netDriver_checkIfServerReady(*argc, *argv)) {
-@@ -470,7 +649,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len) {
+@@ -429,48 +634,58 @@
+      * Well-behaved TCP servers should process the input and respond/close the TCP connection at
+      * this point
+      */
+-    if (TEMP_FAILURE_RETRY(shutdown(sock, SHUT_WR)) == -1) {
+-        if (errno == ENOTCONN) {
+-            close(sock);
+-            return 0;
++    if (hfnd_globals.dest_addr.type == SOCK_STREAM) {
++        if (TEMP_FAILURE_RETRY(shutdown(sock, SHUT_WR)) == -1) {
++            if (errno == ENOTCONN) {
++                close(sock);
++                return 0;
++            }
++            PLOG_F("shutdown(sock=%d, SHUT_WR)", sock);
          }
- #endif
+-        PLOG_F("shutdown(sock=%d, SHUT_WR)", sock);
+     }
+ 
+-#ifdef HFND_RECVTIME
+-    const struct timeval timeout = {.tv_sec = 1, .tv_usec = 0};
+-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1) {
+-        PLOG_W("Honggfuzz Net Driver (pid=%d): Couldn't set setsockopt(sock=%d, SO_RCVTIMEO, 1s)",
+-            (int)getpid(), sock);
+-    }
+-    time_t start = time(NULL);
+-#endif
+-
+     /*
+      * Try to read data from the server, assuming that an early TCP close would sometimes cause the
+      * TCP server to drop the input data, instead of processing it. Use BSS to avoid putting
+      * pressure on the stack size
+      */
+     static char b[1024ULL * 1024ULL * 4ULL];
++    const uint64_t testcase_start = netDriver_nowMonotonicMs();
+     for (;;) {
+-        int ret = TEMP_FAILURE_RETRY(recv(sock, b, sizeof(b), MSG_WAITALL));
+-        if (ret == 0) {
++        uint64_t elapsed_ms = netDriver_nowMonotonicMs() - testcase_start;
++        if (elapsed_ms >= hfnd_testcase_budget_ms) {
+             break;
+         }
+-#ifdef HFND_RECVTIME
+-        if (ret == -1 && errno == EWOULDBLOCK) {
+-            time_t end = time(NULL);
+-            if ((end - start) > HFND_RECVTIME) {
+-                LOG_W("Honggfuzz Net Driver (pid=%d): Server didn't close the connection(fd=%d) "
+-                      "within %d seconds. Closing it.",
+-                    (int)getpid(), sock, HFND_RECVTIME);
+-                break;
++
++        int wait_ms = (int)(hfnd_testcase_budget_ms - elapsed_ms);
++        struct pollfd pfd = {.fd = sock, .events = POLLIN | POLLERR | POLLHUP, .revents = 0};
++        int pret          = TEMP_FAILURE_RETRY(poll(&pfd, 1, wait_ms));
++        if (pret == 0) {
++            break;
++        }
++        if (pret == -1) {
++            if (errno == EINTR) {
++                continue;
+             }
++            PLOG_D("Honggfuzz Net Driver (pid=%d): poll(sock=%d) failed", (int)getpid(), sock);
++            break;
++        }
++        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
++            break;
++        }
++        if (!(pfd.revents & POLLIN)) {
+             continue;
+         }
+-#endif
++
++        int ret = TEMP_FAILURE_RETRY(recv(sock, b, sizeof(b), MSG_DONTWAIT));
++        if (ret == 0) {
++            break;
++        }
          if (ret == -1) {
 -            PLOG_W("Honggfuzz Net Driver (pid=%d): Connection to the server (sock=%d) closed with "
++            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
++                continue;
++            }
 +            PLOG_D("Honggfuzz Net Driver (pid=%d): Connection to the server (sock=%d) closed with "
                     "error",
                  (int)getpid(), sock);
              break;
 diff --git a/libhfnetdriver/netdriver.h b/libhfnetdriver/netdriver.h
-index c666c6cd..e30aac3a 100644
 --- a/libhfnetdriver/netdriver.h
 +++ b/libhfnetdriver/netdriver.h
 @@ -6,6 +6,7 @@
