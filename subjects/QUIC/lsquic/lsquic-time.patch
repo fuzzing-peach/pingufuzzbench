@@ -1,0 +1,72 @@
+diff --git a/src/liblsquic/lsquic_util.c b/src/liblsquic/lsquic_util.c
+index 7f21497..9495a55 100644
+--- a/src/liblsquic/lsquic_util.c
++++ b/src/liblsquic/lsquic_util.c
+@@ -4,6 +4,7 @@
+  */
+ 
+ #include <ctype.h>
++#include <errno.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -66,8 +67,7 @@ lsquic_init_timers (void)
+ }
+ 
+ 
+-lsquic_time_t
+-lsquic_time_now (void)
++static lsquic_time_t lsquic_real_time_now (void)
+ {
+ #if LSQUIC_COUNT_TIME_CALLS
+     ++n_time_now_calls;
+@@ -101,6 +101,42 @@ lsquic_time_now (void)
+ #endif
+ }
+ 
++
++lsquic_time_t
++lsquic_time_now (void)
++{
++    static int initialized;
++    static int use_fake;
++    static lsquic_time_t fake_base;
++    static lsquic_time_t real_base;
++    const char *fake_time_env;
++    lsquic_time_t now;
++    int year, mon, day, hour, min, sec;
++    struct tm tm;
++    time_t parsed;
++
++    now = lsquic_real_time_now();
++    if (!initialized)
++    {
++        initialized = 1;
++        fake_time_env = getenv("FAKE_TIME");
++        if (fake_time_env
++            && 6 == sscanf(fake_time_env, "%d-%d-%d %d:%d:%d",
++                                        &year, &mon, &day, &hour, &min, &sec))
++        {
++            memset(&tm, 0, sizeof(tm));
++            tm.tm_year = year - 1900;
++            tm.tm_mon  = mon - 1;
++            tm.tm_mday = day;
++            tm.tm_hour = hour;
++            tm.tm_min  = min;
++            tm.tm_sec  = sec;
++            tm.tm_isdst = -1;
++            parsed = mktime(&tm);
++            if (parsed != (time_t) -1)
++            {
++                use_fake = 1;
++                fake_base = (lsquic_time_t) parsed * 1000000;
++                real_base = now;
++            }
++        }
++    }
++    return use_fake && now >= real_base ? fake_base + (now - real_base) : now;
++}
++
+ 
+ int
+ lsquic_is_zero (const void *pbuf, size_t bufsz)

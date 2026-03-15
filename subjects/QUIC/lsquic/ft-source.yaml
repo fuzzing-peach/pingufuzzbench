@@ -1,0 +1,12 @@
+source:
+  bin-path: "/home/user/target/ft/generator/ngtcp2/examples/wsslclient"
+  env:
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-03-11 12:00:00"
+  arguments: ["--exit-on-all-streams-close", "127.0.0.1", "4433"]
+  working-dir: "/home/user/target/ft/generator/ngtcp2"
+  input-type: Udp
+  output-type: Udp
+  is-server: false
+  log-stdout: true
+  log-stderr: true
