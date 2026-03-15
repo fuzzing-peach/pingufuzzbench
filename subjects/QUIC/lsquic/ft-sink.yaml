@@ -13,7 +13,7 @@ sink:
   output-type: Udp
   is-server: true
   server-port: "4433"
-  server-ready-on: "Document root is not set: start in Interop Mode"
+  server-ready-on: "Bind(0)"
   send-sigterm: true
   log-stdout: true
   log-stderr: true
