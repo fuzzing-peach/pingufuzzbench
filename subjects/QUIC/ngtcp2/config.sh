@@ -146,6 +146,8 @@ function run_aflnet {
         ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
 
     cd ${HOME}/target/gcov/ngtcp2
+    # Reset runtime counters before replay-based coverage collection.
+    find . -name "*.gcda" -type f -delete || true
     find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     # Resolve relative source paths referenced by crypto/shared.gcda.
     ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
@@ -424,6 +426,14 @@ function run_sgfuzz {
         wait || true
     }
 
+    # Warm up coverage with protocol-valid seed corpus first.
+    if [ -d "${indir}" ]; then
+        while IFS= read -r seed_file; do
+            [ -f "${seed_file}" ] || continue
+            replay "${seed_file}"
+        done < <(find "${indir}" -maxdepth 1 -type f | sort)
+    fi
+
     gcov_exec="gcov"
     sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
     if [ -n "${sample_gcno}" ] && gcov-dump "${sample_gcno}" 2>/dev/null | head -n 1 | grep -q "408\\*"; then
@@ -481,7 +491,8 @@ function build_quicfuzz {
     export CFLAGS="-fsanitize=address -g"
     export CXXFLAGS="-fsanitize=address -g"
     export LDFLAGS="-fsanitize=address -g"
-    make ${MAKE_OPT} check
+    # Do not run tests during build_gcov; they pre-populate *.gcda.
+    make ${MAKE_OPT}
     popd >/dev/null
 }
 
