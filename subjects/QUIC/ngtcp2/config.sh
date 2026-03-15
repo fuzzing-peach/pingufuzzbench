@@ -1,18 +1,45 @@
 #!/usr/bin/env bash
 
+if [ -z "${MAKE_OPT+x}" ] || [ -z "${MAKE_OPT}" ]; then
+    MAKE_OPT="-j$(nproc)"
+fi
+
+function git_clone_retry {
+    url="$1"
+    dst="$2"
+    recursive="${4:-1}"
+    retries="${3:-3}"
+    i=1
+    while [ "$i" -le "$retries" ]; do
+        rm -rf "${dst}"
+        if [ "${recursive}" = "1" ]; then
+            clone_opts="--filter=blob:none --recursive"
+        else
+            clone_opts="--filter=blob:none"
+        fi
+        if git clone ${clone_opts} "${url}" "${dst}"; then
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 2
+    done
+    return 1
+}
+
 function checkout {
     ngtcp2_baseline="28d3126"
     target_ref="${1:-$ngtcp2_baseline}"
 
     mkdir -p repo
 
-    if [ ! -d ".git-cache/ngtcp2" ]; then
-        git clone --recursive https://github.com/ngtcp2/ngtcp2 .git-cache/ngtcp2
+    if [ ! -d ".git-cache/ngtcp2/.git" ]; then
+        git_clone_retry https://github.com/ngtcp2/ngtcp2 .git-cache/ngtcp2 || return 1
     else
         pushd .git-cache/ngtcp2 >/dev/null
         git fetch --all --tags
         popd >/dev/null
     fi
+    rm -rf repo/ngtcp2
     cp -r .git-cache/ngtcp2 repo/ngtcp2
     pushd repo/ngtcp2 >/dev/null
     git checkout "${ngtcp2_baseline}"
@@ -26,13 +53,14 @@ function checkout {
     fi
     popd >/dev/null
 
-    if [ ! -d ".git-cache/wolfssl" ]; then
-        git clone https://github.com/wolfSSL/wolfssl .git-cache/wolfssl
+    if [ ! -d ".git-cache/wolfssl/.git" ]; then
+        git_clone_retry https://github.com/wolfSSL/wolfssl .git-cache/wolfssl || return 1
     else
         pushd .git-cache/wolfssl >/dev/null
         git fetch --all --tags
         popd >/dev/null
     fi
+    rm -rf repo/wolfssl
     cp -r .git-cache/wolfssl repo/wolfssl
     pushd repo/wolfssl >/dev/null
     git checkout b3f08f3
@@ -42,13 +70,32 @@ function checkout {
     git commit -m "apply wolfssl deterministic random/time patches"
     popd >/dev/null
 
-    if [ ! -d ".git-cache/nghttp3" ]; then
-        git clone https://github.com/ngtcp2/nghttp3 .git-cache/nghttp3
+    if [ ! -d ".git-cache/nghttp3/.git" ]; then
+        git_clone_retry https://github.com/ngtcp2/nghttp3 .git-cache/nghttp3 || return 1
     fi
+    rm -rf repo/nghttp3
     cp -r .git-cache/nghttp3 repo/nghttp3
     pushd repo/nghttp3 >/dev/null
     git checkout 21526d7
     git submodule update --init --recursive
+    popd >/dev/null
+
+    if [ ! -d ".git-cache/msquic/.git" ]; then
+        git_clone_retry https://github.com/microsoft/msquic.git .git-cache/msquic 3 0 || return 1
+    else
+        pushd .git-cache/msquic >/dev/null
+        git fetch --all --tags
+        popd >/dev/null
+    fi
+    rm -rf repo/msquic
+    cp -r .git-cache/msquic repo/msquic
+    pushd repo/msquic >/dev/null
+    if ! git checkout a933f7b7; then
+        echo "[!] msquic commit a933f7b7 not found, using default branch HEAD"
+    fi
+    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/msquic-sgfuzz-udp.patch || return 1
+    git add .
+    git commit -m "apply msquic sgfuzz udp netdriver patch"
     popd >/dev/null
 }
 
@@ -275,16 +322,20 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
+    target_root=${HOME}/profuzzbench/target
+    if [ ! -d "${target_root}" ]; then
+        target_root=${HOME}/target
+    fi
+
     mkdir -p target/sgfuzz
     rm -rf target/sgfuzz/*
-    cp -r repo/ngtcp2 target/sgfuzz/ngtcp2
-    cp -r repo/wolfssl target/sgfuzz/wolfssl
-    cp -r repo/nghttp3 target/sgfuzz/nghttp3
+    cp -r repo/ngtcp2 target/sgfuzz/
+    cp -r repo/wolfssl target/sgfuzz/
+    cp -r repo/nghttp3 target/sgfuzz/
 
     pushd target/sgfuzz/wolfssl >/dev/null
-    unset LLVM_COMPILER
-    export CC=clang
-    export CXX=clang++
+    export CC=gcc
+    export CXX=g++
     export CFLAGS="-O2 -g"
     export CXXFLAGS="-O2 -g"
     autoreconf -i
@@ -294,9 +345,8 @@ function build_sgfuzz {
     popd >/dev/null
 
     pushd target/sgfuzz/nghttp3 >/dev/null
-    unset LLVM_COMPILER
-    export CC=clang
-    export CXX=clang++
+    export CC=gcc
+    export CXX=g++
     export CFLAGS="-O2 -g"
     export CXXFLAGS="-O2 -g"
     autoreconf -i
@@ -309,28 +359,54 @@ function build_sgfuzz {
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CXX=wllvm++
-    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
-    export CXXFLAGS="-std=gnu++20 -O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -v -Wno-int-conversion"
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -v -Wno-int-conversion"
+    export CXXFLAGS="-std=gnu++20 -O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -v -Wno-int-conversion"
     python3 ${HOME}/sgfuzz/sanitizer/State_machine_instrument.py .
     autoreconf -i
-    export PKG_CONFIG_PATH=${HOME}/target/sgfuzz/wolfssl/build/lib/pkgconfig:${HOME}/target/sgfuzz/nghttp3/build/lib/pkgconfig
-    # wolfssl is static-only here; ngtcp2's wolfSSL_is_quic link check needs libm.
+    export PKG_CONFIG_PATH=${target_root}/sgfuzz/wolfssl/build/lib/pkgconfig:${target_root}/sgfuzz/nghttp3/build/lib/pkgconfig
     export LIBS="-lm"
     ./configure --with-wolfssl --disable-shared --enable-static
     make ${MAKE_OPT}
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        make -C examples ${MAKE_OPT} wsslserver || true
+    fi
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        echo "[!] build_sgfuzz failed: ${PWD}/examples/wsslserver was not generated"
+        return 1
+    fi
 
     pushd examples >/dev/null
-    extract-bc wsslserver
+    extract-bc ./wsslserver
+
+    cat > hf_udp_addr.c <<'EOF'
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <sys/socket.h>
+
+socklen_t HonggfuzzNetDriverServerAddress(
+    struct sockaddr_storage *addr,
+    int *type,
+    int *protocol) {
+    struct sockaddr_in *in = (struct sockaddr_in *)addr;
+    memset(addr, 0, sizeof(*addr));
+    in->sin_family = AF_INET;
+    in->sin_port = htons(4433);
+    in->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    *type = SOCK_DGRAM;
+    *protocol = IPPROTO_UDP;
+    return (socklen_t)sizeof(*in);
+}
+EOF
 
     export SGFUZZ_USE_HF_MAIN=1
-    export SGFUZZ_PATCHING_TYPE_FILE=${HOME}/target/sgfuzz/ngtcp2/enum_types.txt
+    export SGFUZZ_PATCHING_TYPE_FILE=${target_root}/sgfuzz/ngtcp2/enum_types.txt
     opt -load-pass-plugin=${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so \
         -passes="sgfuzz-source" -debug-pass-manager wsslserver.bc -o wsslserver_opt.bc
-
     llvm-dis-17 wsslserver_opt.bc -o wsslserver_opt.ll
     sed -i 's/optnone //g;s/optnone//g' wsslserver_opt.ll
 
-    clang wsslserver_opt.ll -o wsslserver \
+    clang wsslserver_opt.ll hf_udp_addr.c -o wsslserver \
         -fsanitize=address \
         -fsanitize=fuzzer \
         -DFT_FUZZING \
@@ -338,13 +414,13 @@ function build_sgfuzz {
         -lsFuzzer \
         -lhfnetdriver \
         -lhfcommon \
-        -L${HOME}/target/sgfuzz/ngtcp2/lib/.libs \
+        -L${target_root}/sgfuzz/ngtcp2/lib/.libs \
         -lngtcp2 \
-        -L${HOME}/target/sgfuzz/ngtcp2/crypto/wolfssl/.libs \
+        -L${target_root}/sgfuzz/ngtcp2/crypto/wolfssl/.libs \
         -lngtcp2_crypto_wolfssl \
-        -L${HOME}/target/sgfuzz/nghttp3/build/lib \
+        -L${target_root}/sgfuzz/nghttp3/build/lib \
         -lnghttp3 \
-        -L${HOME}/target/sgfuzz/wolfssl/build/lib \
+        -L${target_root}/sgfuzz/wolfssl/build/lib \
         -lwolfssl \
         -lev \
         -ldl \
@@ -354,11 +430,15 @@ function build_sgfuzz {
         -lstdc++
 
     popd >/dev/null
-    rm -rf .git
     popd >/dev/null
 }
 
 function run_sgfuzz {
+    target_root=${HOME}/profuzzbench/target
+    if [ ! -d "${target_root}" ]; then
+        target_root=${HOME}/target
+    fi
+
     replay_step=$1
     gcov_step=$2
     timeout=$3
@@ -367,7 +447,7 @@ function run_sgfuzz {
     indir=${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed
     cert_dir=${HOME}/profuzzbench/cert
 
-    pushd ${HOME}/target/sgfuzz/ngtcp2/examples >/dev/null
+    pushd ${target_root}/sgfuzz/ngtcp2/examples >/dev/null
 
     mkdir -p ${queue}
     rm -rf ${queue}/*
@@ -376,12 +456,11 @@ function run_sgfuzz {
 
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export AFL_NO_AFFINITY=1
-    export HFND_TCP_PORT=4433
-    export HFND_FORK_MODE=1
     export FAKE_RANDOM=1
-    export FAKERANDOM_SEED="${FAKERANDOM_SEED:-1}"
     export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
-    export LD_LIBRARY_PATH="${HOME}/target/sgfuzz/nghttp3/build/lib:${HOME}/target/sgfuzz/wolfssl/build/lib:${LD_LIBRARY_PATH}"
+    export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
+    export HFND_TCP_PORT=4433
+    export LD_LIBRARY_PATH=${target_root}/sgfuzz/nghttp3/build/lib:${target_root}/sgfuzz/wolfssl/build/lib:${target_root}/sgfuzz/ngtcp2/lib/.libs:${target_root}/sgfuzz/ngtcp2/crypto/wolfssl/.libs:${LD_LIBRARY_PATH:-}
 
     SGFuzz_ARGS=(
         -max_len=100000
@@ -391,41 +470,45 @@ function run_sgfuzz {
         -print_final_stats=1
         -detect_leaks=0
         -max_total_time=${timeout}
-        -fork=1
         -artifact_prefix="${outdir}/crashes/"
         "${queue}"
         "${indir}"
     )
 
-    WSSLSERVER_ARGS=(
-        127.0.0.1
-        4433
-        ${cert_dir}/server.key
-        ${cert_dir}/fullchain.crt
-        --initial-pkt-num=0
-    )
-
-    ./wsslserver "${SGFuzz_ARGS[@]}" -- "${WSSLSERVER_ARGS[@]}"
+    ./wsslserver "${SGFuzz_ARGS[@]}" \
+        -- \
+        127.0.0.1 4433 \
+        ${cert_dir}/server.key \
+        ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
 
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
 
-    cd ${HOME}/target/gcov/ngtcp2
+    cd ${target_root}/gcov/ngtcp2
     find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
-    ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
-    mkdir -p ${HOME}/target/gcov/lib
-    if [ ! -e ${HOME}/target/gcov/lib/ngtcp2_macro.h ]; then
-        ln -s ${HOME}/target/gcov/ngtcp2/lib/ngtcp2_macro.h ${HOME}/target/gcov/lib/ngtcp2_macro.h
+    ln -sfn ${target_root}/gcov/ngtcp2/crypto/shared.c ${target_root}/gcov/ngtcp2/shared.c
+    mkdir -p ${target_root}/gcov/lib
+    if [ ! -e ${target_root}/gcov/lib/ngtcp2_macro.h ]; then
+        ln -s ${target_root}/gcov/ngtcp2/lib/ngtcp2_macro.h ${target_root}/gcov/lib/ngtcp2_macro.h
     fi
 
-    function replay {
-        timeout -s INT -k 1s 5s ${HOME}/aflnet/afl-replay "$1" NOP 4433 100 &
-        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKERANDOM_SEED="${FAKERANDOM_SEED:-1}" \
-            FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}" \
-            LD_LIBRARY_PATH="${HOME}/target/gcov/nghttp3/build/lib:${HOME}/target/gcov/wolfssl/build/lib:${LD_LIBRARY_PATH}" \
+    function replay_sgfuzz_one {
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}" \
             timeout -s INT -k 1s 5s ./examples/wsslserver 127.0.0.1 4433 \
             ${cert_dir}/server.key \
-            ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
-        wait || true
+            ${cert_dir}/fullchain.crt --initial-pkt-num=0 &
+        server_pid=$!
+
+        # Wait briefly for UDP listener to come up before replaying input.
+        for _ in $(seq 1 20); do
+            if ss -lunH 2>/dev/null | awk '{print $5}' | grep -Eq '(^|:)4433$'; then
+                break
+            fi
+            sleep 0.1
+        done
+
+        timeout -s INT -k 1s 5s ${HOME}/aflnet/afl-replay "$1" NOP 4433 100 || true
+        kill -INT "${server_pid}" 2>/dev/null || true
+        wait "${server_pid}" 2>/dev/null || true
     }
 
     gcov_exec="gcov"
@@ -436,7 +519,7 @@ function run_sgfuzz {
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     list_cmd="find ${queue} -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
+    compute_coverage replay_sgfuzz_one "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
 
     mkdir -p ${outdir}/cov_html
     eval "gcovr ${gcov_common_opts} --html --html-details -o ${outdir}/cov_html/index.html" || true
@@ -523,6 +606,11 @@ function build_asan {
 }
 
 function build_gcov {
+    target_root=${HOME}/profuzzbench/target
+    if [ ! -d "${target_root}" ]; then
+        target_root=${HOME}/target
+    fi
+
     mkdir -p target/gcov
     rm -rf target/gcov/*
     cp -r repo/ngtcp2 target/gcov/
@@ -545,7 +633,7 @@ function build_gcov {
     autoreconf -i
     export CC=gcc
     export CXX=g++
-    export PKG_CONFIG_PATH=${HOME}/target/gcov/wolfssl/build/lib/pkgconfig:${HOME}/target/gcov/nghttp3/build/lib/pkgconfig
+    export PKG_CONFIG_PATH=${target_root}/gcov/wolfssl/build/lib/pkgconfig:${target_root}/gcov/nghttp3/build/lib/pkgconfig
     export CFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"

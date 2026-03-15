@@ -130,17 +130,28 @@ index f0e4d85..5bfae06 100644
    }
  
 diff --git a/afl-replay.c b/afl-replay.c
-index 9179234..29496a7 100644
+index 9179234..7fb9228 100644
 --- a/afl-replay.c
 +++ b/afl-replay.c
-@@ -65,6 +65,7 @@ int main(int argc, char* argv[])
+@@ -65,6 +65,8 @@ int main(int argc, char* argv[])
    else if (!strcmp(argv[2], "SIP")) extract_response_codes = &extract_response_codes_sip;
    else if (!strcmp(argv[2], "HTTP")) extract_response_codes = &extract_response_codes_http;
    else if (!strcmp(argv[2], "IPP")) extract_response_codes = &extract_response_codes_ipp;
 +  else if (!strcmp(argv[2], "MQTT")) extract_response_codes = &extract_response_codes_mqtt;
++  else if (!strcmp(argv[2], "NOP")) extract_response_codes = &extract_response_codes_nop;
    else {fprintf(stderr, "[AFL-replay] Protocol %s has not been supported yet!\n", argv[2]); exit(1);}
  
    portno = atoi(argv[3]);
+@@ -84,7 +86,7 @@ int main(int argc, char* argv[])
+ 
+   int sockfd;
+-  if ((!strcmp(argv[2], "DTLS12")) || (!strcmp(argv[2], "DNS")) || (!strcmp(argv[2], "SIP"))) {
++  if ((!strcmp(argv[2], "DTLS12")) || (!strcmp(argv[2], "DNS")) || (!strcmp(argv[2], "SIP")) || (!strcmp(argv[2], "NOP"))) {
+-    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
++    sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+   } else {
+     sockfd = socket(AF_INET, SOCK_STREAM, 0);
+   }
 diff --git a/aflnet.c b/aflnet.c
 index 4f78ac6..81a0f0b 100644
 --- a/aflnet.c
