@@ -130,6 +130,12 @@ function _configure_build_lsquic {
     local cflags="$5"
     local cxxflags="$6"
     local ldflags="$7"
+    local event_include="/usr/include"
+    local event_lib="/usr/lib/x86_64-linux-gnu/libevent.a"
+
+    if [ ! -f "${event_lib}" ]; then
+        event_lib="/usr/lib/x86_64-linux-gnu/libevent.so"
+    fi
 
     pushd "${src_dir}" >/dev/null
     rm -rf build
@@ -140,9 +146,11 @@ function _configure_build_lsquic {
         -DLSQUIC_TESTS=OFF \
         -DLSQUIC_SHARED_LIB=OFF \
         -DLSQUIC_LIBSSL=BORINGSSL \
+        -DEVENT_INCLUDE_DIR="${event_include}" \
+        -DEVENT_LIB="${event_lib}" \
         -DBORINGSSL_INCLUDE="${boringssl_dir}/include" \
-        -DBORINGSSL_LIB_ssl="${boringssl_dir}/build/ssl/libssl.a" \
-        -DBORINGSSL_LIB_crypto="${boringssl_dir}/build/crypto/libcrypto.a"
+        -DBORINGSSL_LIB_ssl="${boringssl_dir}/build/libssl.a" \
+        -DBORINGSSL_LIB_crypto="${boringssl_dir}/build/libcrypto.a"
     cmake --build build ${MAKE_OPT}
 
     if [ ! -x "${src_dir}/build/bin/http_server" ]; then
@@ -183,6 +191,10 @@ function _fix_lsq_gcov_symlinks {
     if [ -d "src/liblsquic" ] && [ ! -e "liblsquic" ]; then
         ln -s "src/liblsquic" "liblsquic"
     fi
+
+    if [ ! -e "ls-sfparser.l" ]; then
+        printf "/* synthetic source marker for gcov path resolution */\n" > "ls-sfparser.l"
+    fi
 }
 
 function _replay_http_server_case {
@@ -211,7 +223,7 @@ function checkout {
         git_clone_retry https://github.com/litespeedtech/lsquic.git .git-cache/lsquic || return 1
     else
         pushd .git-cache/lsquic >/dev/null
-        git fetch --all --tags
+        git fetch --all --tags || true
         popd >/dev/null
     fi
 
@@ -233,7 +245,7 @@ function checkout {
         clone_boringssl_retry .git-cache/boringssl || return 1
     else
         pushd .git-cache/boringssl >/dev/null
-        git fetch --all --tags
+        git fetch --all --tags || true
         popd >/dev/null
     fi
 
@@ -249,7 +261,7 @@ function checkout {
         git_clone_retry https://github.com/ngtcp2/ngtcp2 .git-cache/ngtcp2 || return 1
     else
         pushd .git-cache/ngtcp2 >/dev/null
-        git fetch --all --tags
+        git fetch --all --tags || true
         popd >/dev/null
     fi
     rm -rf repo/ngtcp2
@@ -262,7 +274,7 @@ function checkout {
         git_clone_retry https://github.com/wolfSSL/wolfssl .git-cache/wolfssl || return 1
     else
         pushd .git-cache/wolfssl >/dev/null
-        git fetch --all --tags
+        git fetch --all --tags || true
         popd >/dev/null
     fi
     rm -rf repo/wolfssl
@@ -275,7 +287,7 @@ function checkout {
         git_clone_retry https://github.com/ngtcp2/nghttp3 .git-cache/nghttp3 || return 1
     else
         pushd .git-cache/nghttp3 >/dev/null
-        git fetch --all --tags
+        git fetch --all --tags || true
         popd >/dev/null
     fi
     rm -rf repo/nghttp3
@@ -365,7 +377,7 @@ function run_aflnet {
     cd "${target_root}/gcov/lsquic"
     _fix_lsq_gcov_symlinks
     gcov_exec=$(_select_gcov_exec)
-    gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
+    gcov_common_opts="--gcov-executable \"${gcov_exec}\" --gcov-ignore-errors=source_not_found --gcov-ignore-errors=no_working_dir_found --gcov-ignore-errors=output_error -r ."
     eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
     list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
@@ -516,7 +528,7 @@ function run_sgfuzz {
     }
 
     gcov_exec=$(_select_gcov_exec)
-    gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
+    gcov_common_opts="--gcov-executable \"${gcov_exec}\" --gcov-ignore-errors=source_not_found --gcov-ignore-errors=no_working_dir_found --gcov-ignore-errors=output_error -r ."
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     list_cmd="find ${queue} -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     compute_coverage replay_sgfuzz_one "$list_cmd" "${gcov_step}" "${outdir}/coverage.csv" "$cov_cmd" ""

@@ -1,5 +1,5 @@
 diff --git a/crypto/rand/rand.cc b/crypto/rand/rand.cc
-index 2aa3027..788e3fe 100644
+index 2aa30270a..424a63c06 100644
 --- a/crypto/rand/rand.cc
 +++ b/crypto/rand/rand.cc
 @@ -13,6 +13,8 @@
@@ -11,7 +11,7 @@ index 2aa3027..788e3fe 100644
  
  #include <openssl/rand.h>
  
-@@ -22,7 +24,39 @@
+@@ -22,7 +24,40 @@
  
  using namespace bssl;
  
