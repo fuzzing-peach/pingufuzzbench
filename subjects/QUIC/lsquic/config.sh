@@ -201,7 +201,7 @@ function _replay_http_server_case {
     local testcase="$1"
     local certs
     certs=$(cert_dir)
-    local fake_time_value="${FAKE_TIME:-2026-03-11 12:00:00}"
+    local fake_time_value="${FAKE_TIME:-2026-02-01 12:00:00}"
 
     LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
         ./build/bin/http_server \
@@ -362,7 +362,7 @@ function run_aflnet {
     export AFL_NO_AFFINITY=1
     export AFL_NO_UI=1
     export FAKE_RANDOM=1
-    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+    export FAKE_TIME="${FAKE_TIME:-2026-02-01 12:00:00}"
     export ASAN_OPTIONS="abort_on_error=1:symbolize=0:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0"
 
     timeout -s INT -k 1s --preserve-status "${timeout}" \
@@ -496,7 +496,7 @@ function run_sgfuzz {
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export AFL_NO_AFFINITY=1
     export FAKE_RANDOM=1
-    export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+    export FAKE_TIME="${FAKE_TIME:-2026-02-01 12:00:00}"
     export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
     export HFND_TCP_PORT=4433
 
