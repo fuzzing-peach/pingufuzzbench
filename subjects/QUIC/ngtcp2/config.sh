@@ -379,7 +379,9 @@ function run_sgfuzz {
     export HFND_TCP_PORT=4433
     export HFND_FORK_MODE=1
     export FAKE_RANDOM=1
+    export FAKERANDOM_SEED="${FAKERANDOM_SEED:-1}"
     export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
+    export LD_LIBRARY_PATH="${HOME}/target/sgfuzz/nghttp3/build/lib:${HOME}/target/sgfuzz/wolfssl/build/lib:${LD_LIBRARY_PATH}"
 
     SGFuzz_ARGS=(
         -max_len=100000
@@ -417,7 +419,9 @@ function run_sgfuzz {
 
     function replay {
         timeout -s INT -k 1s 5s ${HOME}/aflnet/afl-replay "$1" NOP 4433 100 &
-        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}" \
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKERANDOM_SEED="${FAKERANDOM_SEED:-1}" \
+            FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}" \
+            LD_LIBRARY_PATH="${HOME}/target/gcov/nghttp3/build/lib:${HOME}/target/gcov/wolfssl/build/lib:${LD_LIBRARY_PATH}" \
             timeout -s INT -k 1s 5s ./examples/wsslserver 127.0.0.1 4433 \
             ${cert_dir}/server.key \
             ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true

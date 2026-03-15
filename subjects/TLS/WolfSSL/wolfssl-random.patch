@@ -33,3 +33,27 @@ index 6886a5869..cab4091ee 100644
  #ifdef WOLF_CRYPTO_CB
      #ifndef WOLF_CRYPTO_CB_FIND
      if (rng->devId != INVALID_DEVID)
+diff --git a/examples/client/client.c b/examples/client/client.c
+index c410164..34f3387 100644
+--- a/examples/client/client.c
++++ b/examples/client/client.c
+@@ -4944,7 +4944,6 @@ int main(int argc, char** argv)
+         wolfSSL_Debugging_ON();
+ #endif
+         wolfSSL_Init();
+-        ChangeToWolfRoot();
+ 
+ #if !defined(NO_WOLFSSL_CLIENT) && !defined(NO_TLS)
+ #ifdef HAVE_STACK_SIZE
+diff --git a/examples/server/server.c b/examples/server/server.c
+index 47dad13..9ca887f 100644
+--- a/examples/server/server.c
++++ b/examples/server/server.c
+@@ -4098,7 +4098,6 @@ int main(int argc, char** argv)
+ #ifdef WC_RNG_SEED_CB
+         wc_SetSeed_Cb(WC_GENERATE_SEED_DEFAULT);
+ #endif
+-        ChangeToWolfRoot();
+ 
+ #if !defined(NO_WOLFSSL_SERVER) && !defined(NO_TLS)
+ #ifdef HAVE_STACK_SIZE

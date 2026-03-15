@@ -363,17 +363,16 @@ function run_ft {
     cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/ft-sink.yaml >>ft.yaml
 
     # running ft-net
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml fuzz -t ${timeout}s
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --log-level info ft.yaml fuzz -t ${timeout}s
 
     # collecting coverage results
-    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
+    sudo ${HOME}/fuzztruction-net/target/release/fuzztruction --log-level info ft.yaml gcov -t 3s --replay-step ${replay_step} --gcov-step ${gcov_step}
     sudo chmod -R 755 $work_dir
     sudo chown -R $(id -u):$(id -g) $work_dir
+    cp -f ft.yaml ${work_dir}/ft.yaml
     cd ${HOME}/target/gcov/consumer/wolfssl
     mkdir -p ${work_dir}/cov_html
     gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
-
-    cp -f ft.yaml ${work_dir}/ft.yaml
     
     popd >/dev/null
 }
@@ -447,7 +446,7 @@ function build_pingu_generator {
     llvm-dis client_opt.bc -o client_opt.ll
     sed -i 's/optnone //g' client_opt.ll
 
-    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/release -Wl,-rpath,${HOME}/pingu/target/release \
         -lpingu_agent -fsanitize=address \
         client_opt.ll -o client
 
@@ -490,7 +489,7 @@ function build_pingu_consumer {
     llvm-dis server_opt.bc -o server_opt.ll
     sed -i 's/optnone //g' server_opt.ll
 
-    clang -O0 -lm -L/home/user/pingu/target/debug -Wl,-rpath,${HOME}/pingu/target/debug \
+    clang -O0 -lm -L/home/user/pingu/target/release -Wl,-rpath,${HOME}/pingu/target/release \
         -lpingu_agent -fsanitize=address \
         server_opt.ll -o server
 
