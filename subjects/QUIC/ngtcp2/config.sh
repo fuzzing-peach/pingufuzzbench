@@ -434,10 +434,7 @@ EOF
 }
 
 function run_sgfuzz {
-    target_root=${HOME}/profuzzbench/target
-    if [ ! -d "${target_root}" ]; then
-        target_root=${HOME}/target
-    fi
+    target_root=${HOME}/target
 
     replay_step=$1
     gcov_step=$2
@@ -455,11 +452,14 @@ function run_sgfuzz {
     rm -rf ${outdir}/crashes/*
 
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
+    export AFL_SKIP_CPUFREQ=1
     export AFL_NO_AFFINITY=1
+    export AFL_NO_UI=1
     export FAKE_RANDOM=1
     export FAKE_TIME="${FAKE_TIME:-2026-03-11 12:00:00}"
     export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
     export HFND_TCP_PORT=4433
+    export HFND_FORK_MODE=1
     export LD_LIBRARY_PATH=${target_root}/sgfuzz/nghttp3/build/lib:${target_root}/sgfuzz/wolfssl/build/lib:${target_root}/sgfuzz/ngtcp2/lib/.libs:${target_root}/sgfuzz/ngtcp2/crypto/wolfssl/.libs:${LD_LIBRARY_PATH:-}
 
     SGFuzz_ARGS=(
@@ -470,6 +470,8 @@ function run_sgfuzz {
         -print_final_stats=1
         -detect_leaks=0
         -max_total_time=${timeout}
+        -fork=1
+        -ignore_crashes=1
         -artifact_prefix="${outdir}/crashes/"
         "${queue}"
         "${indir}"
