@@ -484,6 +484,8 @@ function run_sgfuzz {
     python3 ${HOME}/profuzzbench/scripts/sort_libfuzzer_findings.py ${queue}
 
     cd ${target_root}/gcov/ngtcp2
+    # Reset runtime counters before replay-based coverage collection.
+    find . -name "*.gcda" -type f -delete || true
     find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     ln -sfn ${target_root}/gcov/ngtcp2/crypto/shared.c ${target_root}/gcov/ngtcp2/shared.c
     mkdir -p ${target_root}/gcov/lib
@@ -510,6 +512,14 @@ function run_sgfuzz {
         kill -INT "${server_pid}" 2>/dev/null || true
         wait "${server_pid}" 2>/dev/null || true
     }
+
+    # Warm up coverage with protocol-valid seed corpus first.
+    if [ -d "${indir}" ]; then
+        while IFS= read -r seed_file; do
+            [ -f "${seed_file}" ] || continue
+            replay_sgfuzz_one "${seed_file}"
+        done < <(find "${indir}" -maxdepth 1 -type f | sort)
+    fi
 
     gcov_exec="gcov"
     sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
@@ -638,7 +648,8 @@ function build_gcov {
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
     ./configure --with-wolfssl --disable-shared --enable-static
-    make ${MAKE_OPT} check
+    # Do not run tests during build_gcov; they pre-populate *.gcda.
+    make ${MAKE_OPT}
     popd >/dev/null
 }
 
