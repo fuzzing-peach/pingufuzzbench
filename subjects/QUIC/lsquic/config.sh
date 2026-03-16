@@ -197,6 +197,24 @@ function _fix_lsq_gcov_symlinks {
     fi
 }
 
+function _resolve_boringssl_static_libs {
+    local bssl_dir="$1"
+    local ssl_lib="${bssl_dir}/build/libssl.a"
+    local crypto_lib="${bssl_dir}/build/libcrypto.a"
+
+    if [ ! -f "${ssl_lib}" ] || [ ! -f "${crypto_lib}" ]; then
+        ssl_lib="${bssl_dir}/build/ssl/libssl.a"
+        crypto_lib="${bssl_dir}/build/crypto/libcrypto.a"
+    fi
+
+    if [ ! -f "${ssl_lib}" ] || [ ! -f "${crypto_lib}" ]; then
+        echo "[!] cannot locate BoringSSL static libs under ${bssl_dir}/build"
+        return 1
+    fi
+
+    echo "${ssl_lib}|${crypto_lib}"
+}
+
 function _replay_http_server_case {
     local testcase="$1"
     local certs
@@ -401,6 +419,22 @@ function build_sgfuzz {
 
     pushd "${target_root}/sgfuzz/lsquic" >/dev/null
 
+    if ! command -v wllvm >/dev/null 2>&1 || ! command -v wllvm++ >/dev/null 2>&1; then
+        echo "[!] wllvm/wllvm++ not found, install with: python3 -m pip install --user wllvm"
+        popd >/dev/null
+        return 1
+    fi
+    if ! command -v extract-bc >/dev/null 2>&1; then
+        echo "[!] extract-bc not found in PATH"
+        popd >/dev/null
+        return 1
+    fi
+    if ! command -v opt >/dev/null 2>&1; then
+        echo "[!] llvm opt not found in PATH"
+        popd >/dev/null
+        return 1
+    fi
+
     export PATH="${HOME}/.local/bin:${PATH}"
     export LLVM_COMPILER=clang
     export CC=wllvm
@@ -411,14 +445,21 @@ function build_sgfuzz {
     python3 "${HOME}/sgfuzz/sanitizer/State_machine_instrument.py" . || true
 
     rm -rf build
+    local bssl_libs
+    bssl_libs=$(_resolve_boringssl_static_libs "${target_root}/sgfuzz/boringssl") || {
+        popd >/dev/null
+        return 1
+    }
+    local bssl_ssl_lib="${bssl_libs%%|*}"
+    local bssl_crypto_lib="${bssl_libs##*|}"
     cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DLSQUIC_BIN=ON \
         -DLSQUIC_TESTS=OFF \
         -DLSQUIC_LIBSSL=BORINGSSL \
         -DBORINGSSL_INCLUDE="${target_root}/sgfuzz/boringssl/include" \
-        -DBORINGSSL_LIB_ssl="${target_root}/sgfuzz/boringssl/build/ssl/libssl.a" \
-        -DBORINGSSL_LIB_crypto="${target_root}/sgfuzz/boringssl/build/crypto/libcrypto.a"
+        -DBORINGSSL_LIB_ssl="${bssl_ssl_lib}" \
+        -DBORINGSSL_LIB_crypto="${bssl_crypto_lib}"
     cmake --build build ${MAKE_OPT}
 
     if [ ! -x "build/bin/http_server" ]; then
@@ -456,7 +497,11 @@ EOC
 
     opt -load-pass-plugin="${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so" \
         -passes="sgfuzz-source" -debug-pass-manager http_server.bc -o http_server_opt.bc
-    llvm-dis-17 http_server_opt.bc -o http_server_opt.ll
+    if command -v llvm-dis-17 >/dev/null 2>&1; then
+        llvm-dis-17 http_server_opt.bc -o http_server_opt.ll
+    else
+        llvm-dis http_server_opt.bc -o http_server_opt.ll
+    fi
     sed -i 's/optnone //g;s/optnone//g' http_server_opt.ll
 
     clang http_server_opt.ll hf_udp_addr.c -o http_server \
@@ -500,6 +545,7 @@ function run_sgfuzz {
     export FAKE_TIME="${FAKE_TIME:-2026-02-01 12:00:00}"
     export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
     export HFND_TCP_PORT=4433
+    export LD_LIBRARY_PATH="${target_root}/sgfuzz/lsquic/build/lib:${target_root}/sgfuzz/boringssl/build:${target_root}/sgfuzz/boringssl/build/ssl:${target_root}/sgfuzz/boringssl/build/crypto:${LD_LIBRARY_PATH}"
 
     SGFuzz_ARGS=(
         -max_len=100000
@@ -522,6 +568,8 @@ function run_sgfuzz {
     python3 "${PFB_ROOT}/scripts/sort_libfuzzer_findings.py" "${queue}" || true
 
     cd "${target_root}/gcov/lsquic"
+    find . -name "*.gcda" -type f -delete || true
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     _fix_lsq_gcov_symlinks
 
     function replay_sgfuzz_one {
