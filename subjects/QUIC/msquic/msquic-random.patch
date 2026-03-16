@@ -1,0 +1,288 @@
+diff --git a/src/platform/platform_posix.c b/src/platform/platform_posix.c
+index 6dd192e2..ca847433 100644
+--- a/src/platform/platform_posix.c
++++ b/src/platform/platform_posix.c
+@@ -59,6 +59,132 @@ uint64_t CxPlatTotalMemory;
+ uintptr_t CxPlatCurrentSqe = 0x80000000;
+ #endif
+ 
++static bool CxPlatFakeTimeInitialized = false;
++static bool CxPlatFakeTimeEnabled = false;
++static uint64_t CxPlatFakeTimeBaseUs = 0;
++static uint64_t CxPlatRealTimeBaseUs = 0;
++
++static bool CxPlatFakeRandomInitialized = false;
++static bool CxPlatFakeRandomEnabled = false;
++static unsigned int CxPlatFakeRandomSeed = 1;
++
++static
++bool
++CxPlatEnvEnabled(
++    _In_z_ const char* Name
++    )
++{
++    const char* Value = getenv(Name);
++    if (Value == NULL || Value[0] == '\0' || strcmp(Value, "0") == 0) {
++        return false;
++    }
++    return true;
++}
++
++static
++bool
++CxPlatTryParseFakeTimeUs(
++    _In_z_ const char* Value,
++    _Out_ uint64_t* FakeTimeUs
++    )
++{
++    int Year = 0, Month = 0, Day = 0, Hour = 0, Minute = 0, Second = 0;
++    struct tm Tm = {0};
++    time_t Epoch = 0;
++
++    if (Value == NULL || FakeTimeUs == NULL) {
++        return false;
++    }
++
++    if (sscanf(Value, "%d-%d-%d %d:%d:%d",
++               &Year, &Month, &Day, &Hour, &Minute, &Second) == 6) {
++        Tm.tm_year = Year - 1900;
++        Tm.tm_mon = Month - 1;
++        Tm.tm_mday = Day;
++        Tm.tm_hour = Hour;
++        Tm.tm_min = Minute;
++        Tm.tm_sec = Second;
++        Tm.tm_isdst = -1;
++        Epoch = mktime(&Tm);
++        if (Epoch == (time_t)-1) {
++            return false;
++        }
++        *FakeTimeUs = (uint64_t)Epoch * CXPLAT_MICROSEC_PER_SEC;
++        return true;
++    }
++
++    return false;
++}
++
++static
++uint64_t
++CxPlatGetRealMonotonicUs(
++    void
++    )
++{
++    struct timespec CurrTime = {0};
++    int ErrorCode = clock_gettime(CLOCK_MONOTONIC, &CurrTime);
++    CXPLAT_DBG_ASSERT(ErrorCode == 0);
++    UNREFERENCED_PARAMETER(ErrorCode);
++    return ((uint64_t)CurrTime.tv_sec * CXPLAT_MICROSEC_PER_SEC) +
++           ((uint64_t)CurrTime.tv_nsec / CXPLAT_NANOSEC_PER_MICROSEC);
++}
++
++static
++void
++CxPlatInitFakeTimeState(
++    void
++    )
++{
++    const char* FakeTimeEnv = NULL;
++    uint64_t ParsedFakeTimeUs = 0;
++
++    if (CxPlatFakeTimeInitialized) {
++        return;
++    }
++    CxPlatFakeTimeInitialized = true;
++
++    FakeTimeEnv = getenv("FAKE_TIME");
++    if (CxPlatTryParseFakeTimeUs(FakeTimeEnv, &ParsedFakeTimeUs)) {
++        CxPlatFakeTimeEnabled = true;
++        CxPlatFakeTimeBaseUs = ParsedFakeTimeUs;
++        CxPlatRealTimeBaseUs = CxPlatGetRealMonotonicUs();
++    }
++}
++
++static
++void
++CxPlatInitFakeRandomState(
++    void
++    )
++{
++    const char* SeedEnv = NULL;
++    char* EndPtr = NULL;
++    unsigned long SeedValue = 0;
++
++    if (CxPlatFakeRandomInitialized) {
++        return;
++    }
++    CxPlatFakeRandomInitialized = true;
++    CxPlatFakeRandomEnabled = CxPlatEnvEnabled("FAKE_RANDOM");
++    if (!CxPlatFakeRandomEnabled) {
++        return;
++    }
++
++    SeedEnv = getenv("FAKE_RANDOM_SEED");
++    if (SeedEnv == NULL || SeedEnv[0] == '\0') {
++        CxPlatFakeRandomSeed = 1;
++        return;
++    }
++
++    SeedValue = strtoul(SeedEnv, &EndPtr, 10);
++    if (EndPtr == SeedEnv) {
++        CxPlatFakeRandomSeed = 1;
++    } else {
++        CxPlatFakeRandomSeed = (unsigned int)SeedValue;
++    }
++}
++
+ #ifdef __clang__
+ __attribute__((noinline, noreturn, optnone))
+ #else
+@@ -458,11 +584,18 @@ CxPlatTimeUs64(
+     void
+     )
+ {
+-    struct timespec CurrTime = {0};
+-    int ErrorCode = clock_gettime(CLOCK_MONOTONIC, &CurrTime);
+-    CXPLAT_DBG_ASSERT(ErrorCode == 0);
+-    UNREFERENCED_PARAMETER(ErrorCode);
+-    return CxPlatTimespecToUs(&CurrTime);
++    uint64_t RealNowUs = CxPlatGetRealMonotonicUs();
++
++    CxPlatInitFakeTimeState();
++    if (!CxPlatFakeTimeEnabled) {
++        return RealNowUs;
++    }
++
++    if (RealNowUs < CxPlatRealTimeBaseUs) {
++        return CxPlatFakeTimeBaseUs;
++    }
++
++    return CxPlatFakeTimeBaseUs + (RealNowUs - CxPlatRealTimeBaseUs);
+ }
+ 
+ void
+@@ -471,22 +604,12 @@ CxPlatGetAbsoluteTime(
+     _Out_ struct timespec *Time
+     )
+ {
+-    int ErrorCode = 0;
++    uint64_t NowUs = 0;
+ 
+     CxPlatZeroMemory(Time, sizeof(struct timespec));
+-
+-#if defined(CX_PLATFORM_LINUX)
+-    ErrorCode = clock_gettime(CLOCK_MONOTONIC, Time);
+-#elif defined(CX_PLATFORM_DARWIN)
+-    //
+-    // timespec_get is used on darwin, as CLOCK_MONOTONIC isn't actually
+-    // monotonic according to our tests.
+-    //
+-    timespec_get(Time, TIME_UTC);
+-#endif // CX_PLATFORM_DARWIN
+-
+-    CXPLAT_DBG_ASSERT(ErrorCode == 0);
+-    UNREFERENCED_PARAMETER(ErrorCode);
++    NowUs = CxPlatTimeUs64();
++    Time->tv_sec = (time_t)(NowUs / CXPLAT_MICROSEC_PER_SEC);
++    Time->tv_nsec = (long)((NowUs % CXPLAT_MICROSEC_PER_SEC) * CXPLAT_NANOSEC_PER_MICROSEC);
+ 
+     Time->tv_sec += (DeltaMs / CXPLAT_MS_PER_SECOND);
+     Time->tv_nsec += ((DeltaMs % CXPLAT_MS_PER_SECOND) * CXPLAT_NANOSEC_PER_MS);
+@@ -540,6 +663,17 @@ CxPlatRandom(
+     _Out_writes_bytes_(BufferLen) void* Buffer
+     )
+ {
++    uint8_t* Data = (uint8_t*)Buffer;
++    uint32_t Index = 0;
++
++    CxPlatInitFakeRandomState();
++    if (CxPlatFakeRandomEnabled) {
++        for (Index = 0; Index < BufferLen; ++Index) {
++            Data[Index] = (uint8_t)(rand_r(&CxPlatFakeRandomSeed) & 0xFF);
++        }
++        return QUIC_STATUS_SUCCESS;
++    }
++
+     if (read(RandomFd, Buffer, BufferLen) == -1) {
+         return (QUIC_STATUS)errno;
+     }
+diff --git a/submodules/quictls/crypto/rand/rand_lib.c b/crypto/rand/rand_lib.c
+index 2be56520..33d2d356 100644
+--- a/submodules/quictls/crypto/rand/rand_lib.c
++++ b/submodules/quictls/crypto/rand/rand_lib.c
+@@ -24,6 +24,8 @@
+ # include <stdio.h>
+ # include <time.h>
+ # include <limits.h>
++# include <stdlib.h>
++# include <string.h>
+ # include <openssl/conf.h>
+ # include <openssl/trace.h>
+ # include <openssl/engine.h>
+@@ -32,6 +34,42 @@
+ # include "internal/e_os.h"
+ # include "internal/property.h"
+ 
++static int pfb_fake_random_enabled = -1;
++static unsigned int pfb_fake_random_seed = 1;
++
++static int pfb_is_fake_random_enabled(void)
++{
++    const char *env = NULL;
++    char *endptr = NULL;
++    unsigned long seed = 0;
++
++    if (pfb_fake_random_enabled != -1)
++        return pfb_fake_random_enabled;
++
++    env = getenv("FAKE_RANDOM");
++    if (env == NULL || env[0] == '\0' || strcmp(env, "0") == 0) {
++        pfb_fake_random_enabled = 0;
++        return 0;
++    }
++    pfb_fake_random_enabled = 1;
++
++    env = getenv("FAKE_RANDOM_SEED");
++    if (env != NULL && env[0] != '\0') {
++        seed = strtoul(env, &endptr, 10);
++        if (endptr != env)
++            pfb_fake_random_seed = (unsigned int)seed;
++    }
++
++    return 1;
++}
++
++static void pfb_fill_fake_random(unsigned char *buf, size_t num)
++{
++    size_t i;
++    for (i = 0; i < num; ++i)
++        buf[i] = (unsigned char)(rand_r(&pfb_fake_random_seed) & 0xFF);
++}
++
+ # ifndef OPENSSL_NO_ENGINE
+ /* non-NULL if default_RAND_meth is ENGINE-provided */
+ static ENGINE *funct_ref;
+@@ -328,6 +366,12 @@ int RAND_priv_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
+                        unsigned int strength)
+ {
+     EVP_RAND_CTX *rand;
++
++    if (pfb_is_fake_random_enabled()) {
++        pfb_fill_fake_random(buf, num);
++        return 1;
++    }
++
+ #if !defined(OPENSSL_NO_DEPRECATED_3_0) && !defined(FIPS_MODULE)
+     const RAND_METHOD *meth = RAND_get_rand_method();
+ 
+@@ -357,6 +401,12 @@ int RAND_bytes_ex(OSSL_LIB_CTX *ctx, unsigned char *buf, size_t num,
+                   unsigned int strength)
+ {
+     EVP_RAND_CTX *rand;
++
++    if (pfb_is_fake_random_enabled()) {
++        pfb_fill_fake_random(buf, num);
++        return 1;
++    }
++
+ #if !defined(OPENSSL_NO_DEPRECATED_3_0) && !defined(FIPS_MODULE)
+     const RAND_METHOD *meth = RAND_get_rand_method();
+ 
