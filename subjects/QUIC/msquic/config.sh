@@ -421,7 +421,8 @@ function run_sgfuzz {
     local cert_dir="${HOME}/profuzzbench/cert"
 
     if [ ! -d "${indir}" ]; then
-        indir="${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed"
+        echo "[!] run_sgfuzz failed: missing seed directory ${indir}"
+        return 1
     fi
 
     local build_dir="${target_root}/sgfuzz/msquic/build"
