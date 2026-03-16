@@ -262,7 +262,7 @@ function run_aflnet {
     local target_root
     target_root=$(_target_root)
     local outdir=/tmp/fuzzing-output
-    local indir="${HOME}/profuzzbench/subjects/QUIC/msquic/seed-replay"
+    local indir="${HOME}/profuzzbench/subjects/QUIC/msquic/seed"
     local cert_dir="${HOME}/profuzzbench/cert"
 
     if [ ! -d "${indir}" ]; then
