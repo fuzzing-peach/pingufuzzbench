@@ -193,6 +193,8 @@ function run_aflnet {
         ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
 
     cd ${HOME}/target/gcov/ngtcp2
+    # Reset runtime counters before replay-based coverage collection.
+    find . -name "*.gcda" -type f -delete || true
     find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     # Resolve relative source paths referenced by crypto/shared.gcda.
     ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
@@ -580,7 +582,8 @@ function build_quicfuzz {
     export CFLAGS="-fsanitize=address -g"
     export CXXFLAGS="-fsanitize=address -g"
     export LDFLAGS="-fsanitize=address -g"
-    make ${MAKE_OPT} check
+    # Do not run tests during build_gcov; they pre-populate *.gcda.
+    make ${MAKE_OPT}
     popd >/dev/null
 }
 
