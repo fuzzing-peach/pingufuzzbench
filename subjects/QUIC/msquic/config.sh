@@ -93,6 +93,7 @@ function _checkout_msquic {
     git submodule update --init --recursive --depth 1 submodules/quictls submodules/clog || return 1
     _maybe_apply_patch "${MSQUIC_SUBJECT_DIR}/msquic-random.patch" || return 1
     _maybe_apply_patch "${MSQUIC_SUBJECT_DIR}/msquic-time.patch" || return 1
+    _maybe_apply_patch "${MSQUIC_SUBJECT_DIR}/msquic-no-blocking-getchar.patch" || return 1
     popd >/dev/null
 }
 
@@ -265,7 +266,8 @@ function run_aflnet {
     local cert_dir="${HOME}/profuzzbench/cert"
 
     if [ ! -d "${indir}" ]; then
-        indir="${HOME}/profuzzbench/subjects/QUIC/ngtcp2/seed-replay"
+        echo "[!] run_aflnet failed: missing seed directory ${indir}"
+        return 1
     fi
 
     local build_dir="${target_root}/aflnet/msquic/build"

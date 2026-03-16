@@ -1,0 +1,13 @@
+diff --git a/src/tools/sample/sample.c b/src/tools/sample/sample.c
+index d13993fe..d94aa2c5 100644
+--- a/src/tools/sample/sample.c
++++ b/src/tools/sample/sample.c
+@@ -669,7 +669,7 @@ RunServer(
+     // Continue listening for connections until the Enter key is pressed.
+     //
+     printf("Press Enter to exit.\n\n");
+-    (void)getchar();
++    // (void)getchar();  // disabled for non-interactive fuzzing/replay workflows
+ 
+ Error:
+ 
