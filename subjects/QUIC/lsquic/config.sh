@@ -233,6 +233,7 @@ function checkout {
     git checkout "${LSQUIC_BASELINE}"
     git submodule update --init --recursive
     git apply "${PFB_ROOT}/subjects/QUIC/lsquic/lsquic-time.patch" || return 1
+    git apply "${PFB_ROOT}/subjects/QUIC/lsquic/lsquic-extra-determinism.patch" || return 1
     maybe_commit_patch "apply lsquic deterministic time patch"
     patch_commit=$(git rev-parse HEAD)
     if [ "${target_ref}" != "${LSQUIC_BASELINE}" ]; then
@@ -343,14 +344,14 @@ function run_aflnet {
     local gcov_step=$2
     local timeout=$3
     local outdir=/tmp/fuzzing-output
-    local indir="${PFB_ROOT}/subjects/QUIC/lsquic/seed-replay"
+    local indir="${PFB_ROOT}/subjects/QUIC/lsquic/seed"
     local certs
     certs=$(cert_dir)
     local target_root
     target_root=$(resolve_target_root)
 
     if [ ! -d "${indir}" ]; then
-        echo "[!] AFLNet seed-replay dir not found: ${indir}"
+        echo "[!] AFLNet seed dir not found: ${indir}"
         return 1
     fi
 
