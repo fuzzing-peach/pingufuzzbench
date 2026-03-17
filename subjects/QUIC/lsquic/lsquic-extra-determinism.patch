@@ -180,6 +180,14 @@ diff --git a/src/liblsquic/lsquic_hcso_writer.c b/src/liblsquic/lsquic_hcso_writ
 index 099b252..78cf540 100644
 --- a/src/liblsquic/lsquic_hcso_writer.c
 +++ b/src/liblsquic/lsquic_hcso_writer.c
+@@ -21,6 +21,7 @@
+ #include "lsquic_byteswap.h"
+ #include "lsquic_hcso_writer.h"
+ #include "lsquic_conn.h"
++#include "lsquic_util.h"
+ 
+ #define LSQUIC_LOGGER_MODULE LSQLM_HCSO_WRITER
+ #define LSQUIC_LOG_CONN_ID \
 @@ -36,7 +36,7 @@ hcso_write_type (struct hcso_writer *writer)
  #ifndef NDEBUG
      if (writer->how_flags & HOW_RAND_VARINT)

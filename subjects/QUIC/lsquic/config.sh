@@ -16,14 +16,6 @@ else
     PFB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 fi
 
-function resolve_target_root {
-    local root="${PFB_ROOT}/target"
-    if [ ! -d "${root}" ]; then
-        root="${HOME}/target"
-    fi
-    echo "${root}"
-}
-
 function git_clone_retry {
     local url="$1"
     local dst="$2"
@@ -72,14 +64,6 @@ function cert_dir {
     echo "${PFB_ROOT}/cert"
 }
 
-function afl_replay_bin {
-    if [ -x "${HOME}/aflnet/aflnet-replay" ]; then
-        echo "${HOME}/aflnet/aflnet-replay"
-    else
-        echo "${HOME}/aflnet/afl-replay"
-    fi
-}
-
 function _wait_udp_port {
     local port="$1"
     local rounds="${2:-30}"
@@ -96,14 +80,12 @@ function _wait_udp_port {
 
 function _prepare_variant_dir {
     local variant="$1"
-    local target_root
-    target_root=$(resolve_target_root)
 
-    mkdir -p "${target_root}/${variant}"
-    rm -rf "${target_root:?}/${variant}"/*
+    mkdir -p "${HOME}/target/${variant}"
+    rm -rf "${HOME}/target/${variant}"/*
 
-    cp -r repo/lsquic "${target_root}/${variant}/lsquic"
-    cp -r repo/boringssl "${target_root}/${variant}/boringssl"
+    cp -r repo/lsquic "${HOME}/target/${variant}/lsquic"
+    cp -r repo/boringssl "${HOME}/target/${variant}/boringssl"
 }
 
 function _configure_build_boringssl {
@@ -132,10 +114,6 @@ function _configure_build_lsquic {
     local ldflags="$7"
     local event_include="/usr/include"
     local event_lib="/usr/lib/x86_64-linux-gnu/libevent.a"
-
-    if [ ! -f "${event_lib}" ]; then
-        event_lib="/usr/lib/x86_64-linux-gnu/libevent.so"
-    fi
 
     pushd "${src_dir}" >/dev/null
     rm -rf build
@@ -197,22 +175,22 @@ function _fix_lsq_gcov_symlinks {
     fi
 }
 
-function _replay_http_server_case {
-    local testcase="$1"
-    local certs
-    certs=$(cert_dir)
-    local fake_time_value="${FAKE_TIME:-2026-02-01 12:00:00}"
+function _resolve_boringssl_static_libs {
+    local bssl_dir="$1"
+    local ssl_lib="${bssl_dir}/build/libssl.a"
+    local crypto_lib="${bssl_dir}/build/libcrypto.a"
 
-    LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
-        ./build/bin/http_server \
-        -s 127.0.0.1:4433 \
-        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
-    local server_pid=$!
+    if [ ! -f "${ssl_lib}" ] || [ ! -f "${crypto_lib}" ]; then
+        ssl_lib="${bssl_dir}/build/ssl/libssl.a"
+        crypto_lib="${bssl_dir}/build/crypto/libcrypto.a"
+    fi
 
-    _wait_udp_port 4433 40 || true
-    timeout -s INT -k 1s 5s "$(afl_replay_bin)" "${testcase}" NOP 4433 100 || true
-    kill -INT "${server_pid}" >/dev/null 2>&1 || true
-    wait "${server_pid}" >/dev/null 2>&1 || true
+    if [ ! -f "${ssl_lib}" ] || [ ! -f "${crypto_lib}" ]; then
+        echo "[!] cannot locate BoringSSL static libs under ${bssl_dir}/build"
+        return 1
+    fi
+
+    echo "${ssl_lib}|${crypto_lib}"
 }
 
 function checkout {
@@ -318,23 +296,35 @@ function install_dependencies {
 }
 
 function replay {
-    _replay_http_server_case "$1"
+    local testcase="$1"
+    local certs
+    certs=$(cert_dir)
+    local fake_time_value="${FAKE_TIME:-2026-02-01 12:00:00}"
+
+    LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
+        ./build/bin/http_server \
+        -s 127.0.0.1:4433 \
+        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
+    local server_pid=$!
+
+    _wait_udp_port 4433 40 || true
+    timeout -s INT -k 1s 5s "${HOME}/aflnet/aflnet-replay" "${testcase}" NOP 4433 100 || true
+    kill -INT "${server_pid}" >/dev/null 2>&1 || true
+    wait "${server_pid}" >/dev/null 2>&1 || true
 }
 
 function build_aflnet {
-    local target_root
-    target_root=$(resolve_target_root)
 
     _prepare_variant_dir aflnet
 
     _configure_build_boringssl \
-        "${target_root}/aflnet/boringssl" \
+        "${HOME}/target/aflnet/boringssl" \
         "gcc" "g++" "-O2 -g" "-O2 -g" ""
 
     export AFL_USE_ASAN=1
     _configure_build_lsquic \
-        "${target_root}/aflnet/lsquic" \
-        "${target_root}/aflnet/boringssl" \
+        "${HOME}/target/aflnet/lsquic" \
+        "${HOME}/target/aflnet/boringssl" \
         "${HOME}/aflnet/afl-clang-fast" "${HOME}/aflnet/afl-clang-fast++" \
         "-g -O2 -fsanitize=address" "-g -O2 -fsanitize=address" "-fsanitize=address"
 }
@@ -347,15 +337,13 @@ function run_aflnet {
     local indir="${PFB_ROOT}/subjects/QUIC/lsquic/seed"
     local certs
     certs=$(cert_dir)
-    local target_root
-    target_root=$(resolve_target_root)
 
     if [ ! -d "${indir}" ]; then
         echo "[!] AFLNet seed dir not found: ${indir}"
         return 1
     fi
 
-    pushd "${target_root}/aflnet/lsquic" >/dev/null
+    pushd "${HOME}/target/aflnet/lsquic" >/dev/null
 
     mkdir -p "${outdir}"
 
@@ -371,11 +359,11 @@ function run_aflnet {
         -d -i "${indir}" -o "${outdir}" -N "udp://127.0.0.1/4433 " \
         -P NOP -D 10000 -q 3 -s 3 -K -R -W 100 -m none \
         -- \
-        "${target_root}/aflnet/lsquic/build/bin/http_server" \
+        "${HOME}/target/aflnet/lsquic/build/bin/http_server" \
         -s 127.0.0.1:4433 \
         -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" || true
 
-    cd "${target_root}/gcov/lsquic"
+    cd "${HOME}/target/gcov/lsquic"
     _fix_lsq_gcov_symlinks
     gcov_exec=$(_select_gcov_exec)
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" --gcov-ignore-errors=source_not_found --gcov-ignore-errors=no_working_dir_found --gcov-ignore-errors=output_error -r ."
@@ -390,36 +378,50 @@ function run_aflnet {
 }
 
 function build_sgfuzz {
-    local target_root
-    target_root=$(resolve_target_root)
 
     _prepare_variant_dir sgfuzz
 
     _configure_build_boringssl \
-        "${target_root}/sgfuzz/boringssl" \
+        "${HOME}/target/sgfuzz/boringssl" \
         "gcc" "g++" "-O2 -g" "-O2 -g" ""
 
-    pushd "${target_root}/sgfuzz/lsquic" >/dev/null
+    pushd "${HOME}/target/sgfuzz/lsquic" >/dev/null
+
+    # Ensure bitcode build (before extract-bc) is not ASAN-instrumented.
+    unset AFL_USE_ASAN
+    unset ASAN_OPTIONS
 
     export PATH="${HOME}/.local/bin:${PATH}"
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CXX=wllvm++
+    export LDFLAGS=""
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ"
 
     python3 "${HOME}/sgfuzz/sanitizer/State_machine_instrument.py" . || true
 
     rm -rf build
+    local bssl_libs
+    bssl_libs=$(_resolve_boringssl_static_libs "${HOME}/target/sgfuzz/boringssl") || {
+        popd >/dev/null
+        return 1
+    }
+    local bssl_ssl_lib="${bssl_libs%%|*}"
+    local bssl_crypto_lib="${bssl_libs##*|}"
+    local event_include="/usr/include"
+    local event_lib="/usr/lib/x86_64-linux-gnu/libevent.a"
     cmake -S . -B build \
-        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_BUILD_TYPE=Debug \
         -DLSQUIC_BIN=ON \
         -DLSQUIC_TESTS=OFF \
         -DLSQUIC_LIBSSL=BORINGSSL \
-        -DBORINGSSL_INCLUDE="${target_root}/sgfuzz/boringssl/include" \
-        -DBORINGSSL_LIB_ssl="${target_root}/sgfuzz/boringssl/build/ssl/libssl.a" \
-        -DBORINGSSL_LIB_crypto="${target_root}/sgfuzz/boringssl/build/crypto/libcrypto.a"
-    cmake --build build ${MAKE_OPT}
+        -DEVENT_INCLUDE_DIR="${event_include}" \
+        -DEVENT_LIB="${event_lib}" \
+        -DBORINGSSL_INCLUDE="${HOME}/target/sgfuzz/boringssl/include" \
+        -DBORINGSSL_LIB_ssl="${bssl_ssl_lib}" \
+        -DBORINGSSL_LIB_crypto="${bssl_crypto_lib}"
+    LLVM_COMPILER=clang cmake --build build --target http_server ${MAKE_OPT}
 
     if [ ! -x "build/bin/http_server" ]; then
         echo "[!] build_sgfuzz failed: build/bin/http_server not found"
@@ -428,7 +430,9 @@ function build_sgfuzz {
     fi
 
     pushd build/bin >/dev/null
+    export LLVM_COMPILER=clang
     extract-bc ./http_server
+    cp -f http_server.bc quicsample.bc
 
     cat > hf_udp_addr.c <<'EOC'
 #include <arpa/inet.h>
@@ -452,7 +456,7 @@ socklen_t HonggfuzzNetDriverServerAddress(
 EOC
 
     export SGFUZZ_USE_HF_MAIN=1
-    export SGFUZZ_PATCHING_TYPE_FILE="${target_root}/sgfuzz/lsquic/enum_types.txt"
+    export SGFUZZ_PATCHING_TYPE_FILE="${HOME}/target/sgfuzz/lsquic/enum_types.txt"
 
     opt -load-pass-plugin="${HOME}/sgfuzz-llvm-pass/sgfuzz-source-pass.so" \
         -passes="sgfuzz-source" -debug-pass-manager http_server.bc -o http_server_opt.bc
@@ -461,15 +465,15 @@ EOC
 
     clang http_server_opt.ll hf_udp_addr.c -o http_server \
         -fsanitize=address \
-        -fsanitize=fuzzer \
+        -fsanitize=fuzzer-no-link \
         -DFT_FUZZING \
         -DSGFUZZ \
         -lsFuzzer \
         -lhfnetdriver \
         -lhfcommon \
-        -L"${target_root}/sgfuzz/lsquic/build/lib" -llsquic \
-        -L"${target_root}/sgfuzz/boringssl/build/ssl" -lssl \
-        -L"${target_root}/sgfuzz/boringssl/build/crypto" -lcrypto \
+        "${HOME}/target/sgfuzz/lsquic/build/src/liblsquic/liblsquic.a" \
+        "${bssl_ssl_lib}" \
+        "${bssl_crypto_lib}" \
         -levent -ldl -lm -lz -lpthread -lstdc++
 
     popd >/dev/null
@@ -485,10 +489,8 @@ function run_sgfuzz {
     local indir="${PFB_ROOT}/subjects/QUIC/lsquic/seed"
     local certs
     certs=$(cert_dir)
-    local target_root
-    target_root=$(resolve_target_root)
 
-    pushd "${target_root}/sgfuzz/lsquic/build/bin" >/dev/null
+    pushd "${HOME}/target/sgfuzz/lsquic/build/bin" >/dev/null
 
     mkdir -p "${queue}"
     rm -rf "${queue}"/*
@@ -500,11 +502,12 @@ function run_sgfuzz {
     export FAKE_TIME="${FAKE_TIME:-2026-02-01 12:00:00}"
     export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
     export HFND_TCP_PORT=4433
+    export LD_LIBRARY_PATH="${HOME}/target/sgfuzz/lsquic/build/lib:${HOME}/target/sgfuzz/boringssl/build:${HOME}/target/sgfuzz/boringssl/build/ssl:${HOME}/target/sgfuzz/boringssl/build/crypto:${LD_LIBRARY_PATH}"
 
     SGFuzz_ARGS=(
         -max_len=100000
         -close_fd_mask=3
-        -shrink=1
+        -shrink=0
         -reload=30
         -print_final_stats=1
         -detect_leaks=0
@@ -517,16 +520,37 @@ function run_sgfuzz {
     ./http_server "${SGFuzz_ARGS[@]}" \
         -- \
         -s 127.0.0.1:4433 \
-        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" || true
+        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key"
 
     python3 "${PFB_ROOT}/scripts/sort_libfuzzer_findings.py" "${queue}" || true
 
-    cd "${target_root}/gcov/lsquic"
+    cd "${HOME}/target/gcov/lsquic"
+    find . -name "*.gcda" -type f -delete || true
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     _fix_lsq_gcov_symlinks
 
     function replay_sgfuzz_one {
-        _replay_http_server_case "$1"
+        local testcase="$1"
+        local fake_time_value="${FAKE_TIME:-2026-02-01 12:00:00}"
+
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
+            ./build/bin/http_server \
+            -s 127.0.0.1:4433 \
+            -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
+        local server_pid=$!
+
+        _wait_udp_port 4433 40 || true
+        timeout -s INT -k 1s 5s "${HOME}/aflnet/afl-replay" "${testcase}" NOP 4433 100 || true
+        kill -INT "${server_pid}" >/dev/null 2>&1 || true
+        wait "${server_pid}" >/dev/null 2>&1 || true
     }
+
+    local seed_case
+    seed_case=$(find "${indir}" -maxdepth 1 -type f ! -name ".gitkeep" | sort | head -n 1 || true)
+    if [ -n "${seed_case}" ] && [ -f "${seed_case}" ]; then
+        echo "[+] pre-replay seed before queue coverage: ${seed_case}"
+        replay_sgfuzz_one "${seed_case}"
+    fi
 
     gcov_exec=$(_select_gcov_exec)
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" --gcov-ignore-errors=source_not_found --gcov-ignore-errors=no_working_dir_found --gcov-ignore-errors=output_error -r ."
@@ -541,16 +565,14 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    local target_root
-    target_root=$(resolve_target_root)
 
-    mkdir -p "${target_root}/ft/generator"
-    rm -rf "${target_root}/ft/generator"/*
-    cp -r repo/ngtcp2 "${target_root}/ft/generator/ngtcp2"
-    cp -r repo/wolfssl "${target_root}/ft/generator/wolfssl"
-    cp -r repo/nghttp3 "${target_root}/ft/generator/nghttp3"
+    mkdir -p "${HOME}/target/ft/generator"
+    rm -rf "${HOME}/target/ft/generator"/*
+    cp -r repo/ngtcp2 "${HOME}/target/ft/generator/ngtcp2"
+    cp -r repo/wolfssl "${HOME}/target/ft/generator/wolfssl"
+    cp -r repo/nghttp3 "${HOME}/target/ft/generator/nghttp3"
 
-    pushd "${target_root}/ft/generator/wolfssl" >/dev/null
+    pushd "${HOME}/target/ft/generator/wolfssl" >/dev/null
     autoreconf -i
     export CC=gcc
     export CXX=g++
@@ -561,7 +583,7 @@ function build_ft_generator {
     make install
     popd >/dev/null
 
-    pushd "${target_root}/ft/generator/nghttp3" >/dev/null
+    pushd "${HOME}/target/ft/generator/nghttp3" >/dev/null
     autoreconf -i
     export CC=gcc
     export CXX=g++
@@ -572,7 +594,7 @@ function build_ft_generator {
     make install
     popd >/dev/null
 
-    pushd "${target_root}/ft/generator/ngtcp2" >/dev/null
+    pushd "${HOME}/target/ft/generator/ngtcp2" >/dev/null
     autoreconf -i
     export FT_CALL_INJECTION=1
     export FT_HOOK_INS=branch,load,store,select,switch
@@ -580,7 +602,7 @@ function build_ft_generator {
     export CXX="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++"
     export CFLAGS="-O2 -g"
     export CXXFLAGS="-O2 -g"
-    export PKG_CONFIG_PATH="${target_root}/ft/generator/wolfssl/build/lib/pkgconfig:${target_root}/ft/generator/nghttp3/build/lib/pkgconfig"
+    export PKG_CONFIG_PATH="${HOME}/target/ft/generator/wolfssl/build/lib/pkgconfig:${HOME}/target/ft/generator/nghttp3/build/lib/pkgconfig"
     ./configure --with-wolfssl --disable-shared --enable-static
     make ${MAKE_OPT}
 
@@ -593,24 +615,22 @@ function build_ft_generator {
 }
 
 function build_ft_consumer {
-    local target_root
-    target_root=$(resolve_target_root)
 
-    mkdir -p "${target_root}/ft/consumer"
-    rm -rf "${target_root}/ft/consumer"/*
-    cp -r repo/lsquic "${target_root}/ft/consumer/lsquic"
-    cp -r repo/boringssl "${target_root}/ft/consumer/boringssl"
+    mkdir -p "${HOME}/target/ft/consumer"
+    rm -rf "${HOME}/target/ft/consumer"/*
+    cp -r repo/lsquic "${HOME}/target/ft/consumer/lsquic"
+    cp -r repo/boringssl "${HOME}/target/ft/consumer/boringssl"
 
     _configure_build_boringssl \
-        "${target_root}/ft/consumer/boringssl" \
+        "${HOME}/target/ft/consumer/boringssl" \
         "gcc" "g++" "-O2 -g" "-O2 -g" ""
 
     local aflpp_consumer="${HOME}/fuzztruction-net/consumer/aflpp-consumer"
     export AFL_PATH="${aflpp_consumer}"
 
     _configure_build_lsquic \
-        "${target_root}/ft/consumer/lsquic" \
-        "${target_root}/ft/consumer/boringssl" \
+        "${HOME}/target/ft/consumer/lsquic" \
+        "${HOME}/target/ft/consumer/boringssl" \
         "${aflpp_consumer}/afl-clang-fast" "${aflpp_consumer}/afl-clang-fast++" \
         "-O3 -g -DFT_FUZZING -DFT_CONSUMER -fsanitize=address" \
         "-O3 -g -DFT_FUZZING -DFT_CONSUMER -fsanitize=address" \
@@ -622,10 +642,8 @@ function run_ft {
     local gcov_step=$2
     local timeout=$3
     local work_dir=/tmp/fuzzing-output
-    local target_root
-    target_root=$(resolve_target_root)
 
-    pushd "${target_root}/ft" >/dev/null
+    pushd "${HOME}/target/ft" >/dev/null
 
     local temp_file
     temp_file=$(mktemp)
@@ -672,33 +690,29 @@ function run_stateafl {
 }
 
 function build_asan {
-    local target_root
-    target_root=$(resolve_target_root)
 
     _prepare_variant_dir asan
     _configure_build_boringssl \
-        "${target_root}/asan/boringssl" \
+        "${HOME}/target/asan/boringssl" \
         "clang" "clang++" "-O1 -g -fsanitize=address" "-O1 -g -fsanitize=address" "-fsanitize=address"
 
     _configure_build_lsquic \
-        "${target_root}/asan/lsquic" \
-        "${target_root}/asan/boringssl" \
+        "${HOME}/target/asan/lsquic" \
+        "${HOME}/target/asan/boringssl" \
         "clang" "clang++" \
         "-O1 -g -fsanitize=address" "-O1 -g -fsanitize=address" "-fsanitize=address"
 }
 
 function build_gcov {
-    local target_root
-    target_root=$(resolve_target_root)
 
     _prepare_variant_dir gcov
     _configure_build_boringssl \
-        "${target_root}/gcov/boringssl" \
+        "${HOME}/target/gcov/boringssl" \
         "gcc" "g++" "-O0 -g" "-O0 -g" ""
 
     _configure_build_lsquic \
-        "${target_root}/gcov/lsquic" \
-        "${target_root}/gcov/boringssl" \
+        "${HOME}/target/gcov/lsquic" \
+        "${HOME}/target/gcov/boringssl" \
         "gcc" "g++" \
         "-fprofile-arcs -ftest-coverage -O0 -g" \
         "-fprofile-arcs -ftest-coverage -O0 -g" \
@@ -706,11 +720,9 @@ function build_gcov {
 }
 
 function cleanup_artifacts {
-    local target_root
-    target_root=$(resolve_target_root)
 
-    rm -rf "${target_root}/aflnet/lsquic/build/CMakeFiles" \
-        "${target_root}/gcov/lsquic/build/CMakeFiles" \
-        "${target_root}/asan/lsquic/build/CMakeFiles" \
-        "${target_root}/sgfuzz/lsquic/build/CMakeFiles" 2>/dev/null || true
+    rm -rf "${HOME}/target/aflnet/lsquic/build/CMakeFiles" \
+        "${HOME}/target/gcov/lsquic/build/CMakeFiles" \
+        "${HOME}/target/asan/lsquic/build/CMakeFiles" \
+        "${HOME}/target/sgfuzz/lsquic/build/CMakeFiles" 2>/dev/null || true
 }
