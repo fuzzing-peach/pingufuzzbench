@@ -327,9 +327,9 @@ function build_sgfuzz {
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CXX=wllvm++
-    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -fsanitize=address -fsanitize=fuzzer-no-link -DFT_FUZZING -DSGFUZZ -Wno-int-conversion"
-    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -fsanitize=address -fsanitize=fuzzer-no-link -DFT_FUZZING -DSGFUZZ -Wno-int-conversion"
-    export LDFLAGS="-fsanitize=address"
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -Wno-int-conversion"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names -fno-vectorize -fno-slp-vectorize -DFT_FUZZING -DSGFUZZ -Wno-int-conversion"
+    export LDFLAGS=""
 
     python3 "${HOME}/sgfuzz/sanitizer/State_machine_instrument.py" .
     _configure_and_build_msquic "${CC}" "${CXX}" "${CFLAGS}" "${CXXFLAGS}" "${LDFLAGS}" "${PWD}" "${PWD}/build" || return 1
@@ -374,17 +374,18 @@ EOF2
     (llvm-dis-17 quicsample_opt.bc -o quicsample_opt.ll || llvm-dis quicsample_opt.bc -o quicsample_opt.ll) || return 1
     sed -i 's/optnone //g;s/optnone//g' quicsample_opt.ll
 
-    local sample_o
     local msquic_a
     local platform_a
     local ssl_a
     local crypto_a
-    sample_o=$(find "${build_dir}" -type f -path "*quicsample.dir*sample.c.o" | head -n 1 || true)
     msquic_a=$(find "${build_dir}" -type f -name "libmsquic.a" | head -n 1 || true)
-    platform_a=$(find "${build_dir}" -type f -name "libplatform.a" | head -n 1 || true)
+    platform_a=$(find "${build_dir}" -type f -name "libmsquic_platform.a" | head -n 1 || true)
+    if [ -z "${platform_a}" ]; then
+        platform_a=$(find "${build_dir}" -type f -name "libplatform.a" | head -n 1 || true)
+    fi
     ssl_a=$(find "${build_dir}" -type f -name "libssl.a" | head -n 1 || true)
     crypto_a=$(find "${build_dir}" -type f -name "libcrypto.a" | head -n 1 || true)
-    if [ -z "${sample_o}" ] || [ -z "${msquic_a}" ] || [ -z "${platform_a}" ] || [ -z "${ssl_a}" ] || [ -z "${crypto_a}" ]; then
+    if [ -z "${msquic_a}" ] || [ -z "${platform_a}" ] || [ -z "${ssl_a}" ] || [ -z "${crypto_a}" ]; then
         echo "[!] build_sgfuzz failed: required static objects/libs not found"
         popd >/dev/null
         popd >/dev/null
@@ -396,7 +397,6 @@ EOF2
         -fsanitize=fuzzer \
         -DFT_FUZZING \
         -DSGFUZZ \
-        "${sample_o}" \
         "${msquic_a}" \
         "${platform_a}" \
         "${ssl_a}" \
@@ -447,7 +447,7 @@ function run_sgfuzz {
     SGFuzz_ARGS=(
         -max_len=100000
         -close_fd_mask=3
-        -shrink=1
+        -shrink=0
         -reload=30
         -print_final_stats=1
         -detect_leaks=0
@@ -467,11 +467,24 @@ function run_sgfuzz {
     cd "${target_root}/gcov/msquic/build"
     function replay_sgfuzz_one {
         local gcov_bin
+        local cert_dir="${HOME}/profuzzbench/cert"
+        local fake_time_value="${FAKE_TIME:-2026-02-01 12:00:00}"
         gcov_bin=$(_resolve_quicsample "${target_root}/gcov/msquic/build" || true)
         if [ -z "${gcov_bin}" ]; then
             return 1
         fi
-        _run_msquic_server_for_replay "${gcov_bin}" "$1"
+
+        LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
+            "${gcov_bin}" \
+            -server \
+            -cert_file:${cert_dir}/fullchain.crt \
+            -key_file:${cert_dir}/server.key >/tmp/msquic-replay.log 2>&1 &
+        local server_pid=$!
+
+        sleep 1
+        timeout -s INT -k 1s 5s "${HOME}/aflnet/afl-replay" "$1" NOP "${MSQUIC_FUZZ_PORT}" 100 || true
+        kill -INT "${server_pid}" >/dev/null 2>&1 || true
+        wait "${server_pid}" 2>/dev/null || true
     }
 
     local gcov_exec="gcov"
@@ -484,6 +497,14 @@ function run_sgfuzz {
     local gcov_common_opts="--gcov-executable \"${gcov_exec}\" --gcov-ignore-parse-errors=negative_hits.warn_once_per_file -r ${target_root}/gcov/msquic"
     local cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     local list_cmd="find ${queue} -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
+
+    local seed_replay_file
+    seed_replay_file=$(find "${indir}" -maxdepth 1 -type f | sort | head -n 1 || true)
+    if [ -n "${seed_replay_file}" ]; then
+        echo "[*] run_sgfuzz: replay seed first: ${seed_replay_file}"
+        replay_sgfuzz_one "${seed_replay_file}" || true
+    fi
+
     compute_coverage replay_sgfuzz_one "${list_cmd}" "${gcov_step}" "${outdir}/coverage.csv" "${cov_cmd}" ""
 
     mkdir -p "${outdir}/cov_html"
