@@ -443,10 +443,13 @@ function run_sgfuzz {
     export FAKE_TIME="${FAKE_TIME:-2026-02-01 12:00:00}"
     export HFND_TESTCASE_BUDGET_MS="${HFND_TESTCASE_BUDGET_MS:-50}"
     export HFND_TCP_PORT="${MSQUIC_FUZZ_PORT}"
+    export HFND_FORK_MODE=1
 
     SGFuzz_ARGS=(
         -max_len=100000
         -close_fd_mask=3
+        -fork=1
+        -ignore_crashes=1
         -shrink=0
         -reload=30
         -print_final_stats=1
