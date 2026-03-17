@@ -1,0 +1,50 @@
+sink:
+  bin-path: "/home/user/profuzzbench/target/ft/consumer/ngtcp2/examples/wsslserver"
+  env:
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-03-11 12:00:00"
+  arguments:
+    - "127.0.0.1"
+    - "4433"
+    - "/home/user/profuzzbench/cert/server.key"
+    - "/home/user/profuzzbench/cert/fullchain.crt"
+  working-dir: "/home/user/profuzzbench/target/ft/consumer/ngtcp2"
+  input-type: Udp
+  output-type: Udp
+  is-server: true
+  server-port: "4433"
+  server-ready-on: "Bind(0)"
+  send-sigterm: true
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+  persistent-server: false
+
+gcov:
+  bin-path: "/home/user/target/gcov/ngtcp2/examples/wsslserver"
+  cwd: "/home/user/target/gcov/ngtcp2"
+  env:
+    - LD_LIBRARY_PATH: "/home/user/target/gcov/nghttp3/build/lib:/home/user/target/gcov/wolfssl/build/lib:/home/user/target/gcov/ngtcp2/lib/.libs:/home/user/target/gcov/ngtcp2/crypto/wolfssl/.libs"
+    - LD_PRELOAD: "libgcov_preload.so"
+    - FAKE_RANDOM: "1"
+  src-dir: "/home/user/target/gcov/ngtcp2"
+  reporter: "gcovr"
+  gcovr-args:
+    - "--root"
+    - "/home/user/target/gcov/ngtcp2"
+    - "--object-directory"
+    - "/home/user/target/gcov/ngtcp2"
+    - "--exclude"
+    - ".*h09wsslclient.*"
+    - "--exclude"
+    - ".*wsslclient.*"
+    - "--exclude"
+    - ".*h09client.*"
+    - "--exclude-directories"
+    - "/home/user/target/gcov/ngtcp2/third-party"
+    - "--exclude-directories"
+    - "/home/user/target/gcov/ngtcp2/tests"
+    - "--exclude-directories"
+    - "/home/user/target/gcov/ngtcp2/examples"
+    - "--exclude-directories"
+    - "/home/user/target/gcov/ngtcp2/crypto/wolfssl"

@@ -853,7 +853,7 @@ new file mode 100644
 index 0000000..2d0c728
 --- /dev/null
 +++ b/scheduler/src/coverage/grcov.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,142 @@
 +use std::{env, fs, io::{BufRead, BufReader}, path::{Path, PathBuf}, process::Stdio};
 +
 +use anyhow::{anyhow, Context, Result};
@@ -888,6 +888,7 @@ index 0000000..2d0c728
 +    bin_path: PathBuf,
 +    binary: GrcovBinary,
 +    args: Vec<String>,
++    cwd: PathBuf,
 +}
 +
 +#[derive(Debug, Default)]
@@ -899,7 +900,7 @@ index 0000000..2d0c728
 +}
 +
 +impl Grcov {
-+    pub fn build(binary: GrcovBinary, args: Vec<String>) -> Result<Grcov> {
++    pub fn build(binary: GrcovBinary, args: Vec<String>, cwd: PathBuf) -> Result<Grcov> {
 +        let bin: String = binary.clone().into();
 +                
 +        let which_output = std::process::Command::new("which")
@@ -937,12 +938,14 @@ index 0000000..2d0c728
 +            bin_path,
 +            binary,
 +            args,
++            cwd,
 +        })
 +    }
 +
 +    pub fn spawn(&self) -> Result<Coverage> {
 +        let output = std::process::Command::new(self.bin_path.to_str().unwrap())
 +            .args(self.args.to_owned())
++            .current_dir(&self.cwd)
 +            .stdout(Stdio::piped())
 +            .spawn()
 +            .map_err(|e| {
@@ -1072,7 +1075,7 @@ index 8886de7..503bc47 100644
  
  unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()> {
      let mutations = entry.mutations();
-@@ -39,6 +71,260 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
+@@ -39,6 +71,264 @@ unsafe fn load_mutations(source: &mut Source, entry: &QueueEntry) -> Result<()>
      Ok(())
  }
  
@@ -1111,7 +1114,11 @@ index 8886de7..503bc47 100644
 +    .map(|s| s.into())
 +    .collect();
 +
-+    let grcov = Grcov::build(gcov_config.reporter.to_owned().into(), grcov_args)?;
++    let grcov = Grcov::build(
++        gcov_config.reporter.to_owned().into(),
++        grcov_args,
++        gcov_config.cwd.to_owned(),
++    )?;
 +
 +    let mut cov_tmp_file = tempfile::NamedTempFile::new().unwrap();
 +    log::debug!(
@@ -1333,7 +1340,7 @@ index 8886de7..503bc47 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +469,68 @@ pub fn compute_llvm_cov(
+@@ -183,3 +469,88 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -1382,24 +1389,44 @@ index 8886de7..503bc47 100644
 +}
 +
 +fn grep_socket_port(inode: u64, port: u16, v4: bool) -> Result<bool> {
-+    let tcp_socket_path = if v4 {
-+        "/proc/net/tcp"
++    let (tcp_path, udp_path) = if v4 {
++        ("/proc/net/tcp", "/proc/net/udp")
 +    } else {
-+        "/proc/net/tcp6"
++        ("/proc/net/tcp6", "/proc/net/udp6")
 +    };
-+    let tcp_socket_file = fs::File::open(tcp_socket_path)?;
-+    for line in BufReader::new(tcp_socket_file).lines().skip(1) {
++
++    if grep_socket_port_in_table(tcp_path, inode, port)? {
++        return Ok(true);
++    }
++
++    grep_socket_port_in_table(udp_path, inode, port)
++}
++
++fn grep_socket_port_in_table(path: &str, inode: u64, port: u16) -> Result<bool> {
++    let socket_file = fs::File::open(path)?;
++    for line in BufReader::new(socket_file).lines().skip(1) {
 +        let line = line?;
 +        let parts: Vec<&str> = line.split_whitespace().collect();
-+        if parts.len() > 9 {
-+            let local_address = parts[1];
-+            let local_port = u16::from_str_radix(&local_address[9..], 16)?;
-+            let socket_inode = parts[9].parse::<u64>()?;
-+            if local_port == port && socket_inode == inode {
-+                return Ok(true);
-+            }
++        if parts.len() <= 9 {
++            continue;
++        }
++
++        let local_address = parts[1];
++        let Some((_, local_port_hex)) = local_address.split_once(':') else {
++            continue;
++        };
++        let Ok(local_port) = u16::from_str_radix(local_port_hex, 16) else {
++            continue;
++        };
++        let Ok(socket_inode) = parts[9].parse::<u64>() else {
++            continue;
++        };
++
++        if local_port == port && socket_inode == inode {
++            return Ok(true);
 +        }
 +    }
++
 +    Ok(false)
 +}
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
@@ -1837,3 +1864,48 @@ index 549ac57..aafd5d1 100644
  /// Check that some constraints hold for the patch points:
  ///     - VMAs are unique
  ///     - PatchPointIDs are unique
+
+diff --git a/scheduler/src/fuzzer/queue.rs b/scheduler/src/fuzzer/queue.rs
+index f0465c8..5afe57c 100644
+--- a/scheduler/src/fuzzer/queue.rs
++++ b/scheduler/src/fuzzer/queue.rs
+@@ -664,15 +664,33 @@ impl Queue {
+ 
+         let entries = files
+             .par_iter()
+-            .map(|file| {
+-                let content = fs::read(file).unwrap();
++            .filter_map(|file| {
++                let content = match fs::read(file) {
++                    Ok(v) => v,
++                    Err(e) => {
++                        log::warn!("Skip unreadable queue file {:?}: {}", file, e);
++                        return None;
++                    }
++                };
++
+                 let mut decompressed = Vec::new();
+                 let mut decompressor = ZlibDecoder::new(&mut decompressed);
+-                decompressor.write_all(&content).unwrap();
+-                decompressor.finish().unwrap();
++                if let Err(e) = decompressor.write_all(&content) {
++                    log::warn!("Skip corrupted queue file {:?} (decompress): {}", file, e);
++                    return None;
++                }
++                if let Err(e) = decompressor.finish() {
++                    log::warn!("Skip corrupted queue file {:?} (finish): {}", file, e);
++                    return None;
++                }
+ 
+-                let qe: QueueEntry = serde_json::from_slice(&decompressed).unwrap();
+-                qe
++                match serde_json::from_slice::<QueueEntry>(&decompressed) {
++                    Ok(qe) => Some(qe),
++                    Err(e) => {
++                        log::warn!("Skip invalid queue entry {:?} (json): {}", file, e);
++                        None
++                    }
++                }
+             })
+             .collect::<Vec<_>>();
+ 

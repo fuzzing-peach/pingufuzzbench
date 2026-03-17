@@ -3,6 +3,7 @@
 if [ -z "${MAKE_OPT+x}" ] || [ -z "${MAKE_OPT}" ]; then
     MAKE_OPT="-j$(nproc)"
 fi
+NGTCP2_SUBJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 function git_clone_retry {
     url="$1"
@@ -51,6 +52,7 @@ function checkout {
         git checkout "${target_ref}"
         git cherry-pick "${patch_commit}" || return 1
     fi
+    git submodule update --init --recursive
     popd >/dev/null
 
     if [ ! -d ".git-cache/wolfssl/.git" ]; then
@@ -80,23 +82,6 @@ function checkout {
     git submodule update --init --recursive
     popd >/dev/null
 
-    if [ ! -d ".git-cache/msquic/.git" ]; then
-        git_clone_retry https://github.com/microsoft/msquic.git .git-cache/msquic 3 0 || return 1
-    else
-        pushd .git-cache/msquic >/dev/null
-        git fetch --all --tags
-        popd >/dev/null
-    fi
-    rm -rf repo/msquic
-    cp -r .git-cache/msquic repo/msquic
-    pushd repo/msquic >/dev/null
-    if ! git checkout a933f7b7; then
-        echo "[!] msquic commit a933f7b7 not found, using default branch HEAD"
-    fi
-    git apply ${HOME}/profuzzbench/subjects/QUIC/ngtcp2/msquic-sgfuzz-udp.patch || return 1
-    git add .
-    git commit -m "apply msquic sgfuzz udp netdriver patch"
-    popd >/dev/null
 }
 
 function replay {
@@ -193,8 +178,6 @@ function run_aflnet {
         ${cert_dir}/fullchain.crt --initial-pkt-num=0 || true
 
     cd ${HOME}/target/gcov/ngtcp2
-    # Reset runtime counters before replay-based coverage collection.
-    find . -name "*.gcda" -type f -delete || true
     find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
     # Resolve relative source paths referenced by crypto/shared.gcda.
     ln -sfn ${HOME}/target/gcov/ngtcp2/crypto/shared.c ${HOME}/target/gcov/ngtcp2/shared.c
@@ -211,7 +194,6 @@ function run_aflnet {
         gcov_exec="llvm-cov-17 gcov"
     fi
     gcov_common_opts="--gcov-executable \"${gcov_exec}\" -r ."
-    eval "gcovr ${gcov_common_opts} -s -d" >/dev/null 2>&1 || true
     list_cmd="find ${outdir}/replayable-queue -maxdepth 1 -type f -name 'id*' | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
     cov_cmd="gcovr ${gcov_common_opts} -s | grep \"[lb][a-z]*:\""
     compute_coverage replay "$list_cmd" ${gcov_step} ${outdir}/coverage.csv "$cov_cmd" ""
@@ -517,14 +499,6 @@ function run_sgfuzz {
         wait "${server_pid}" 2>/dev/null || true
     }
 
-    # Warm up coverage with protocol-valid seed corpus first.
-    if [ -d "${indir}" ]; then
-        while IFS= read -r seed_file; do
-            [ -f "${seed_file}" ] || continue
-            replay_sgfuzz_one "${seed_file}"
-        done < <(find "${indir}" -maxdepth 1 -type f | sort)
-    fi
-
     gcov_exec="gcov"
     sample_gcno=$(find . -name "*.gcno" -print -quit 2>/dev/null || true)
     if [ -n "${sample_gcno}" ] && gcov-dump "${sample_gcno}" 2>/dev/null | head -n 1 | grep -q "408\\*"; then
@@ -542,15 +516,154 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    echo "Not implemented"
+    target_root=${HOME}/target
+
+    mkdir -p "${target_root}/ft/generator"
+    rm -rf "${target_root}/ft/generator"/*
+    cp -r repo/wolfssl "${target_root}/ft/generator/wolfssl"
+    cp -r repo/nghttp3 "${target_root}/ft/generator/nghttp3"
+    cp -r repo/ngtcp2 "${target_root}/ft/generator/ngtcp2"
+
+    pushd "${target_root}/ft/generator/wolfssl" >/dev/null
+    autoreconf -i
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-O2 -g"
+    export CXXFLAGS="-O2 -g"
+    ./configure --prefix="${PWD}/build" --enable-all --enable-aesni --enable-harden --enable-ech
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd "${target_root}/ft/generator/nghttp3" >/dev/null
+    autoreconf -i
+    ./configure --prefix="${PWD}/build" --enable-lib-only
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd "${target_root}/ft/generator/ngtcp2" >/dev/null
+    autoreconf -i
+    export FT_CALL_INJECTION=1
+    export FT_HOOK_INS=branch,load,store,select,switch
+    export CC="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast"
+    export CXX="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++"
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
+    export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+    export LD_LIBRARY_PATH="${HOME}/fuzztruction-net/target/release:${LD_LIBRARY_PATH}"
+    export PKG_CONFIG_PATH="${target_root}/ft/generator/wolfssl/build/lib/pkgconfig:${target_root}/ft/generator/nghttp3/build/lib/pkgconfig"
+    ./configure --with-wolfssl --disable-shared --enable-static
+    make ${MAKE_OPT}
+    if [ ! -x "${PWD}/examples/wsslclient" ]; then
+        echo "[!] build_ft_generator failed: ${PWD}/examples/wsslclient not found"
+        popd >/dev/null
+        return 1
+    fi
+    popd >/dev/null
 }
 
 function build_ft_consumer {
-    echo "Not implemented"
+    target_root=${HOME}/target
+    local afl_path="${HOME}/fuzztruction-net/consumer/aflpp-consumer"
+    local ft_patch="${NGTCP2_SUBJECT_DIR}/msquic-ngtcp2-ft-exit.patch"
+
+    if [ ! -x "${afl_path}/afl-clang-fast" ] || [ ! -x "${afl_path}/afl-clang-fast++" ]; then
+        echo "[!] build_ft_consumer failed: missing ${afl_path}/afl-clang-fast(++)"
+        return 1
+    fi
+
+    mkdir -p "${target_root}/ft/consumer"
+    rm -rf "${target_root}/ft/consumer"/*
+    cp -r repo/wolfssl "${target_root}/ft/consumer/wolfssl"
+    cp -r repo/nghttp3 "${target_root}/ft/consumer/nghttp3"
+    cp -r repo/ngtcp2 "${target_root}/ft/consumer/ngtcp2"
+
+    pushd "${target_root}/ft/consumer/wolfssl" >/dev/null
+    autoreconf -i
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-O2 -g"
+    export CXXFLAGS="-O2 -g"
+    ./configure --prefix="${PWD}/build" --enable-all --enable-aesni --enable-harden --enable-ech
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd "${target_root}/ft/consumer/nghttp3" >/dev/null
+    autoreconf -i
+    ./configure --prefix="${PWD}/build" --enable-lib-only
+    make ${MAKE_OPT}
+    make install
+    popd >/dev/null
+
+    pushd "${target_root}/ft/consumer/ngtcp2" >/dev/null
+    if [ -f "${ft_patch}" ] && git apply --check "${ft_patch}" >/dev/null 2>&1; then
+        git apply "${ft_patch}" || return 1
+    fi
+    autoreconf -i
+    export CC="${afl_path}/afl-clang-fast"
+    export CXX="${afl_path}/afl-clang-fast++"
+    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
+    export PKG_CONFIG_PATH="${target_root}/ft/consumer/wolfssl/build/lib/pkgconfig:${target_root}/ft/consumer/nghttp3/build/lib/pkgconfig"
+    ./configure --with-wolfssl --disable-shared --enable-static
+    make ${MAKE_OPT}
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        echo "[!] build_ft_consumer failed: ${PWD}/examples/wsslserver not found"
+        popd >/dev/null
+        return 1
+    fi
+    popd >/dev/null
+
+    build_gcov || return 1
 }
 
 function run_ft {
-    echo "Not implemented"
+    local replay_step="${1:-1}"
+    local gcov_step="${2:-1}"
+    local timeout="${3:-300}"
+    local work_dir=/tmp/fuzzing-output
+    local target_root="${HOME}/target"
+    local ft_lib_path="${HOME}/fuzztruction-net/target/release:${LD_LIBRARY_PATH:-}"
+
+    pkill -9 -x wsslserver >/dev/null 2>&1 || true
+    pkill -9 -x wsslclient >/dev/null 2>&1 || true
+    pkill -9 -x fuzztruction >/dev/null 2>&1 || true
+    pushd "${target_root}/ft" >/dev/null
+
+    local temp_file
+    temp_file=$(mktemp)
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" \
+        -e "s|UID|$(id -u)|g" \
+        -e "s|GID|$(id -g)|g" \
+        "${HOME}/profuzzbench/ft-common.yaml" >"${temp_file}"
+    cat "${temp_file}" > ft.yaml
+    printf "\n" >> ft.yaml
+    rm -f "${temp_file}"
+
+    cat "${NGTCP2_SUBJECT_DIR}/ft-source.yaml" >> ft.yaml
+    cat "${NGTCP2_SUBJECT_DIR}/ft-sink.yaml" >> ft.yaml
+
+    echo "${HOME}/fuzztruction-net/target/release" | sudo tee /etc/ld.so.conf.d/fuzztruction-net.conf >/dev/null
+    sudo ldconfig
+
+    sudo LD_LIBRARY_PATH="${ft_lib_path}" "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info --purge ft.yaml fuzz -t "${timeout}s" || return 1
+    cd "${target_root}/gcov/ngtcp2"
+    find . -maxdepth 1 \( -name "a-conftest.gcno" -o -name "a-conftest.gcda" \) -delete || true
+    ln -sfn "${target_root}/gcov/ngtcp2/crypto/shared.c" "${target_root}/gcov/ngtcp2/shared.c"
+    mkdir -p "${target_root}/gcov/lib"
+    if [ ! -e "${target_root}/gcov/lib/ngtcp2_macro.h" ]; then
+        ln -s "${target_root}/gcov/ngtcp2/lib/ngtcp2_macro.h" "${target_root}/gcov/lib/ngtcp2_macro.h"
+    fi
+    cd "${target_root}/ft"
+    sudo LD_LIBRARY_PATH="${ft_lib_path}" "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info ft.yaml gcov -t 3s --replay-step "${replay_step}" --gcov-step "${gcov_step}" || return 1
+    sudo chmod -R 755 "${work_dir}"
+    sudo chown -R "$(id -u):$(id -g)" "${work_dir}"
+
+    popd >/dev/null
 }
 
 function build_quicfuzz {
@@ -582,8 +695,7 @@ function build_quicfuzz {
     export CFLAGS="-fsanitize=address -g"
     export CXXFLAGS="-fsanitize=address -g"
     export LDFLAGS="-fsanitize=address -g"
-    # Do not run tests during build_gcov; they pre-populate *.gcda.
-    make ${MAKE_OPT}
+    make ${MAKE_OPT} check
     popd >/dev/null
 }
 
@@ -621,10 +733,13 @@ function build_asan {
 }
 
 function build_gcov {
-    target_root=${HOME}/profuzzbench/target
-    if [ ! -d "${target_root}" ]; then
-        target_root=${HOME}/target
-    fi
+    target_root=${HOME}/target
+    unset AFL_USE_ASAN
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-O2 -g"
+    export CXXFLAGS="-O2 -g"
+    export LDFLAGS=""
 
     mkdir -p target/gcov
     rm -rf target/gcov/*
@@ -645,23 +760,26 @@ function build_gcov {
     popd >/dev/null
 
     pushd target/gcov/ngtcp2 >/dev/null
-    autoreconf -i
-    export CC=gcc
-    export CXX=g++
-    export PKG_CONFIG_PATH=${target_root}/gcov/wolfssl/build/lib/pkgconfig:${target_root}/gcov/nghttp3/build/lib/pkgconfig
     export CFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
+    git apply ${NGTCP2_SUBJECT_DIR}/msquic-ngtcp2-ft-exit.patch || return 1
+    autoreconf -i
+    export PKG_CONFIG_PATH=${target_root}/gcov/wolfssl/build/lib/pkgconfig:${target_root}/gcov/nghttp3/build/lib/pkgconfig
     ./configure --with-wolfssl --disable-shared --enable-static
-    # Do not run tests during build_gcov; they pre-populate *.gcda.
     make ${MAKE_OPT}
+    if [ ! -x "${PWD}/examples/wsslserver" ]; then
+        echo "[!] build_gcov failed: ${PWD}/examples/wsslserver not found"
+        popd >/dev/null
+        return 1
+    fi
     popd >/dev/null
 }
 
 function install_dependencies {
     sudo mkdir -p /var/lib/apt/lists/partial
-    sudo apt-get update
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    sudo -E apt-get update
+    sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libev-dev
     sudo rm -rf /var/lib/apt/lists/*
 }
