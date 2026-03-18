@@ -1,0 +1,399 @@
+diff --git a/src/liblsquic/lsquic_crypto.c b/src/liblsquic/lsquic_crypto.c
+index 2c59408..050baaf 100644
+--- a/src/liblsquic/lsquic_crypto.c
++++ b/src/liblsquic/lsquic_crypto.c
+@@ -469,7 +469,7 @@ int lsquic_aes_aead_dec(EVP_AEAD_CTX *key,
+ /* 32 bytes client nonce with 4 bytes tm, 8 bytes orbit */
+ void lsquic_gen_nonce_c(unsigned char *buf, uint64_t orbit)
+ {
+-    time_t tm = time(NULL);
++    time_t tm = lsquic_time_now_sec();
+     unsigned char *p = buf;
+     memcpy(p, &tm, 4);
+     p += 4;
+@@ -629,4 +629,3 @@ lsquic_crypto_init (void)
+     /* MORE .... */
+     crypto_inited = 1;
+ }
+-
+diff --git a/src/liblsquic/lsquic_eng_hist.c b/src/liblsquic/lsquic_eng_hist.c
+index 522de1e..bf725ed 100644
+--- a/src/liblsquic/lsquic_eng_hist.c
++++ b/src/liblsquic/lsquic_eng_hist.c
+@@ -12,6 +12,7 @@
+ #define LSQUIC_LOGGER_MODULE LSQLM_ENG_HIST
+ #include "lsquic_types.h"
+ #include "lsquic_logger.h"
++#include "lsquic_util.h"
+ 
+ 
+ static void
+@@ -46,7 +47,7 @@ void
+ lsquic_eng_hist_log (const struct eng_hist *hist)
+ {
+     unsigned i, idx;
+-    time_t t0 = time(NULL) - ENG_HIST_NELEMS + 1;
++    time_t t0 = lsquic_time_now_sec() - ENG_HIST_NELEMS + 1;
+     for (i = 0; i < ENG_HIST_NELEMS; ++i)
+     {
+         idx = (hist->eh_prev_idx + i + 1) & (ENG_HIST_NELEMS - 1);
+diff --git a/src/liblsquic/lsquic_eng_hist.h b/src/liblsquic/lsquic_eng_hist.h
+index 0e554df..6652297 100644
+--- a/src/liblsquic/lsquic_eng_hist.h
++++ b/src/liblsquic/lsquic_eng_hist.h
+@@ -45,6 +45,7 @@ struct eng_hist
+ 
+ #if ENG_HIST_ENABLED
+ #include <string.h>
++#include "lsquic_util.h"
+ 
+ /* Initialize engine history */
+ static inline void 
+@@ -52,7 +53,7 @@ eng_hist_init (struct eng_hist *eh)
+ {
+     memset(eh, 0, sizeof(*eh));
+     eh->eh_cur_idx = eh->eh_prev_idx =
+-                            time(NULL) & (ENG_HIST_NELEMS - 1);
++                            lsquic_time_now_sec() & (ENG_HIST_NELEMS - 1);
+ }
+ 
+ 
+@@ -74,7 +75,7 @@ static inline void
+ eng_hist_tick (struct eng_hist *eh, lsquic_time_t now)
+ {
+     if (0 == (now))
+-        eh->eh_cur_idx = time(NULL)        & (ENG_HIST_NELEMS - 1);
++        eh->eh_cur_idx = lsquic_time_now_sec() & (ENG_HIST_NELEMS - 1);
+     else
+         eh->eh_cur_idx = ((now) / 1000000) & (ENG_HIST_NELEMS - 1);
+     if (eh->eh_cur_idx != eh->eh_prev_idx)
+diff --git a/src/liblsquic/lsquic_handshake.c b/src/liblsquic/lsquic_handshake.c
+index 5bb1a1b..99dba16 100644
+--- a/src/liblsquic/lsquic_handshake.c
++++ b/src/liblsquic/lsquic_handshake.c
+@@ -1807,7 +1807,7 @@ get_valid_scfg (const struct lsquic_enc_session *enc_session,
+     const struct lsquic_shared_hash_if *const shi = enpub->enp_shi;
+     void *const shi_ctx = enpub->enp_shi_ctx;
+     uint8_t spubs[35] = {0x20, 0, 0, };/* need to init first 3 bytes */
+-    time_t t = time(NULL);
++    time_t t = lsquic_time_now_sec();
+     unsigned int real_len;
+     SCFG_info_t *temp_scfg;
+     void *scfg_ptr;
+@@ -2090,7 +2090,7 @@ gen_rej1_data (struct lsquic_enc_session *enc_session, uint8_t *data,
+     }
+     RAND_bytes((uint8_t *) lsquic_str_buf(&enc_session->ssno), SNO_LENGTH);
+     sttl = enc_session->enpub->enp_server_config->lsc_scfg->info.expy
+-                                                    - (uint64_t) time(NULL);
++                                                    - (uint64_t) lsquic_time_now_sec();
+ 
+     MW_BEGIN(&mw, QTAG_REJ, 7, data);
+     MW_WRITE_LS_STR(&mw, QTAG_STK, &enc_session->sstk);
+diff --git a/src/liblsquic/lsquic_hash.c b/src/liblsquic/lsquic_hash.c
+index 14ca863..7b0dd79 100644
+--- a/src/liblsquic/lsquic_hash.c
++++ b/src/liblsquic/lsquic_hash.c
+@@ -8,21 +8,10 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/queue.h>
+-#include <time.h>
+-
+-#ifdef WIN32
+-#include <vc_compat.h>
+-#else
+-#include <sys/time.h>
+-#include <unistd.h>
+-#endif
+-
+-#if !(defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0) && defined(__APPLE__)
+-#include <mach/mach_time.h>
+-#endif
+ 
+ #include "lsquic_hash.h"
+ #include "lsquic_rapidhash.h"
++#include "lsquic_util.h"
+ 
+ TAILQ_HEAD(hels_head, lsquic_hash_elem);
+ 
+@@ -47,27 +36,31 @@ static uint64_t get_seed()
+     static uint64_t seed = 0;
+     if (seed == 0)
+     {
+-#if defined(WIN32)
+-        LARGE_INTEGER counter;
+-        QueryPerformanceCounter(&counter);
+-        seed = counter.QuadPart;
+-#elif defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0
+-        struct timespec ts;
+-        (void) clock_gettime(CLOCK_MONOTONIC, &ts);
+-        seed = ts.tv_sec * 1000000000 + ts.tv_nsec;
+-#elif defined(__APPLE__)
+-        seed = mach_absolute_time();
+-#else
+-        struct timeval tv;
+-        gettimeofday(&tv, NULL);
+-        seed = tv.tv_sec * 1000000000 + tv.tv_usec * 1000;
+-#endif
+-        srand(seed);
+-        for(unsigned i = 0; i < (seed & 0xf) + 1; ++i)
++        const char *fake_env = getenv("FAKE_RANDOM");
++        const char *seed_env = getenv("FAKERANDOM_SEED");
++        uint64_t x;
++        char *endptr;
++
++        if (fake_env && fake_env[0] && strcmp(fake_env, "0") != 0)
+         {
+-            seed = (seed << 8) | (seed >> 56);
+-            seed ^= rand();
++            if (seed_env && seed_env[0])
++            {
++                x = strtoull(seed_env, &endptr, 10);
++                if (endptr == seed_env)
++                    x = 1;
++            }
++            else
++                x = 1;
+         }
++        else
++            x = lsquic_time_now() ^ (uint64_t) (uintptr_t) &seed;
++
++        x += 0x9e3779b97f4a7c15ULL;
++        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
++        x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
++        seed = x ^ (x >> 31);
++        if (seed == 0)
++            seed = 1;
+     }
+     return seed;
+ }
+@@ -104,7 +97,7 @@ lsquic_hash_create_ext (int (*cmp)(const void *, const void *, size_t),
+     hash->qh_iter_next = NULL;
+     hash->qh_count     = 0;
+     hash->qh_hash_seed = get_seed() ^ (uint64_t)hash
+-                        ^ ((uint64_t)buckets << 32) ^ rand();
++                        ^ ((uint64_t)buckets << 32) ^ lsquic_rand_u32();
+     return hash;
+ }
+ 
+diff --git a/src/liblsquic/lsquic_hcso_writer.c b/src/liblsquic/lsquic_hcso_writer.c
+index 099b252..78cf540 100644
+--- a/src/liblsquic/lsquic_hcso_writer.c
++++ b/src/liblsquic/lsquic_hcso_writer.c
+@@ -21,6 +21,7 @@
+ #include "lsquic_byteswap.h"
+ #include "lsquic_hcso_writer.h"
+ #include "lsquic_conn.h"
++#include "lsquic_util.h"
+ 
+ #define LSQUIC_LOGGER_MODULE LSQLM_HCSO_WRITER
+ #define LSQUIC_LOG_CONN_ID \
+@@ -36,7 +36,7 @@ hcso_write_type (struct hcso_writer *writer)
+ #ifndef NDEBUG
+     if (writer->how_flags & HOW_RAND_VARINT)
+     {
+-        s = rand() & 3;
++        s = lsquic_rand_u32() & 3;
+         LSQ_DEBUG("writing %d-byte stream type", 1 << s);
+     }
+     else
+@@ -77,7 +77,7 @@ hcso_on_new (void *stream_if_ctx, struct lsquic_stream *stream)
+     {
+         writer->how_flags |= HOW_RAND_VARINT;
+         LSQ_INFO("will randomize varints");
+-        if (0 == (rand() & 3))
++        if (0 == (lsquic_rand_u32() & 3))
+         {
+             writer->how_flags |= HOW_CHOP_STREAM;
+             LSQ_INFO("will chop beginning of stream into tiny STREAM frames");
+@@ -105,7 +105,7 @@ hcso_setting_type2bits (struct hcso_writer *writer, unsigned setting)
+     unsigned max_bits;
+     if (writer->how_flags & HOW_RAND_VARINT)
+     {
+-        max_bits = rand() & 3;
++        max_bits = lsquic_rand_u32() & 3;
+         if (max_bits > bits)
+             bits = max_bits;
+         LSQ_DEBUG("writing out HTTP/3 setting %u as %d-byte varint",
+diff --git a/src/liblsquic/lsquic_mini_conn.c b/src/liblsquic/lsquic_mini_conn.c
+index 54168e3..346a093 100644
+--- a/src/liblsquic/lsquic_mini_conn.c
++++ b/src/liblsquic/lsquic_mini_conn.c
+@@ -1175,7 +1175,7 @@ continue_handshake (struct mini_conn *mc)
+         MCHIST_APPEND(mc, MCHE_NEW_ENC_SESS);
+     }
+ 
+-    t = time(NULL);
++    t = lsquic_time_now_sec();
+     he = mc->mc_conn.cn_esf.g->esf_handle_chlo(mc->mc_conn.cn_enc_session,
+             mc->mc_conn.cn_version,
+             buf_in, bufsz, t, NP_PEER_SA(&mc->mc_path),
+diff --git a/src/liblsquic/lsquic_qdec_hdl.c b/src/liblsquic/lsquic_qdec_hdl.c
+index b5ebb55..4ee6b75 100644
+--- a/src/liblsquic/lsquic_qdec_hdl.c
++++ b/src/liblsquic/lsquic_qdec_hdl.c
+@@ -112,7 +112,7 @@ qdh_write_type (struct qpack_dec_hdl *qdh)
+     const char *env = getenv("LSQUIC_RND_VARINT_LEN");
+     if (env && atoi(env))
+     {
+-        s = rand() & 3;
++        s = lsquic_rand_u32() & 3;
+         LSQ_DEBUG("writing %d-byte stream type", 1 << s);
+     }
+     else
+diff --git a/src/liblsquic/lsquic_qenc_hdl.c b/src/liblsquic/lsquic_qenc_hdl.c
+index be7c887..f2df1d1 100644
+--- a/src/liblsquic/lsquic_qenc_hdl.c
++++ b/src/liblsquic/lsquic_qenc_hdl.c
+@@ -45,7 +45,7 @@ qeh_write_type (struct qpack_enc_hdl *qeh)
+     const char *env = getenv("LSQUIC_RND_VARINT_LEN");
+     if (env && atoi(env))
+     {
+-        s = rand() & 3;
++        s = lsquic_rand_u32() & 3;
+         LSQ_DEBUG("writing %d-byte stream type", 1 << s);
+     }
+     else
+diff --git a/src/liblsquic/lsquic_stock_shi.c b/src/liblsquic/lsquic_stock_shi.c
+index 2518c49..8ef9db6 100644
+--- a/src/liblsquic/lsquic_stock_shi.c
++++ b/src/liblsquic/lsquic_stock_shi.c
+@@ -13,6 +13,7 @@
+ #include "lsquic_stock_shi.h"
+ #include "lsquic_malo.h"
+ #include "lsquic_hash.h"
++#include "lsquic_util.h"
+ 
+ struct stock_shared_hash
+ {
+@@ -51,7 +52,7 @@ static void
+ delete_expired_elements (struct stock_shared_hash *hash)
+ {
+     struct hash_elem *he;
+-    time_t now = time(NULL);
++    time_t now = lsquic_time_now_sec();
+     while ((he = TAILQ_FIRST(&hash->lru_elems)))
+     {
+         if (he->expiry < now)
+diff --git a/src/liblsquic/lsquic_tokgen.c b/src/liblsquic/lsquic_tokgen.c
+index b74bdae..208adaf 100644
+--- a/src/liblsquic/lsquic_tokgen.c
++++ b/src/liblsquic/lsquic_tokgen.c
+@@ -191,7 +191,7 @@ get_or_generate_state (struct lsquic_engine_public *enpub, time_t now,
+     assert(s == 0);
+     LSQ_DEBUG("%s does not exist: generate", TOKGEN_SHM_KEY);
+   generate:
+-    now = time(NULL);
++    now = lsquic_time_now_sec();
+     memset(shm_state, 0, sizeof(*shm_state));
+     shm_state->tgss_version = TOKGEN_VERSION;
+     memcpy(shm_state->tgss_magic_top, TOKGEN_SHM_MAGIC_TOP,
+@@ -255,7 +255,7 @@ lsquic_tg_new (struct lsquic_engine_public *enpub)
+     if (!tokgen)
+         goto err;
+ 
+-    now = time(NULL);
++    now = lsquic_time_now_sec();
+     if (0 != get_or_generate_state(enpub, now, &shm_state))
+         goto err;
+ 
+@@ -560,7 +560,7 @@ lsquic_tg_validate_token (struct token_generator *tokgen,
+     if (p + sizeof(issued_at) > end)
+         goto too_short;
+     memcpy(&issued_at, p, sizeof(issued_at));
+-    now = time(NULL);
++    now = lsquic_time_now_sec();
+     if (issued_at + ttl < now)
+     {
+         LSQ_DEBUGC("%s token for connection %"CID_FMT" expired %lu "
+@@ -722,7 +722,7 @@ tokgen_generate_token (struct token_generator *tokgen,
+         crypter->nonce_prk_buf, crypter->nonce_prk_sz, label, sizeof(label));
+     p += RETRY_NONCE_LEN;
+     *p++ = TOKGEN_VERSION;
+-    now = time(NULL);
++    now = lsquic_time_now_sec();
+     memcpy(p, &now, sizeof(now));
+     p += sizeof(now);
+ 
+diff --git a/src/liblsquic/lsquic_util.c b/src/liblsquic/lsquic_util.c
+index 2f24130..5659ea8 100644
+--- a/src/liblsquic/lsquic_util.c
++++ b/src/liblsquic/lsquic_util.c
+@@ -145,6 +145,49 @@ lsquic_time_now (void)
+ }
+ 
+ 
++time_t
++lsquic_time_now_sec (void)
++{
++    return (time_t) (lsquic_time_now() / 1000000);
++}
++
++
++uint32_t
++lsquic_rand_u32 (void)
++{
++    static int initialized;
++    static uint32_t state;
++    const char *fake_env;
++    const char *seed_env;
++    char *endptr;
++
++    if (!initialized)
++    {
++        initialized = 1;
++        fake_env = getenv("FAKE_RANDOM");
++        seed_env = getenv("FAKERANDOM_SEED");
++        if (fake_env && fake_env[0] && strcmp(fake_env, "0") != 0)
++        {
++            if (seed_env && seed_env[0])
++            {
++                unsigned long parsed = strtoul(seed_env, &endptr, 10);
++                if (endptr != seed_env)
++                    state = (uint32_t) parsed;
++            }
++            if (state == 0)
++                state = 1u;
++        }
++        else
++            state = (uint32_t) lsquic_time_now() ^ (uint32_t) (uintptr_t) &state;
++    }
++
++    state = state * 1664525u + 1013904223u;
++    if (state == 0)
++        state = 1u;
++    return state;
++}
++
++
+ int
+ lsquic_is_zero (const void *pbuf, size_t bufsz)
+ {
+diff --git a/src/liblsquic/lsquic_util.h b/src/liblsquic/lsquic_util.h
+index 4209c70..e6e07ff 100644
+--- a/src/liblsquic/lsquic_util.h
++++ b/src/liblsquic/lsquic_util.h
+@@ -6,6 +6,10 @@
+ #ifndef LSQUIC_UTIL_H
+ #define LSQUIC_UTIL_H 1
+ 
++#include <stdint.h>
++#include <time.h>
++#include "lsquic_int_types.h"
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -15,6 +19,12 @@ struct sockaddr;
+ lsquic_time_t
+ lsquic_time_now (void);
+ 
++time_t
++lsquic_time_now_sec (void);
++
++uint32_t
++lsquic_rand_u32 (void);
++
+ void
+ lsquic_init_timers (void);
+ 

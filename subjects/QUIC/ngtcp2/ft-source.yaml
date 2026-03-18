@@ -1,0 +1,13 @@
+source:
+  bin-path: "/home/user/profuzzbench/target/ft/generator/ngtcp2/examples/wsslclient"
+  env:
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/target/release"
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-03-11 12:00:00"
+  arguments: ["--exit-on-first-stream-close", "127.0.0.1", "4433", "https://127.0.0.1:4433/"]
+  working-dir: "/home/user/profuzzbench/target/ft/generator/ngtcp2"
+  input-type: Udp
+  output-type: Udp
+  is-server: false
+  log-stdout: true
+  log-stderr: true
