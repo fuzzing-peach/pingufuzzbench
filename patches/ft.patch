@@ -1348,7 +1348,7 @@ index 8886de7..503bc47 100644
 +pub fn wait_listening(pid: i32, port: u16, v4: bool, timeout: Duration) -> Result<()> {
 +    let start = Instant::now();
 +    loop {
-+        if is_listening(pid, port, v4)? {
++        if is_listening(pid, port, v4)? || is_listening(pid, port, !v4)? {
 +            return Ok(());
 +        }
 +        log::trace!(

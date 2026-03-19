@@ -159,7 +159,9 @@ function _run_msquic_server_for_replay {
         "${bin_path}" \
         -server \
         -cert_file:${cert_dir}/fullchain.crt \
-        -key_file:${cert_dir}/server.key >/tmp/msquic-replay.log 2>&1 &
+        -key_file:${cert_dir}/server.key \
+        -listen:0.0.0.0 \
+        -port:${MSQUIC_FUZZ_PORT} >/tmp/msquic-replay.log 2>&1 &
     local server_pid=$!
 
     sleep 1
@@ -225,6 +227,8 @@ function _ensure_msquic_repo {
 function build_aflnet {
     _ensure_msquic_repo || return 1
 
+    local target_root
+    target_root=$(_target_root)
     local afl_cc="${HOME}/aflnet/afl-clang-fast"
     local afl_cxx="${HOME}/aflnet/afl-clang-fast++"
     if [ ! -x "${afl_cc}" ] || [ ! -x "${afl_cxx}" ]; then
@@ -233,9 +237,9 @@ function build_aflnet {
     fi
     echo "[+] build_aflnet compiler: CC=${afl_cc} CXX=${afl_cxx}"
 
-    mkdir -p target/aflnet
-    rm -rf target/aflnet/*
-    cp -r repo/msquic target/aflnet/msquic
+    mkdir -p "${target_root}/aflnet"
+    rm -rf "${target_root}/aflnet"/*
+    cp -r repo/msquic "${target_root}/aflnet/msquic"
 
     _configure_and_build_msquic \
         "${afl_cc}" \
@@ -243,11 +247,11 @@ function build_aflnet {
         "-g -O2 -fsanitize=address" \
         "-g -O2 -fsanitize=address" \
         "-fsanitize=address" \
-        "${HOME}/target/aflnet/msquic" \
-        "${HOME}/target/aflnet/msquic/build" || return 1
+        "${target_root}/aflnet/msquic" \
+        "${target_root}/aflnet/msquic/build" || return 1
 
     local bin
-    bin=$(_resolve_quicsample "${HOME}/target/aflnet/msquic/build" || true)
+    bin=$(_resolve_quicsample "${target_root}/aflnet/msquic/build" || true)
     if [ -z "${bin}" ]; then
         echo "[!] build_aflnet failed: quicsample not found"
         return 1
@@ -294,7 +298,9 @@ function run_aflnet {
         "${server_bin}" \
         -server \
         -cert_file:${cert_dir}/fullchain.crt \
-        -key_file:${cert_dir}/server.key || true
+        -key_file:${cert_dir}/server.key \
+        -listen:0.0.0.0 \
+        -port:${MSQUIC_FUZZ_PORT} || true
 
     pushd "${target_root}/gcov/msquic/build" >/dev/null
     local gcov_exec="gcov"
@@ -516,49 +522,34 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    _checkout_ngtcp2_stack || return 1
+    _ensure_msquic_repo || return 1
 
     local target_root
     target_root=$(_target_root)
-    mkdir -p target/ft/generator
-    rm -rf target/ft/generator/*
-    cp -r repo/wolfssl target/ft/generator/wolfssl
-    cp -r repo/nghttp3 target/ft/generator/nghttp3
-    cp -r repo/ngtcp2 target/ft/generator/ngtcp2
+    mkdir -p "${target_root}/ft/generator"
+    rm -rf "${target_root}/ft/generator"/*
+    cp -r repo/msquic "${target_root}/ft/generator/msquic"
 
-    pushd target/ft/generator/wolfssl >/dev/null
-    autoreconf -i
-    export CC=gcc
-    export CXX=g++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    ./configure --prefix="${PWD}/build" --enable-all --enable-aesni --enable-harden --enable-ech
-    make ${MAKE_OPT}
-    make install
-    popd >/dev/null
-
-    pushd target/ft/generator/nghttp3 >/dev/null
-    autoreconf -i
-    ./configure --prefix="${PWD}/build" --enable-lib-only
-    make ${MAKE_OPT}
-    make install
-    popd >/dev/null
-
-    pushd target/ft/generator/ngtcp2 >/dev/null
-    autoreconf -i
-    export FT_CALL_INJECTION=1
-    export FT_HOOK_INS=branch,load,store,select,switch
-    export CC="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast"
-    export CXX="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++"
-    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    pushd "${target_root}/ft/generator/msquic" >/dev/null
+    export FT_CALL_INJECTION=0
+    export FT_HOOK_INS=branch
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
-    export PKG_CONFIG_PATH="${target_root}/ft/generator/wolfssl/build/lib/pkgconfig:${target_root}/ft/generator/nghttp3/build/lib/pkgconfig"
-    ./configure --with-wolfssl --disable-shared --enable-static
-    make ${MAKE_OPT}
-    if [ ! -x "${PWD}/examples/wsslclient" ]; then
-        echo "[!] build_ft_generator failed: ${PWD}/examples/wsslclient not found"
+    export LD_LIBRARY_PATH="${HOME}/fuzztruction-net/target/release:${LD_LIBRARY_PATH:-}"
+
+    _configure_and_build_msquic \
+        "${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast" \
+        "${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++" \
+        "-O3 -g -DFT_FUZZING -DFT_GENERATOR" \
+        "-O3 -g -DFT_FUZZING -DFT_GENERATOR" \
+        "" \
+        "${target_root}/ft/generator/msquic" \
+        "${target_root}/ft/generator/msquic/build" || return 1
+
+    local gen_bin
+    gen_bin=$(_resolve_quicsample "${target_root}/ft/generator/msquic/build" || true)
+    if [ -z "${gen_bin}" ]; then
+        echo "[!] build_ft_generator failed: quicsample not found under ${target_root}/ft/generator/msquic/build"
         popd >/dev/null
         return 1
     fi
@@ -567,10 +558,12 @@ function build_ft_generator {
 
 function build_ft_consumer {
     _ensure_msquic_repo || return 1
+    local target_root
+    target_root=$(_target_root)
 
-    mkdir -p target/ft/consumer
-    rm -rf target/ft/consumer/*
-    cp -r repo/msquic target/ft/consumer/msquic
+    mkdir -p "${target_root}/ft/consumer"
+    rm -rf "${target_root}/ft/consumer"/*
+    cp -r repo/msquic "${target_root}/ft/consumer/msquic"
 
     local afl_path="${HOME}/fuzztruction-net/consumer/aflpp-consumer"
     _configure_and_build_msquic \
@@ -579,8 +572,8 @@ function build_ft_consumer {
         "-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER" \
         "-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER" \
         "-fsanitize=address" \
-        "${HOME}/target/ft/consumer/msquic" \
-        "${HOME}/target/ft/consumer/msquic/build" || return 1
+        "${target_root}/ft/consumer/msquic" \
+        "${target_root}/ft/consumer/msquic/build" || return 1
 }
 
 function run_ft {
@@ -591,7 +584,16 @@ function run_ft {
 
     local target_root
     target_root=$(_target_root)
+    local source_yaml="${HOME}/profuzzbench/subjects/QUIC/msquic/ft-source.yaml"
+    local sink_yaml="${HOME}/profuzzbench/subjects/QUIC/msquic/ft-sink.yaml"
+    if [ ! -f "${source_yaml}" ] || [ ! -f "${sink_yaml}" ]; then
+        echo "[!] run_ft failed: missing ft yaml(s): ${source_yaml} or ${sink_yaml}"
+        return 1
+    fi
     pushd "${target_root}/ft" >/dev/null
+    export LD_LIBRARY_PATH="${HOME}/fuzztruction-net/target/release:${LD_LIBRARY_PATH:-}"
+    echo "${HOME}/fuzztruction-net/target/release" | sudo tee /etc/ld.so.conf.d/fuzztruction-net.conf >/dev/null
+    sudo ldconfig
 
     local temp_file
     temp_file=$(mktemp)
@@ -603,11 +605,11 @@ function run_ft {
     printf "\n" >> ft.yaml
     rm -f "${temp_file}"
 
-    cat "${HOME}/profuzzbench/subjects/QUIC/msquic/ft-source.yaml" >> ft.yaml
-    cat "${HOME}/profuzzbench/subjects/QUIC/msquic/ft-sink.yaml" >> ft.yaml
+    cat "${source_yaml}" >> ft.yaml
+    cat "${sink_yaml}" >> ft.yaml
 
-    sudo "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info --purge ft.yaml fuzz -t "${timeout}s"
-    sudo "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info ft.yaml gcov -t 3s --replay-step "${replay_step}" --gcov-step "${gcov_step}"
+    sudo -E "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level trace --purge ft.yaml fuzz -t "${timeout}s" || return 1
+    sudo -E "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level trace ft.yaml gcov -t 3s --replay-step "${replay_step}" --gcov-step "${gcov_step}" || return 1
     sudo chmod -R 755 "${work_dir}"
     sudo chown -R "$(id -u):$(id -g)" "${work_dir}"
 
@@ -616,10 +618,12 @@ function run_ft {
 
 function build_asan {
     _ensure_msquic_repo || return 1
+    local target_root
+    target_root=$(_target_root)
 
-    mkdir -p target/asan
-    rm -rf target/asan/*
-    cp -r repo/msquic target/asan/msquic
+    mkdir -p "${target_root}/asan"
+    rm -rf "${target_root}/asan"/*
+    cp -r repo/msquic "${target_root}/asan/msquic"
 
     _configure_and_build_msquic \
         "gcc" \
@@ -627,16 +631,18 @@ function build_asan {
         "-O0 -g -fsanitize=address" \
         "-O0 -g -fsanitize=address" \
         "-fsanitize=address" \
-        "${HOME}/target/asan/msquic" \
-        "${HOME}/target/asan/msquic/build" || return 1
+        "${target_root}/asan/msquic" \
+        "${target_root}/asan/msquic/build" || return 1
 }
 
 function build_gcov {
     _ensure_msquic_repo || return 1
+    local target_root
+    target_root=$(_target_root)
 
-    mkdir -p target/gcov
-    rm -rf target/gcov/*
-    cp -r repo/msquic target/gcov/msquic
+    mkdir -p "${target_root}/gcov"
+    rm -rf "${target_root}/gcov"/*
+    cp -r repo/msquic "${target_root}/gcov/msquic"
 
     _configure_and_build_msquic \
         "gcc" \
@@ -644,28 +650,13 @@ function build_gcov {
         "-O0 -g -fprofile-arcs -ftest-coverage" \
         "-O0 -g -fprofile-arcs -ftest-coverage" \
         "-fprofile-arcs -ftest-coverage" \
-        "${HOME}/target/gcov/msquic" \
-        "${HOME}/target/gcov/msquic/build" || return 1
+        "${target_root}/gcov/msquic" \
+        "${target_root}/gcov/msquic/build" || return 1
 }
 
 function install_dependencies {
-    sudo mkdir -p /var/lib/apt/lists/partial
-    sudo apt-get update
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        autoconf automake bear build-essential ca-certificates clang-17 cmake curl \
-        gcovr git libev-dev libnuma-dev libtool llvm-17 make pkg-config python3 wget
-
-    if ! command -v wllvm >/dev/null 2>&1; then
-        sudo apt-get install -y --no-install-recommends python3-pip || true
-        pip3 install --user wllvm --break-system-packages || true
-    fi
-
-    if command -v clang-17 >/dev/null 2>&1; then
-        sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 100 || true
-        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 100 || true
-    fi
-
-    if command -v llvm-config-17 >/dev/null 2>&1; then
-        sudo ln -sf /usr/bin/llvm-config-17 /usr/bin/llvm-config || true
-    fi
+    sudo -E mkdir -p /var/lib/apt/lists/partial
+    sudo -E apt-get update
+    sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        libev-dev libnuma-dev
 }

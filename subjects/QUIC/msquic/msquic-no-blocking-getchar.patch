@@ -1,13 +1,24 @@
 diff --git a/src/tools/sample/sample.c b/src/tools/sample/sample.c
-index d13993fe..d94aa2c5 100644
+index d13993fe..a8b487f1 100644
 --- a/src/tools/sample/sample.c
 +++ b/src/tools/sample/sample.c
-@@ -669,7 +669,7 @@ RunServer(
+@@ -54,6 +54,7 @@
+ #include "msquic.h"
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <unistd.h>
+ 
+ #ifndef UNREFERENCED_PARAMETER
+ #define UNREFERENCED_PARAMETER(P) (void)(P)
+@@ -669,7 +669,10 @@ RunServer(
      // Continue listening for connections until the Enter key is pressed.
      //
      printf("Press Enter to exit.\n\n");
 -    (void)getchar();
-+    // (void)getchar();  // disabled for non-interactive fuzzing/replay workflows
++    // Non-interactive mode for fuzzing: keep the server alive until externally terminated.
++    while (1) {
++        sleep(1);
++    }
  
  Error:
  
