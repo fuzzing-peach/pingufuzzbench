@@ -1909,3 +1909,18 @@ index f0465c8..5afe57c 100644
              })
              .collect::<Vec<_>>();
  
+
+diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
+--- a/scheduler/src/constants.rs
++++ b/scheduler/src/constants.rs
+@@ -14,8 +14,8 @@ pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
+ /// Max execution count for one particular mutation site.
+ /// Sites executed more often than this are ignored.
+ pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
+-pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
+-pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(10);
++pub const CALIBRATION_MEASURE_CYCLES: u64 = 5;
++pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(3);
+ 
+ pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
+ pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;

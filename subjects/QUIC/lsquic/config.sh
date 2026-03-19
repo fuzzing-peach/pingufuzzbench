@@ -195,18 +195,10 @@ function _resolve_boringssl_static_libs {
 
 function checkout {
     local target_ref="${1:-$LSQUIC_BASELINE}"
-    mkdir -p .git-cache repo
-
-    if [ ! -d ".git-cache/lsquic/.git" ]; then
-        git_clone_retry https://github.com/litespeedtech/lsquic.git .git-cache/lsquic || return 1
-    else
-        pushd .git-cache/lsquic >/dev/null
-        git fetch --all --tags || true
-        popd >/dev/null
-    fi
+    mkdir -p repo
 
     rm -rf repo/lsquic
-    cp -r .git-cache/lsquic repo/lsquic
+    git_clone_retry https://github.com/litespeedtech/lsquic.git repo/lsquic || return 1
     pushd repo/lsquic >/dev/null
     git checkout "${LSQUIC_BASELINE}"
     git submodule update --init --recursive
@@ -220,57 +212,29 @@ function checkout {
     fi
     popd >/dev/null
 
-    if [ ! -d ".git-cache/boringssl/.git" ]; then
-        clone_boringssl_retry .git-cache/boringssl || return 1
-    else
-        pushd .git-cache/boringssl >/dev/null
-        git fetch --all --tags || true
-        popd >/dev/null
-    fi
-
     rm -rf repo/boringssl
-    cp -r .git-cache/boringssl repo/boringssl
+    clone_boringssl_retry repo/boringssl || return 1
     pushd repo/boringssl >/dev/null
     git checkout "${BORINGSSL_BASELINE}" || true
     git apply "${PFB_ROOT}/subjects/QUIC/lsquic/lsquic-random.patch" || return 1
     maybe_commit_patch "apply boringssl deterministic random patch"
     popd >/dev/null
 
-    if [ ! -d ".git-cache/ngtcp2/.git" ]; then
-        git_clone_retry https://github.com/ngtcp2/ngtcp2 .git-cache/ngtcp2 || return 1
-    else
-        pushd .git-cache/ngtcp2 >/dev/null
-        git fetch --all --tags || true
-        popd >/dev/null
-    fi
     rm -rf repo/ngtcp2
-    cp -r .git-cache/ngtcp2 repo/ngtcp2
+    git_clone_retry https://github.com/ngtcp2/ngtcp2 repo/ngtcp2 || return 1
     pushd repo/ngtcp2 >/dev/null
     git checkout "${NGTCP2_BASELINE}"
+    git submodule update --init --recursive
     popd >/dev/null
 
-    if [ ! -d ".git-cache/wolfssl/.git" ]; then
-        git_clone_retry https://github.com/wolfSSL/wolfssl .git-cache/wolfssl || return 1
-    else
-        pushd .git-cache/wolfssl >/dev/null
-        git fetch --all --tags || true
-        popd >/dev/null
-    fi
     rm -rf repo/wolfssl
-    cp -r .git-cache/wolfssl repo/wolfssl
+    git_clone_retry https://github.com/wolfSSL/wolfssl repo/wolfssl || return 1
     pushd repo/wolfssl >/dev/null
     git checkout "${WOLFSSL_BASELINE}"
     popd >/dev/null
 
-    if [ ! -d ".git-cache/nghttp3/.git" ]; then
-        git_clone_retry https://github.com/ngtcp2/nghttp3 .git-cache/nghttp3 || return 1
-    else
-        pushd .git-cache/nghttp3 >/dev/null
-        git fetch --all --tags || true
-        popd >/dev/null
-    fi
     rm -rf repo/nghttp3
-    cp -r .git-cache/nghttp3 repo/nghttp3
+    git_clone_retry https://github.com/ngtcp2/nghttp3 repo/nghttp3 || return 1
     pushd repo/nghttp3 >/dev/null
     git checkout "${NGHTTP3_BASELINE}"
     git submodule update --init --recursive
@@ -278,21 +242,21 @@ function checkout {
 }
 
 function install_dependencies {
-    sudo mkdir -p /var/lib/apt/lists/partial
-    sudo apt-get update
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    local proxy_http="${HTTP_PROXY:-${http_proxy:-}}"
+    local proxy_https="${HTTPS_PROXY:-${https_proxy:-}}"
+
+    sudo mkdir -p /var/lib/apt/lists/partial /var/cache/apt/archives/partial
+    sudo env \
+        HTTP_PROXY="${proxy_http}" HTTPS_PROXY="${proxy_https}" \
+        http_proxy="${proxy_http}" https_proxy="${proxy_https}" \
+        apt-get update
+    sudo env \
+        HTTP_PROXY="${proxy_http}" HTTPS_PROXY="${proxy_https}" \
+        http_proxy="${proxy_http}" https_proxy="${proxy_https}" \
+        DEBIAN_FRONTEND=noninteractive apt-get \
+        install -y --no-install-recommends \
         libevent-dev \
-        libev-dev \
-        zlib1g-dev \
-        cmake \
-        golang-go \
-        autoconf \
-        automake \
-        libtool \
-        pkg-config \
-        python3-pip
-    python3 -m pip install --user --break-system-packages wllvm || true
-    sudo rm -rf /var/lib/apt/lists/*
+        zlib1g-dev
 }
 
 function replay {
@@ -303,8 +267,9 @@ function replay {
 
     LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
         ./build/bin/http_server \
+        -Q hq-29 \
         -s 127.0.0.1:4433 \
-        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
+        -c "localhost,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
     local server_pid=$!
 
     _wait_udp_port 4433 40 || true
@@ -360,8 +325,9 @@ function run_aflnet {
         -P NOP -D 10000 -q 3 -s 3 -K -R -W 100 -m none \
         -- \
         "${HOME}/target/aflnet/lsquic/build/bin/http_server" \
+        -Q hq-29 \
         -s 127.0.0.1:4433 \
-        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" || true
+        -c "localhost,${certs}/fullchain.crt,${certs}/server.key" || true
 
     cd "${HOME}/target/gcov/lsquic"
     _fix_lsq_gcov_symlinks
@@ -519,8 +485,9 @@ function run_sgfuzz {
 
     ./http_server "${SGFuzz_ARGS[@]}" \
         -- \
+        -Q hq-29 \
         -s 127.0.0.1:4433 \
-        -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key"
+        -c "localhost,${certs}/fullchain.crt,${certs}/server.key"
 
     python3 "${PFB_ROOT}/scripts/sort_libfuzzer_findings.py" "${queue}" || true
 
@@ -535,8 +502,9 @@ function run_sgfuzz {
 
         LD_PRELOAD=libgcov_preload.so FAKE_RANDOM=1 FAKE_TIME="${fake_time_value}" \
             ./build/bin/http_server \
+            -Q hq-29 \
             -s 127.0.0.1:4433 \
-            -c "www.example.com,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
+            -c "localhost,${certs}/fullchain.crt,${certs}/server.key" >/tmp/lsquic-replay.log 2>&1 &
         local server_pid=$!
 
         _wait_udp_port 4433 40 || true
@@ -568,50 +536,32 @@ function build_ft_generator {
 
     mkdir -p "${HOME}/target/ft/generator"
     rm -rf "${HOME}/target/ft/generator"/*
-    cp -r repo/ngtcp2 "${HOME}/target/ft/generator/ngtcp2"
-    cp -r repo/wolfssl "${HOME}/target/ft/generator/wolfssl"
-    cp -r repo/nghttp3 "${HOME}/target/ft/generator/nghttp3"
+    cp -r repo/lsquic "${HOME}/target/ft/generator/lsquic"
+    cp -r repo/boringssl "${HOME}/target/ft/generator/boringssl"
 
-    pushd "${HOME}/target/ft/generator/wolfssl" >/dev/null
-    autoreconf -i
-    export CC=gcc
-    export CXX=g++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    ./configure --prefix="${PWD}/build" --enable-all --enable-aesni --enable-harden --enable-ech
-    make ${MAKE_OPT}
-    make install
-    popd >/dev/null
+    _configure_build_boringssl \
+        "${HOME}/target/ft/generator/boringssl" \
+        "gcc" "g++" "-O2 -g" "-O2 -g" ""
 
-    pushd "${HOME}/target/ft/generator/nghttp3" >/dev/null
-    autoreconf -i
-    export CC=gcc
-    export CXX=g++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    ./configure --prefix="${PWD}/build" --enable-lib-only
-    make ${MAKE_OPT}
-    make install
-    popd >/dev/null
-
-    pushd "${HOME}/target/ft/generator/ngtcp2" >/dev/null
-    autoreconf -i
     export FT_CALL_INJECTION=1
     export FT_HOOK_INS=branch,load,store,select,switch
-    export CC="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast"
-    export CXX="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++"
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
-    export PKG_CONFIG_PATH="${HOME}/target/ft/generator/wolfssl/build/lib/pkgconfig:${HOME}/target/ft/generator/nghttp3/build/lib/pkgconfig"
-    ./configure --with-wolfssl --disable-shared --enable-static
-    make ${MAKE_OPT}
+    export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
+    export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release"
+    export LD_LIBRARY_PATH="${GENERATOR_AGENT_SO_DIR}:${LD_LIBRARY_PATH}"
 
-    if [ ! -x "${PWD}/examples/wsslclient" ]; then
-        echo "[!] build_ft_generator failed: examples/wsslclient not found"
-        popd >/dev/null
+    _configure_build_lsquic \
+        "${HOME}/target/ft/generator/lsquic" \
+        "${HOME}/target/ft/generator/boringssl" \
+        "${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast" \
+        "${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast++" \
+        "-O3 -g -DFT_FUZZING -DFT_GENERATOR" \
+        "-O3 -g -DFT_FUZZING -DFT_GENERATOR" \
+        ""
+
+    if [ ! -x "${HOME}/target/ft/generator/lsquic/build/bin/http_client" ]; then
+        echo "[!] build_ft_generator failed: build/bin/http_client not found"
         return 1
     fi
-    popd >/dev/null
 }
 
 function build_ft_consumer {
@@ -642,29 +592,53 @@ function run_ft {
     local gcov_step=$2
     local timeout=$3
     local work_dir=/tmp/fuzzing-output
+    local ft_bin="${HOME}/fuzztruction-net/target/release/fuzztruction"
+    local ft_common_yaml="${PFB_ROOT}/ft-common.yaml"
+    local ft_source_yaml="${PFB_ROOT}/subjects/QUIC/lsquic/ft-source.yaml"
+    local ft_sink_yaml="${PFB_ROOT}/subjects/QUIC/lsquic/ft-sink.yaml"
+    local source_bin="${HOME}/target/ft/generator/lsquic/build/bin/http_client"
+    local sink_bin="${HOME}/target/ft/consumer/lsquic/build/bin/http_server"
+    local gcov_bin="${HOME}/target/gcov/lsquic/build/bin/http_server"
 
     pushd "${HOME}/target/ft" >/dev/null
+    mkdir -p "${work_dir}"
 
+    echo "[FT] generating ft.yaml"
     local temp_file
     temp_file=$(mktemp)
     sed -e "s|WORK-DIRECTORY|${work_dir}|g" \
         -e "s|UID|$(id -u)|g" \
         -e "s|GID|$(id -g)|g" \
-        "${PFB_ROOT}/ft-common.yaml" >"${temp_file}"
+        "${ft_common_yaml}" >"${temp_file}"
     cat "${temp_file}" >ft.yaml
     printf "\n" >>ft.yaml
     rm -f "${temp_file}"
 
-    sed "s|/home/user|${HOME}|g" "${PFB_ROOT}/subjects/QUIC/lsquic/ft-source.yaml" >>ft.yaml
+    sed "s|/home/user|${HOME}|g" "${ft_source_yaml}" >>ft.yaml
     printf "\n" >>ft.yaml
-    sed "s|/home/user|${HOME}|g" "${PFB_ROOT}/subjects/QUIC/lsquic/ft-sink.yaml" >>ft.yaml
+    sed "s|/home/user|${HOME}|g" "${ft_sink_yaml}" >>ft.yaml
 
-    sudo "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info --purge ft.yaml fuzz -t "${timeout}s"
-    sudo "${HOME}/fuzztruction-net/target/release/fuzztruction" --log-level info ft.yaml gcov -t 3s \
+    echo "[FT] validating ft.yaml"
+    grep -Fq "bin-path: \"${source_bin}\"" ft.yaml || { echo "[!] ft.yaml source bin mismatch"; return 1; }
+    grep -Fq "bin-path: \"${sink_bin}\"" ft.yaml || { echo "[!] ft.yaml sink bin mismatch"; return 1; }
+    grep -Fq "bin-path: \"${gcov_bin}\"" ft.yaml || { echo "[!] ft.yaml gcov bin mismatch"; return 1; }
+    grep -Fq 'server-port: "4433"' ft.yaml || { echo "[!] ft.yaml missing server-port 4433"; return 1; }
+    grep -Fq 'server-ready-on: "Bind(0)"' ft.yaml || { echo "[!] ft.yaml missing server-ready-on Bind(0)"; return 1; }
+    grep -Fq "127.0.0.1:4433" ft.yaml || { echo "[!] ft.yaml missing endpoint 127.0.0.1:4433"; return 1; }
+
+    echo "[FT] running fuzz"
+    export LD_LIBRARY_PATH="${HOME}/fuzztruction-net/target/release:${LD_LIBRARY_PATH}"
+    if ! ldconfig -p | grep -q "libgenerator_agent.so"; then
+        echo "${HOME}/fuzztruction-net/target/release" | sudo tee /etc/ld.so.conf.d/fuzztruction-net.conf >/dev/null
+        sudo ldconfig
+    fi
+    sudo LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" "${ft_bin}" --log-level trace --purge ft.yaml fuzz -t "${timeout}s" || return 1
+    pushd "${HOME}/target/gcov/lsquic" >/dev/null
+    _fix_lsq_gcov_symlinks
+    popd >/dev/null
+    echo "[FT] running gcov"
+    sudo LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" "${ft_bin}" --log-level trace ft.yaml gcov -t 3s \
         --replay-step "${replay_step}" --gcov-step "${gcov_step}"
-
-    sudo chmod -R 755 "${work_dir}" || true
-    sudo chown -R "$(id -u):$(id -g)" "${work_dir}" || true
 
     popd >/dev/null
 }
@@ -706,6 +680,8 @@ function build_asan {
 function build_gcov {
 
     _prepare_variant_dir gcov
+    local certs
+    certs=$(cert_dir)
     _configure_build_boringssl \
         "${HOME}/target/gcov/boringssl" \
         "gcc" "g++" "-O0 -g" "-O0 -g" ""
@@ -717,6 +693,7 @@ function build_gcov {
         "-fprofile-arcs -ftest-coverage -O0 -g" \
         "-fprofile-arcs -ftest-coverage -O0 -g" \
         "-fprofile-arcs -ftest-coverage"
+
 }
 
 function cleanup_artifacts {
