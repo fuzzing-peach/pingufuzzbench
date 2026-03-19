@@ -1,40 +1,40 @@
 sink:
-    bin-path: "/home/user/target/ft/consumer/wolfssl/examples/server/server"
-    env:
-        - FAKE_RANDOM: "1"
-        - FAKE_TIME: "2026-02-01 12:00:00"
-    arguments:
-        [
-            "-C",
-            "10",
-            "-p",
-            "4433",
-            "-c",
-            "/home/user/profuzzbench/cert/fullchain.crt",
-            "-k",
-            "/home/user/profuzzbench/cert/server.key",
-            "-L",
-            "C:h2,http/1.1",
-            "-e",
-            "-d",
-            "-r",
-            "-V",
-        ]
-    working-dir: "/home/user/target/ft/consumer/wolfssl/"
-    input-type: Tcp
-    output-type: Tcp
-    is-server: true
-    server-port: "4433"
-    log-stdout: true
-    log-stderr: true
-    allow-unstable-sink: true
-    persistent-server: true
+  bin-path: "/home/user/target/ft/consumer/wolfssl/examples/server/server"
+  env:
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-02-01 12:00:00"
+  arguments:
+    [
+      "-C",
+      "10",
+      "-p",
+      "4433",
+      "-c",
+      "/home/user/profuzzbench/cert/fullchain.crt",
+      "-k",
+      "/home/user/profuzzbench/cert/server.key",
+      "-L",
+      "C:h2,http/1.1",
+      "-e",
+      "-d",
+      "-r",
+      "-V"
+    ]
+  working-dir: "/home/user/target/ft/consumer/wolfssl/"
+  input-type: Tcp
+  output-type: Tcp
+  is-server: true
+  server-port: "4433"
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+  persistent-server: true
 
 gcov:
-    bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
-    cwd: "/home/user/target/gcov/consumer/wolfssl/"
-    env:
-        - LD_PRELOAD: "libgcov_preload.so"
-        - FAKE_RANDOM: "1"
-    src-dir: "/home/user/target/gcov/consumer/wolfssl"
-    reporter: gcovr
+  bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
+  cwd: "/home/user/target/gcov/consumer/wolfssl/"
+  env:
+    - LD_PRELOAD: "libgcov_preload.so"
+    - FAKE_RANDOM: "1"
+  src-dir: "/home/user/target/gcov/consumer/wolfssl"
+  reporter: "gcovr"

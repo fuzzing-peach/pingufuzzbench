@@ -3,19 +3,7 @@ source:
   env:
     - FAKE_RANDOM: "1"
     - FAKE_TIME: "2026-02-01 12:00:00"
-  arguments: [
-    "-r", 
-    "-p", 
-    "4433", 
-    "-A", 
-    "/home/user/profuzzbench/cert/ca.crt",
-    "-L",
-    "C:h2,http/1.1",
-    "-W",
-    "1",
-    "-H",
-    "exitWithRet"
-  ]
+  arguments: ["-r", "-p", "4433", "-A", "/home/user/profuzzbench/cert/ca.crt", "-L", "C:h2,http/1.1", "-W", "1", "-H", "exitWithRet"]
   working-dir: "/home/user/target/ft/generator/wolfssl"
   input-type: Tcp
   output-type: Tcp

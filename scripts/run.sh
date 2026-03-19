@@ -134,6 +134,40 @@ fi
 
 output=$(realpath "$output")
 
+# If .env exists at repo root, forward its variables to `docker run` via `-e`.
+# Supports lines like `KEY=VALUE` or `export KEY=VALUE`; ignores blanks/comments.
+dotenv_env_args=""
+if [[ -f ".env" ]]; then
+    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+        # trim leading/trailing whitespace
+        line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+
+        line="${line#export }"
+        if [[ "$line" =~ ^([^=[:space:]]+)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+
+            # trim value and strip simple surrounding quotes
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            if [[ "$value" =~ ^\".*\"$ ]] || [[ "$value" =~ ^\'.*\'$ ]]; then
+                value="${value:1:${#value}-2}"
+            fi
+
+            # Guard against malformed .env lines that accidentally contain another assignment.
+            if [[ "$value" =~ [A-Za-z_][A-Za-z0-9_]*= ]]; then
+                log_error "[!] Skip malformed .env entry: ${key}=... (contains nested KEY=VALUE)"
+                continue
+            fi
+
+            escaped_kv=$(printf '%q' "${key}=${value}")
+            dotenv_env_args+=" -e ${escaped_kv}"
+        fi
+    done < .env
+fi
+
 cores_per_container=1
 case "$fuzzer" in
     ft | ft-net | pingu)
@@ -210,6 +244,7 @@ for i in $(seq 1 $times); do
         --sysctl fs.mqueue.msg_max=1024 \
         --sysctl fs.mqueue.queues_max=1024 \
         ${afl_env_args} \
+        ${dotenv_env_args} \
         --user $(id -u):$(id -g) \
         -v /etc/localtime:/etc/localtime:ro \
         -v /etc/timezone:/etc/timezone:ro \

@@ -128,7 +128,7 @@ RUN if [ "${ZH_CN}" = "true" ]; then \
     fi && \
     cd fuzztruction-net && \
     git checkout c34408b && \
-    git apply /tmp/patches/ft.patch && \
+    git apply --recount /tmp/patches/ft.patch && \
     echo "nightly-2023-10-10" >> rust-toolchain && \
     ${HOME}/.cargo/bin/cargo build --workspace --release
     

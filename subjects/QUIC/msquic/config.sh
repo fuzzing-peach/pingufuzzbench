@@ -10,11 +10,7 @@ MSQUIC_SUBJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PFB_ROOT_DIR="$(cd "${MSQUIC_SUBJECT_DIR}/../../.." && pwd)"
 
 function _target_root {
-    local root="${HOME}/target"
-    if [ ! -d "${root}" ]; then
-        root="${HOME}/profuzzbench/target"
-    fi
-    echo "${root}"
+    echo "${HOME}/target"
 }
 
 function git_clone_retry {

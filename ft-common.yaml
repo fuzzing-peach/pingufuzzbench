@@ -6,40 +6,40 @@ jail-gid: GID
 # All the following parts: sink-cov, afl-net, state-afl, sgfuzz, vanilla is completed but useless
 # To let the ft configuration parsing normally
 sink-cov:
-    bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_llvm_cov/openssl/apps/openssl"
-    env:
-        - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_llvm_cov/openssl/"
+  bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_llvm_cov/openssl/apps/openssl"
+  env:
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_llvm_cov/openssl/"
 
 afl-net:
-    bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/apps/openssl"
-    env:
-        #- AFL_PRELOAD: "/home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/libssl.so.3 /home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/libcrypto.so.3"
-        - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/"
-    # TCP stream recording of the data exchange between source and sink when executed as specified above.
-    input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/raw"
-    protocol: "TLS"
-    netinfo: tcp://127.0.0.1/44330
-    # fuzzer fails to start with this being true (default)
-    enable-state-aware-mode: false
+  bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/apps/openssl"
+  env:
+    #- AFL_PRELOAD: "/home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/libssl.so.3 /home/user/fuzztruction/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/libcrypto.so.3"
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_afl_net/openssl/"
+  # TCP stream recording of the data exchange between source and sink when executed as specified above.
+  input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/raw"
+  protocol: "TLS"
+  netinfo: tcp://127.0.0.1/44330
+  # fuzzer fails to start with this being true (default)
+  enable-state-aware-mode: false
 
 state-afl:
-    bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_stateafl/openssl/apps/openssl"
-    env:
-        - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_stateafl/openssl/"
-    input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/replayable"
-    protocol: "TLS"
-    netinfo: tcp://127.0.0.1/44330
+  bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_stateafl/openssl/apps/openssl"
+  env:
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_stateafl/openssl/"
+  input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/replayable"
+  protocol: "TLS"
+  netinfo: tcp://127.0.0.1/44330
 
 sgfuzz:
-    bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_sgfuzz/openssl/apps/openssl"
-    arguments: ["s_server", "-key", "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/server/1024/key.pem", "-cert", "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/server/1024/cert.pem", "-accept", "44330", "-www"]
-    env:
-        - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_sgfuzz/openssl/"
-    # TCP stream recording of the data exchange between source and sink when executed as specified above.
-    input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/raw"
-    netinfo: tcp://127.0.0.1/44330
+  bin-path: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_sgfuzz/openssl/apps/openssl"
+  arguments: ["s_server", "-key", "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/server/1024/key.pem", "-cert", "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/server/1024/cert.pem", "-accept", "44330", "-www"]
+  env:
+    - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/binaries/networked/openssl/consumer_sgfuzz/openssl/"
+  # TCP stream recording of the data exchange between source and sink when executed as specified above.
+  input-dir: "/home/user/fuzztruction-net/fuzztruction-experiments/comparison-with-state-of-the-art/configurations/networked/openssl/seeds/raw"
+  netinfo: tcp://127.0.0.1/44330
 
 vanilla:
-    bin-path: "/usr/bin/true"
+  bin-path: "/usr/bin/true"
 
 # When running, the run script will append sink and source configuration to this file:

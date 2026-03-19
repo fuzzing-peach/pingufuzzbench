@@ -827,7 +827,7 @@ index 036e283..cd0f411 100644
          config.validate()?;
          Ok(config)
 diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
-index 463594a..7533d43 100644
+index 463594a..9b04200 100644
 --- a/scheduler/src/constants.rs
 +++ b/scheduler/src/constants.rs
 @@ -5,7 +5,7 @@ use std::time::Duration;
@@ -839,18 +839,20 @@ index 463594a..7533d43 100644
  pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
  pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
  pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
-@@ -18,7 +18,7 @@ pub const FUZZING_LOOP_UPDATE_INTERVAL: Duration = Duration::from_secs(20);
+@@ -17,8 +17,8 @@ pub const FUZZING_LOOP_UPDATE_INTERVAL: Duration = Duration::from_secs(20);
+ /// Max execution count for one particular mutation site.
  /// Sites executed more often than this are ignored.
  pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
- pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
+-pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
 -pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(1);
-+pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(10);
++pub const CALIBRATION_MEASURE_CYCLES: u64 = 5;
++pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(3);
  
  pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
  pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;
 diff --git a/scheduler/src/coverage/grcov.rs b/scheduler/src/coverage/grcov.rs
 new file mode 100644
-index 0000000..2d0c728
+index 0000000..443e235
 --- /dev/null
 +++ b/scheduler/src/coverage/grcov.rs
 @@ -0,0 +1,142 @@
@@ -996,7 +998,6 @@ index 0000000..2d0c728
 +    }
 +    Ok(())
 +}
-\ No newline at end of file
 diff --git a/scheduler/src/coverage/mod.rs b/scheduler/src/coverage/mod.rs
 index bdedb83..0ed5e02 100644
 --- a/scheduler/src/coverage/mod.rs
@@ -1010,7 +1011,7 @@ index bdedb83..0ed5e02 100644
  pub mod sgfuzz;
  pub mod stateafl;
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..503bc47 100644
+index 8886de7..ea7bcfc 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
 @@ -1,26 +1,58 @@
@@ -1340,7 +1341,7 @@ index 8886de7..503bc47 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -183,3 +469,88 @@ pub fn compute_llvm_cov(
+@@ -183,3 +473,88 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -1429,6 +1430,50 @@ index 8886de7..503bc47 100644
 +
 +    Ok(false)
 +}
+diff --git a/scheduler/src/fuzzer/queue.rs b/scheduler/src/fuzzer/queue.rs
+index f0465c8..5afe57c 100644
+--- a/scheduler/src/fuzzer/queue.rs
++++ b/scheduler/src/fuzzer/queue.rs
+@@ -664,15 +664,33 @@ impl Queue {
+ 
+         let entries = files
+             .par_iter()
+-            .map(|file| {
+-                let content = fs::read(file).unwrap();
++            .filter_map(|file| {
++                let content = match fs::read(file) {
++                    Ok(v) => v,
++                    Err(e) => {
++                        log::warn!("Skip unreadable queue file {:?}: {}", file, e);
++                        return None;
++                    }
++                };
++
+                 let mut decompressed = Vec::new();
+                 let mut decompressor = ZlibDecoder::new(&mut decompressed);
+-                decompressor.write_all(&content).unwrap();
+-                decompressor.finish().unwrap();
++                if let Err(e) = decompressor.write_all(&content) {
++                    log::warn!("Skip corrupted queue file {:?} (decompress): {}", file, e);
++                    return None;
++                }
++                if let Err(e) = decompressor.finish() {
++                    log::warn!("Skip corrupted queue file {:?} (finish): {}", file, e);
++                    return None;
++                }
+ 
+-                let qe: QueueEntry = serde_json::from_slice(&decompressed).unwrap();
+-                qe
++                match serde_json::from_slice::<QueueEntry>(&decompressed) {
++                    Ok(qe) => Some(qe),
++                    Err(e) => {
++                        log::warn!("Skip invalid queue entry {:?} (json): {}", file, e);
++                        None
++                    }
++                }
+             })
+             .collect::<Vec<_>>();
+ 
 diff --git a/scheduler/src/fuzzer/worker_impl/init.rs b/scheduler/src/fuzzer/worker_impl/init.rs
 index 728d127..a2d288b 100644
 --- a/scheduler/src/fuzzer/worker_impl/init.rs
@@ -1864,63 +1909,3 @@ index 549ac57..aafd5d1 100644
  /// Check that some constraints hold for the patch points:
  ///     - VMAs are unique
  ///     - PatchPointIDs are unique
-
-diff --git a/scheduler/src/fuzzer/queue.rs b/scheduler/src/fuzzer/queue.rs
-index f0465c8..5afe57c 100644
---- a/scheduler/src/fuzzer/queue.rs
-+++ b/scheduler/src/fuzzer/queue.rs
-@@ -664,15 +664,33 @@ impl Queue {
- 
-         let entries = files
-             .par_iter()
--            .map(|file| {
--                let content = fs::read(file).unwrap();
-+            .filter_map(|file| {
-+                let content = match fs::read(file) {
-+                    Ok(v) => v,
-+                    Err(e) => {
-+                        log::warn!("Skip unreadable queue file {:?}: {}", file, e);
-+                        return None;
-+                    }
-+                };
-+
-                 let mut decompressed = Vec::new();
-                 let mut decompressor = ZlibDecoder::new(&mut decompressed);
--                decompressor.write_all(&content).unwrap();
--                decompressor.finish().unwrap();
-+                if let Err(e) = decompressor.write_all(&content) {
-+                    log::warn!("Skip corrupted queue file {:?} (decompress): {}", file, e);
-+                    return None;
-+                }
-+                if let Err(e) = decompressor.finish() {
-+                    log::warn!("Skip corrupted queue file {:?} (finish): {}", file, e);
-+                    return None;
-+                }
- 
--                let qe: QueueEntry = serde_json::from_slice(&decompressed).unwrap();
--                qe
-+                match serde_json::from_slice::<QueueEntry>(&decompressed) {
-+                    Ok(qe) => Some(qe),
-+                    Err(e) => {
-+                        log::warn!("Skip invalid queue entry {:?} (json): {}", file, e);
-+                        None
-+                    }
-+                }
-             })
-             .collect::<Vec<_>>();
- 
-
-diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
---- a/scheduler/src/constants.rs
-+++ b/scheduler/src/constants.rs
-@@ -14,8 +14,8 @@ pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
- /// Max execution count for one particular mutation site.
- /// Sites executed more often than this are ignored.
- pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
--pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
--pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(10);
-+pub const CALIBRATION_MEASURE_CYCLES: u64 = 5;
-+pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(3);
- 
- pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
- pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;

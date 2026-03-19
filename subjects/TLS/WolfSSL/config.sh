@@ -499,6 +499,7 @@ function build_pingu_consumer {
 
 function run_pingu {
     local timeout
+    local SUDO="sudo -E"
     consumer="WolfSSL"
     local replay_step="${1:-1}"
     local gcov_step="${2:-1}"
@@ -518,33 +519,27 @@ function run_pingu {
     fi
     pushd ${HOME}/target/pingu/ >/dev/null
 
-    # synthesize the pingu configuration yaml
-    # according to the targeted fuzzer and generated
-    temp_file=$(mktemp)
-    local pingu_common_cfg=${HOME}/profuzzbench/pingu-common.yaml
-    if [ ! -f "${pingu_common_cfg}" ]; then
-        pingu_common_cfg=${HOME}/profuzzbench/pingu.yaml
+    # synthesize the pingu configuration yaml from a merged target-local template
+    local pingu_cfg_template=${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu.yaml
+    if [ ! -f "${pingu_cfg_template}" ]; then
+        log_error "[!] Missing merged pingu config: ${pingu_cfg_template}"
+        return 1
     fi
     sed -e "s|WORK-DIRECTORY|$work_dir|g" \
         -e "s|UID|$(id -u)|g" \
         -e "s|GID|$(id -g)|g" \
-        -e "s|TIMEOUT|${timeout}s|g" \
-        "${pingu_common_cfg}" >"$temp_file"
-    cat "$temp_file" >pingu.yaml
-    printf "\n" >>pingu.yaml
-    rm "$temp_file"
-    cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
-    cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
+        "${pingu_cfg_template}" >pingu.yaml
 
     # running pingu (campaign duration is controlled externally)
-    sudo timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
+    ${SUDO} timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
 
     # collecting coverage results
-    sudo "${pingu_bin}" pingu.yaml -vvv gcov --pcap --purge
-    sudo chmod -R 755 $work_dir
-    sudo chown -R $(id -u):$(id -g) $work_dir
+    ${SUDO} "${pingu_bin}" pingu.yaml -vvv gcov --purge
+    ${SUDO} chmod -R 755 $work_dir
+    ${SUDO} chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl
-    grcov --branch --threads 2 -s . -t html -o ${work_dir}/cov_html .
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null
 }
