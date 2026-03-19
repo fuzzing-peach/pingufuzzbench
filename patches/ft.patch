@@ -837,7 +837,7 @@ index 463594a..9b04200 100644
 -pub const MAX_PATCHPOINT_CNT: usize = 400_000;
 +pub const MAX_PATCHPOINT_CNT: usize = 600_000;
  pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
- pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
+ pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 1.0;
  pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
 @@ -17,8 +17,8 @@ pub const FUZZING_LOOP_UPDATE_INTERVAL: Duration = Duration::from_secs(20);
  /// Max execution count for one particular mutation site.
@@ -1909,3 +1909,122 @@ index 549ac57..aafd5d1 100644
  /// Check that some constraints hold for the patch points:
  ///     - VMAs are unique
  ///     - PatchPointIDs are unique
+
+diff --git a/scheduler/src/fuzzer/queue.rs b/scheduler/src/fuzzer/queue.rs
+index f0465c8..5afe57c 100644
+--- a/scheduler/src/fuzzer/queue.rs
++++ b/scheduler/src/fuzzer/queue.rs
+@@ -664,15 +664,33 @@ impl Queue {
+ 
+         let entries = files
+             .par_iter()
+-            .map(|file| {
+-                let content = fs::read(file).unwrap();
++            .filter_map(|file| {
++                let content = match fs::read(file) {
++                    Ok(v) => v,
++                    Err(e) => {
++                        log::warn!("Skip unreadable queue file {:?}: {}", file, e);
++                        return None;
++                    }
++                };
++
+                 let mut decompressed = Vec::new();
+                 let mut decompressor = ZlibDecoder::new(&mut decompressed);
+-                decompressor.write_all(&content).unwrap();
+-                decompressor.finish().unwrap();
++                if let Err(e) = decompressor.write_all(&content) {
++                    log::warn!("Skip corrupted queue file {:?} (decompress): {}", file, e);
++                    return None;
++                }
++                if let Err(e) = decompressor.finish() {
++                    log::warn!("Skip corrupted queue file {:?} (finish): {}", file, e);
++                    return None;
++                }
+ 
+-                let qe: QueueEntry = serde_json::from_slice(&decompressed).unwrap();
+-                qe
++                match serde_json::from_slice::<QueueEntry>(&decompressed) {
++                    Ok(qe) => Some(qe),
++                    Err(e) => {
++                        log::warn!("Skip invalid queue entry {:?} (json): {}", file, e);
++                        None
++                    }
++                }
+             })
+             .collect::<Vec<_>>();
+ 
+
+diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
+--- a/scheduler/src/constants.rs
++++ b/scheduler/src/constants.rs
+@@ -14,8 +14,8 @@ pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
+ /// Max execution count for one particular mutation site.
+ /// Sites executed more often than this are ignored.
+ pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
+-pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
+-pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(10);
++pub const CALIBRATION_MEASURE_CYCLES: u64 = 5;
++pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(3);
+ 
+ pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
+ pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;
+
+diff --git a/scheduler/src/fuzzer/common.rs b/scheduler/src/fuzzer/common.rs
+--- a/scheduler/src/fuzzer/common.rs
++++ b/scheduler/src/fuzzer/common.rs
+@@ -201,9 +201,9 @@ pub fn common_calibrate(
+         .unwrap_or(DEFAULT_CALIBRATION_TIMEOUT);
+
+     let mut exec_durations = Vec::with_capacity(CALIBRATION_MEASURE_CYCLES.try_into().unwrap());
+-    if config.sink.send_sigterm {
+-        default_timeout *= 2;
+-    }
++    // if config.sink.send_sigterm {
++    //     default_timeout *= 2;
++    // }
+
+     let mut crash_did_not_crash_ctr = 0;
+
+diff --git a/scheduler/src/fuzzer/common_networked.rs b/scheduler/src/fuzzer/common_networked.rs
+--- a/scheduler/src/fuzzer/common_networked.rs
++++ b/scheduler/src/fuzzer/common_networked.rs
+@@ -61,7 +61,7 @@ pub fn networked_common_calibration_run(
+     let start_ts = Instant::now();
+     let consumer = get_consumer(&mut client, &mut server);
+
+-    let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
++    let consumer_result = consumer.wait_for_child_termination(timeout, false, Some(Duration::from_millis(100)))?;
+     log::trace!(
+         "wait_for_child_termination of consumer took {:?}",
+         start_ts.elapsed()
+@@ -50,7 +50,7 @@ pub fn networked_common_calibration_run(
+             let err = Err(CalibrationError::SinkExecutionFailed(
+                 ret.try_into().unwrap(),
+             ));
+             // kill the server
+-            let _ = server.wait_for_child_termination(timeout, true)?;
++            let _ = server.wait_for_child_termination(timeout, true, Some(Duration::from_millis(100)))?;
+             return err.context("Client failed to connect to server");
+         }
+         WaitForPeerResult::Ready => (),
+@@ -119,7 +119,7 @@ pub fn networked_common_run(
+     }
+
+     let consumer = get_consumer(&mut client, &mut server);
+-    let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
++    let consumer_result = consumer.wait_for_child_termination(timeout, false, Some(Duration::from_millis(100)))?;
+@@ -108,7 +108,7 @@ pub fn networked_common_run(
+         | WaitForPeerResult::TimedOut => {
+             log::trace!("Client failed to connect to server");
+             let err = Err(ExecError::NoSourceOutput);
+             // kill the server
+-            let _ = server.wait_for_child_termination(timeout, true)?;
++            let _ = server.wait_for_child_termination(timeout, true, Some(Duration::from_millis(100)))?;
+             return err.context("Client failed to connect to server");
+         }
+         WaitForPeerResult::Ready => (),
+
+     // Consumer terminated. Now kill the producer (if still running) and wait for it to terminate.
+-    get_producer(&mut client, &mut server).wait_for_child_termination(timeout, true)?;
++    get_producer(&mut client, &mut server).wait_for_child_termination(timeout, true, Some(Duration::from_millis(100)))?;
