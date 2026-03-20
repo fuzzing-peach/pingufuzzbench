@@ -639,6 +639,8 @@ function run_ft {
     echo "[FT] running gcov"
     sudo LD_LIBRARY_PATH="${LD_LIBRARY_PATH}" "${ft_bin}" --log-level trace ft.yaml gcov -t 3s \
         --replay-step "${replay_step}" --gcov-step "${gcov_step}"
+    sudo chmod -R 755 "${work_dir}"
+    sudo chown -R "$(id -u):$(id -g)" "${work_dir}"
 
     popd >/dev/null
 }
