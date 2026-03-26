@@ -692,12 +692,9 @@ function run_pingu {
         pingu_bin="${HOME}/pingu/target/release/pingu"
     fi
 
-    local pingu_yaml="/home/user/pingu/evaluation/pingu-msquic.yaml"
+    local pingu_yaml="${MSQUIC_SUBJECT_DIR}/pingu.yaml"
     if [ ! -f "${pingu_yaml}" ]; then
-        pingu_yaml="${MSQUIC_SUBJECT_DIR}/pingu.yaml"
-    fi
-    if [ ! -f "${pingu_yaml}" ]; then
-        echo "[!] run_pingu failed: missing /home/user/pingu/evaluation/pingu-msquic.yaml and ${MSQUIC_SUBJECT_DIR}/pingu.yaml"
+        echo "[!] run_pingu failed: missing ${MSQUIC_SUBJECT_DIR}/pingu.yaml"
         return 1
     fi
 
