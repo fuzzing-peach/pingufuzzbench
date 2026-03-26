@@ -481,49 +481,52 @@ function run_ft {
 }
 
 function build_pingu_generator {
-    exit 1
+    mkdir -p ${HOME}/target/pingu/generator
+    rm -rf ${HOME}/target/pingu/generator/*
+    cp -r repo/gnutls ${HOME}/target/pingu/generator/gnutls
+    pushd ${HOME}/target/pingu/generator/gnutls >/dev/null
 
-    mkdir -p target/pingu/generator
-    rm -rf target/pingu/generator/*
-    cp -r repo/wolfssl target/pingu/generator/wolfssl
-    pushd target/pingu/generator/wolfssl >/dev/null
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
 
     export FT_HOOK_INS=load,store
     export CC=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast
     export CXX=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O2 -g"
-    export CXXFLAGS="-O2 -g"
+    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
+    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_GENERATOR"
     export GENERATOR_AGENT_SO_DIR="${HOME}/pingu/fuzztruction/target/debug/"
     export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
+    export LD_LIBRARY_PATH="${HOME}/pingu/fuzztruction/target/debug:${HOME}/local/nettle/lib64:${HOME}/local/nettle/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
-    ./autogen.sh
-    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
-    make examples/client/client ${MAKE_OPT}
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make -j ${MAKE_OPT} src/gnutls-cli || return 1
 
     rm -rf .git
-
     popd >/dev/null
 }
 
 function build_pingu_consumer {
-    exit 1
-
     sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/pingu.conf /etc/ld.so.conf.d/
     sudo ldconfig
 
-    mkdir -p target/pingu/consumer
-    rm -rf target/pingu/consumer/*
-    cp -r repo/wolfssl target/pingu/consumer/wolfssl
-    pushd target/pingu/consumer/wolfssl >/dev/null
+    mkdir -p ${HOME}/target/pingu/consumer
+    rm -rf ${HOME}/target/pingu/consumer/*
+    cp -r repo/gnutls ${HOME}/target/pingu/consumer/gnutls
+    pushd ${HOME}/target/pingu/consumer/gnutls >/dev/null
+
+    ensure_local_nettle || return 1
+    prepare_gnutls_configure || return 1
 
     export CC="${HOME}/pingu/target/debug/libafl_cc"
     export CXX="${HOME}/pingu/target/debug/libafl_cxx"
-    export CFLAGS="-O3 -g -fsanitize=address"
-    export CXXFLAGS="-O3 -g -fsanitize=address"
+    export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
+    export LDFLAGS="-fsanitize=address"
 
-    ./autogen.sh
-    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-doc --disable-tests --enable-static --enable-shared=no
-    make examples/server/server ${MAKE_OPT}
+    ./configure --enable-heartbeat-support --disable-maintainer-mode --disable-tests --disable-doc --disable-shared || return 1
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make -j ${MAKE_OPT} src/gnutls-serv || return 1
 
     rm -rf .git
 
@@ -531,52 +534,42 @@ function build_pingu_consumer {
 }
 
 function run_pingu {
-    consumer="WolfSSL"
-    replay_step=${1:-1}
-    gcov_step=${2:-1}
-    timeout=${3:-300}
-    if [ "${4:-}" = "--" ]; then
-        generator=${5:-$consumer}
-    else
-        generator=${4:-$consumer}
+    local replay_step="${1:-1}"
+    local gcov_step="${2:-1}"
+    local timeout="${3:-300}"
+    local consumer="GnuTLS"
+    local work_dir=/tmp/fuzzing-output
+    local pingu_bin=${HOME}/pingu/target/release/pingu
+
+    if ! [[ "${replay_step}" =~ ^[0-9]+$ ]] || ! [[ "${gcov_step}" =~ ^[0-9]+$ ]] || ! [[ "${timeout}" =~ ^[0-9]+$ ]]; then
+        echo "[!] run_pingu expects: replay_step gcov_step timeout"
+        return 1
+    fi
+    if [ ! -x "${pingu_bin}" ]; then
+        echo "[!] Missing pingu binary: ${pingu_bin}"
+        return 1
     fi
 
-    work_dir=/tmp/fuzzing-output
     pushd ${HOME}/target/pingu/ >/dev/null
 
-    # synthesize the pingu configuration yaml
-    # according to the targeted fuzzer and generated
-    temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|$work_dir|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/pingu.yaml >"$temp_file"
-    cat "$temp_file" >pingu.yaml
-    printf "\n" >>pingu.yaml
-    rm "$temp_file"
-    cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
-    cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
-
-    # running pingu
-    sudo timeout "${timeout}s" ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
-
-    # Collect coverage with replay/gcov steps.
-    replay_dir=""
-    for d in "${work_dir}/replayable-queue" "${work_dir}/queue" "${work_dir}/pcap" "${work_dir}/pcaps"; do
-        if [ -d "${d}" ]; then
-            replay_dir="${d}"
-            break
-        fi
-    done
-    if [ -n "${replay_dir}" ]; then
-        list_cmd="find ${replay_dir} -maxdepth 1 -type f | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    else
-        list_cmd="echo ''"
+    local pingu_cfg_template=${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu.yaml
+    if [ ! -f "${pingu_cfg_template}" ]; then
+        echo "[!] Missing merged pingu config: ${pingu_cfg_template}"
+        return 1
     fi
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" \
+        -e "s|UID|$(id -u)|g" \
+        -e "s|GID|$(id -g)|g" \
+        "${pingu_cfg_template}" >pingu.yaml
 
-    sudo chmod -R 755 $work_dir
-    sudo chown -R $(id -u):$(id -g) $work_dir
-    cd ${HOME}/target/gcov/consumer/wolfssl
-    cov_cmd="sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap >/dev/null 2>&1 || true; gcovr -r . -s | grep '[lb][a-z]*:'"
-    compute_coverage true "$list_cmd" "${gcov_step}" "${work_dir}/coverage.csv" "$cov_cmd"
-    grcov --threads 2 -s . -t html -o ${work_dir}/cov_html .
+    sudo -E timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
+    sudo -E "${pingu_bin}" pingu.yaml -vvv gcov --purge
+
+    sudo -E chmod -R 755 ${work_dir}
+    sudo -E chown -R $(id -u):$(id -g) ${work_dir}
+    cd ${HOME}/target/gcov/consumer/gnutls
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null
 }

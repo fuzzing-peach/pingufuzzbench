@@ -78,25 +78,38 @@ deps)
 pingu)
     # Pingu is the name of my fuzzer :)
     if [[ "$cmd" == "build" ]]; then
+        # build consumer and generator in parallel
+        in_subshell build_pingu_consumer &
+        consumer_pid=$!
+
+        # build generator
+        # $GENERATOR is in the form of OpenSSL, WolfSSL, etc.
+        if [[ -n $GENERATOR ]]; then
+            # generator is in the form of TLS/OpenSSL, TLS/WolfSSL, etc.
+            generator=${target%/*}/$GENERATOR
+        else
+            # generator is the same as target
+            generator=${target}
+        fi
+
+        target_config_generator="subjects/$generator/config.sh"
         (
-            # build consumer
-            source $target_config
-            # build_pingu_consumer $flags(is written to the environment variable FLAGS)
-            in_subshell build_pingu_consumer
-        )
-        (
-            # build generator
-            # $GENERATOR is in the form of OpenSSL, WolfSSL, etc.
-            if [[ -n $GENERATOR ]]; then
-                # generator is in the form of TLS/OpenSSL, TLS/WolfSSL, etc.
-                generator=${target%/*}/$GENERATOR
+            set -eo pipefail
+            BASE=${HOME}/profuzzbench
+            cmd="build_pingu_generator"
+            echo "[+] Running in subshell: $cmd"
+            if [[ -n "$PFB_CPU_CORE" && "$PFB_CPU_CORE" != "x" ]]; then
+                echo "[+] Running in cpu core: $PFB_CPU_CORE"
+                taskset -c $PFB_CPU_CORE bash -eo pipefail -c "cd ${HOME}; source $BASE/$target_config_generator; source $BASE/scripts/utils.sh; $cmd"
             else
-                # generator is the same as target
-                generator=${target}
+                echo "[+] CPU_CORE is not set, running in any core"
+                bash -eo pipefail -c "cd ${HOME}; source $BASE/$target_config_generator; source $BASE/scripts/utils.sh; $cmd"
             fi
-            source "subjects/$generator/config.sh"
-            in_subshell build_pingu_generator
-        )
+        ) &
+        generator_pid=$!
+
+        wait $consumer_pid
+        wait $generator_pid
     else
         # run generator-consumer
         source $target_config

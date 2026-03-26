@@ -687,19 +687,6 @@ index e98c37a..84ccd01 100644
  pub(crate) fn handle_cli_llvm_cov_subcommand(
      trace_matches: &ArgMatches,
      config: &Config,
-diff --git a/scheduler/src/cli/networked_benchmark.rs b/scheduler/src/cli/networked_benchmark.rs
-index 4baec0e..21e6f5d 100644
---- a/scheduler/src/cli/networked_benchmark.rs
-+++ b/scheduler/src/cli/networked_benchmark.rs
-@@ -105,7 +105,7 @@ pub fn benchmark_target(
- 
-         // consumer terminated, now wait for the producer.
-         let producer_result = get_producer(&mut client, &mut server)
--            .wait_for_child_termination(timeout, false)
-+            .wait_for_child_termination(timeout, false, None)
-             .unwrap();
-         log::info!("producer result: {:?}", producer_result);
-     }
 diff --git a/scheduler/src/config.rs b/scheduler/src/config.rs
 index 036e283..cd0f411 100644
 --- a/scheduler/src/config.rs
@@ -840,32 +827,18 @@ index 036e283..cd0f411 100644
          config.validate()?;
          Ok(config)
 diff --git a/scheduler/src/constants.rs b/scheduler/src/constants.rs
-index 463594a..44f8472 100644
+index 463594a..6e57a20 100644
 --- a/scheduler/src/constants.rs
 +++ b/scheduler/src/constants.rs
-@@ -5,9 +5,9 @@ use std::time::Duration;
+@@ -5,7 +5,7 @@ use std::time::Duration;
  /// Programmes containing more than this limit, will raise an assertion.
  /// In this case, the limit might simply be raised to the desired value, however,
  /// mind that this will increase the overall memory footprint.
 -pub const MAX_PATCHPOINT_CNT: usize = 400_000;
 +pub const MAX_PATCHPOINT_CNT: usize = 600_000;
  pub const MAX_QUEUE_ENTRY_CNT: usize = 100000;
--pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
-+pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 1.0;
+ pub const EXECUTION_TIMEOUT_MULTIPLYER: f64 = 2.0;
  pub const AVG_EXECUTION_TIME_STABILIZATION_VALUE: u32 = 100;
- /// Interval between:
- ///     - checks whether the worker was terminated
-@@ -17,8 +17,8 @@ pub const FUZZING_LOOP_UPDATE_INTERVAL: Duration = Duration::from_secs(20);
- /// Max execution count for one particular mutation site.
- /// Sites executed more often than this are ignored.
- pub const TRACE_EXEC_CNT_LIMIT: u64 = 16384;
--pub const CALIBRATION_MEASURE_CYCLES: u64 = 20;
--pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(1);
-+pub const CALIBRATION_MEASURE_CYCLES: u64 = 5;
-+pub const DEFAULT_CALIBRATION_TIMEOUT: Duration = Duration::from_secs(5);
- 
- pub const DYNAMIC_JOB_SPAWNING_MAX_JOBS: usize = 100;
- pub const DYNAMIC_JOB_SPAWNING_CPU_THRESHOLD: f32 = 80.0;
 diff --git a/scheduler/src/coverage/mod.rs b/scheduler/src/coverage/mod.rs
 index bdedb83..0ed5e02 100644
 --- a/scheduler/src/coverage/mod.rs
@@ -1028,7 +1001,7 @@ index 0000000..2d0c728
 +}
 \ No newline at end of file
 diff --git a/scheduler/src/coverage/networked.rs b/scheduler/src/coverage/networked.rs
-index 8886de7..23dd806 100644
+index 8886de7..ea7bcfc 100644
 --- a/scheduler/src/coverage/networked.rs
 +++ b/scheduler/src/coverage/networked.rs
 @@ -1,26 +1,58 @@
@@ -1309,7 +1282,7 @@ index 8886de7..23dd806 100644
 +        source.spawn(timeout)?;
 +        thread::sleep(timeout);
 +        let _ = nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::SIGTERM);
-+        source.wait_for_child_termination(timeout, true, None)?;
++        source.wait_for_child_termination(timeout, true)?;
 +
 +        if idx % gcov_step as usize != 0 {
 +            continue;
@@ -1358,24 +1331,7 @@ index 8886de7..23dd806 100644
  pub fn compute_llvm_cov(
      config: &Config,
      exit_requested: Arc<AtomicBool>,
-@@ -114,7 +404,7 @@ pub fn compute_llvm_cov(
-             | WaitForPeerResult::Signalled(_)
-             | WaitForPeerResult::TimedOut => {
-                 log::warn!("Client failed to connect to server");
--                let _ = server.wait_for_child_termination(timeout, true);
-+                let _ = server.wait_for_child_termination(timeout, true, None);
-                 continue;
-             }
-             WaitForPeerResult::Ready => (),
-@@ -176,10 +466,95 @@ pub fn compute_llvm_cov(
- 
-         // consumer terminated, now wait for the producer.
-         let producer_result = get_producer(&mut client, &mut server)
--            .wait_for_child_termination(timeout, true)
-+            .wait_for_child_termination(timeout, true, None)
-             .unwrap();
-         log::info!("producer result: {:?}", producer_result);
-     }
+@@ -183,3 +473,88 @@ pub fn compute_llvm_cov(
  
      Ok(())
  }
@@ -1464,95 +1420,6 @@ index 8886de7..23dd806 100644
 +
 +    Ok(false)
 +}
-diff --git a/scheduler/src/fuzzer/common.rs b/scheduler/src/fuzzer/common.rs
-index 934c860..21dc011 100644
---- a/scheduler/src/fuzzer/common.rs
-+++ b/scheduler/src/fuzzer/common.rs
-@@ -201,9 +201,9 @@ pub fn common_calibrate(
-         .unwrap_or(DEFAULT_CALIBRATION_TIMEOUT);
- 
-     let mut exec_durations = Vec::with_capacity(CALIBRATION_MEASURE_CYCLES.try_into().unwrap());
--    if config.sink.send_sigterm {
--        default_timeout *= 2;
--    }
-+    // if config.sink.send_sigterm {
-+    //     default_timeout *= 2;
-+    // }
- 
-     let mut crash_did_not_crash_ctr = 0;
- 
-@@ -503,7 +503,7 @@ pub fn common_trace(
- 
-             // Wait for the producer to terminate.
-             let producer_result = get_producer(&mut client, &mut server)
--                .wait_for_child_termination(timeout, false)?;
-+                .wait_for_child_termination(timeout, false, None)?;
- 
-             // kill the consumer if it is still running
-             let consumer = get_consumer(&mut client, &mut server);
-diff --git a/scheduler/src/fuzzer/common_networked.rs b/scheduler/src/fuzzer/common_networked.rs
-index a47528e..3f515c9 100644
---- a/scheduler/src/fuzzer/common_networked.rs
-+++ b/scheduler/src/fuzzer/common_networked.rs
-@@ -53,7 +53,10 @@ pub fn networked_common_calibration_run(
-                 ret.try_into().unwrap(),
-             ));
-             // kill the server
--            let _ = server.wait_for_child_termination(timeout, true)?;
-+            let _ = server.wait_for_child_termination(Duration::from_millis(100),
-+                true,
-+                Some(Duration::from_millis(100)),
-+            )?;
-             return err.context("Client failed to connect to server");
-         }
-         WaitForPeerResult::Ready => (),
-@@ -62,14 +65,14 @@ pub fn networked_common_calibration_run(
-     let start_ts = Instant::now();
-     let consumer = get_consumer(&mut client, &mut server);
- 
--    let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
-+    let consumer_result = consumer.wait_for_child_termination(Duration::from_millis(100), false, Some(Duration::from_millis(100)))?;
-     log::trace!(
-         "wait_for_child_termination of consumer took {:?}",
-         start_ts.elapsed()
-     );
- 
-     // Consumer terminated. Now kill the producer (if still running) and wait for it to terminate.
--    get_producer(&mut client, &mut server).wait_for_child_termination(timeout, true)?;
-+    get_producer(&mut client, &mut server).wait_for_child_termination(Duration::from_millis(100), true, None)?;
- 
-     Ok(consumer_result)
- }
-@@ -110,17 +113,26 @@ pub fn networked_common_run(
-             log::trace!("Client failed to connect to server");
-             let err = Err(ExecError::NoSourceOutput);
-             // kill the server
--            let _ = server.wait_for_child_termination(timeout, true)?;
-+            let _ = server.wait_for_child_termination(Duration::from_millis(100),
-+                true,
-+                Some(Duration::from_millis(100)),
-+            )?;
-             return err.context("Client failed to connect to server");
-         }
-         WaitForPeerResult::Ready => (),
-     }
- 
-     let consumer = get_consumer(&mut client, &mut server);
--    let consumer_result = consumer.wait_for_child_termination(timeout, false, None)?;
-+    let consumer_result = consumer.wait_for_child_termination(Duration::from_millis(100),
-+        false,
-+        Some(Duration::from_millis(100)),
-+    )?;
- 
-     // Consumer terminated. Now kill the producer (if still running) and wait for it to terminate.
--    get_producer(&mut client, &mut server).wait_for_child_termination(timeout, true)?;
-+    get_producer(&mut client, &mut server).wait_for_child_termination(Duration::from_millis(100),
-+        true,
-+        Some(Duration::from_millis(100)),
-+    )?;
- 
-     Ok(consumer_result)
- }
 diff --git a/scheduler/src/fuzzer/queue.rs b/scheduler/src/fuzzer/queue.rs
 index f0465c8..5afe57c 100644
 --- a/scheduler/src/fuzzer/queue.rs
@@ -1618,56 +1485,17 @@ index 728d127..a2d288b 100644
          self.sink.as_mut().unwrap().start()?;
          self.resize_bitmaps();
 diff --git a/scheduler/src/networked.rs b/scheduler/src/networked.rs
-index 9a36e1e..1757db2 100644
+index 9a36e1e..0c2abf9 100644
 --- a/scheduler/src/networked.rs
 +++ b/scheduler/src/networked.rs
-@@ -112,7 +112,7 @@ impl Client<'_> {
-     ) -> Result<NetworkedRunResult> {
-         match self {
-             Client::Source(source) => source
--                .wait_for_child_termination(timeout, kill_child)
-+                .wait_for_child_termination(timeout, kill_child, None)
-                 .map(|v| v.into()),
-             Client::AflSink(sink) => sink
-                 .wait_for_child_termination(timeout, kill_child, None)
-@@ -150,13 +150,14 @@ impl Server<'_> {
-         &mut self,
-         timeout: Duration,
-         kill_child: bool,
-+        wait_poll_interval: Option<Duration>,
-     ) -> Result<NetworkedRunResult> {
-         match self {
-             Server::Source(source) => source
--                .wait_for_child_termination(timeout, kill_child)
-+                .wait_for_child_termination(timeout, kill_child, wait_poll_interval)
+@@ -156,7 +156,7 @@ impl Server<'_> {
+                 .wait_for_child_termination(timeout, kill_child)
                  .map(|v| v.into()),
              Server::AflSink(sink) => sink
 -                .wait_for_child_termination(timeout, kill_child, None)
-+                .wait_for_child_termination(timeout, kill_child, wait_poll_interval)
++                .wait_for_child_termination(timeout, kill_child, None)
                  .map(|v| v.into()),
          }
-     }
-diff --git a/scheduler/src/postprocessing/ft.rs b/scheduler/src/postprocessing/ft.rs
-index d1b7946..b3aa93f 100644
---- a/scheduler/src/postprocessing/ft.rs
-+++ b/scheduler/src/postprocessing/ft.rs
-@@ -118,7 +118,7 @@ pub fn ft_reproduce_crashes(
-             | WaitForPeerResult::Signalled(_)
-             | WaitForPeerResult::TimedOut => {
-                 log::warn!("Client failed to connect to server");
--                let _ = server.wait_for_child_termination(timeout, true);
-+                let _ = server.wait_for_child_termination(timeout, true, None);
-                 return Ok(());
-             }
-             WaitForPeerResult::Ready => (),
-@@ -148,7 +148,7 @@ pub fn ft_reproduce_crashes(
- 
-         // consumer terminated, now wait for the producer.
-         let producer_result = get_producer(&mut client, &mut server)
--            .wait_for_child_termination(timeout, true)
-+            .wait_for_child_termination(timeout, true, None)
-             .unwrap();
-         log::info!("producer result: {:?}", producer_result);
      }
 diff --git a/scheduler/src/sink.rs b/scheduler/src/sink.rs
 index a4b0084..bb1a014 100644
@@ -1744,7 +1572,7 @@ index a4b0084..bb1a014 100644
          if libc::WIFEXITED(child_msg) {
              self.child_pid.take();
 diff --git a/scheduler/src/source.rs b/scheduler/src/source.rs
-index 549ac57..693a0e4 100644
+index 549ac57..546e48e 100644
 --- a/scheduler/src/source.rs
 +++ b/scheduler/src/source.rs
 @@ -1,6 +1,6 @@
@@ -1755,16 +1583,7 @@ index 549ac57..693a0e4 100644
  use fuzztruction_shared::{
      aux_messages::{AuxStreamMessage, AuxStreamType},
      aux_stream::AuxStreamAssembler,
-@@ -61,12 +61,225 @@ use crate::{networked::ServerReadySignalKind, trace::Trace};
- 
- use crate::io_channels::*;
- 
--const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(120);
--const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(120);
--const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
-+const DEFAULT_SEND_TIMEOUT: Duration = Duration::from_secs(240);
-+const DEFAULT_RECEIVE_TIMEOUT: Duration = Duration::from_secs(240);
-+const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(240);
+@@ -67,6 +67,219 @@ const DEFAULT_SYNC_TIMEOUT: Duration = Duration::from_secs(120);
  const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
  const MAX_OUTPUT_SIZE: u64 = n_mib_bytes!(1) as u64;
  
@@ -2045,15 +1864,6 @@ index 549ac57..693a0e4 100644
  
                      if let Some(ref mut jail) = self.jail {
                          // ! Make sure that the code in `enter()` is async-signal-safe since we
-@@ -1393,7 +1626,7 @@ impl Source {
-     /// All returned errors must be considered as unrecoverable fatal error.
-     pub fn run(&mut self, timeout: Duration) -> Result<RunResult> {
-         self.spawn(timeout)?;
--        self.wait_for_child_termination(timeout, false)
-+        self.wait_for_child_termination(timeout, false, None)
-     }
- 
-     pub fn spawn(&mut self, timeout: Duration) -> Result<()> {
 @@ -1494,8 +1727,20 @@ impl Source {
                      } else {
                          /* Signals are represented by negative exit codes */
@@ -2076,44 +1886,7 @@ index 549ac57..693a0e4 100644
                              msgs: self.msg_buffer.take().unwrap(),
                          })
                          .into());
-@@ -1614,6 +1859,7 @@ impl Source {
-         &mut self,
-         timeout: Duration,
-         send_sigkill_immediately: bool,
-+        wait_poll_interval: Option<Duration>,
-     ) -> Result<RunResult> {
-         let mq_recv = self
-             .mq_recv
-@@ -1631,10 +1877,27 @@ impl Source {
-             let _ = kill_child_process_group(self.child_pid.as_ref().unwrap());
-         }
- 
-+        let wait_poll_interval = wait_poll_interval.unwrap_or(timeout);
-+        let started = Instant::now();
-+
-         // Wait for reply
-         loop {
-+            let elapsed = started.elapsed();
-+            if elapsed >= timeout {
-+                self.kill_child_and_wait_for_termination()?;
-+                return Ok(RunResult::TimedOut {
-+                    msgs: self.msg_buffer.take().unwrap(),
-+                });
-+            }
-+            let remaining_timeout = timeout - elapsed;
-+            let per_try_timeout = if wait_poll_interval < remaining_timeout {
-+                wait_poll_interval
-+            } else {
-+                remaining_timeout
-+            };
-+
-             // Get the next message
--            match Source::receive_message(aux_stream_handler, mq_recv, timeout, &mut buf) {
-+            match Source::receive_message(aux_stream_handler, mq_recv, per_try_timeout, &mut buf) {
-                 Ok(_) => (),
-                 Err(_) => {
-                     self.kill_child_and_wait_for_termination()?;
-@@ -2053,6 +2316,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
+@@ -2053,6 +2298,16 @@ fn kill_child_process_group(pid_msg: &ChildPid) -> Result<()> {
      Ok(())
  }
  

@@ -6,24 +6,105 @@ jail-uid: UID
 jail-gid: GID
 seed: 0
 target: wolfssl
-svf-so-path: "/home/user/pingu/target/debug/libsvf_sys.so"
+svf-so-path: "/home/user/pingu/target/release/libsvf_sys.so"
 
 monitor:
-  url: "http://127.0.0.1:8086"
+  url: "http://124.222.154.81:8086"
   org: "None"
-  bucket: "pingu"
-  token: ""
-  http-proxy: "http://127.0.0.1:8080"
+  bucket: "pingu" 
+  token: "0n_R5JUbtI4Aeez8dbYM4oPhtOclQg6qknWy5rZko8nm7GazjEbOEYQoTsW6chjsEMdaOJgOxT5jChGlnSRhvA=="
+  http-proxy: "http://202.112.23.167:8080"
+
+source:
+  bin-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client"
+  root-path: "/home/user/target/pingu/generator/wolfssl"
+  env:
+    - LD_LIBRARY_PATH: "/home/user/pingu/target/release"
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-02-01 12:00:00"
+    - ASAN_OPTIONS: "detect_leaks=0:disable_coredump=0:abort_on_error=1:print_stacktrace=1:symbolize=1:log_path=WORK-DIRECTORY/0/source/tmp/asan_report"
+  arguments: ["-r", "-p", "4455", "-A", "/home/user/profuzzbench/cert/ca.crt", "-L", "C:h2,http/1.1", "-W", "1", "-H", "exitWithRet", "-C"]
+  cwd: "/home/user/target/pingu/generator/wolfssl"
+  compdb-path: "/home/user/target/pingu/generator/wolfssl/compile_commands.json"
+  pp-json-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client.bc.pingu.pp.json"
+  ppmeta-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client.bc.pingu.ppmeta.ll"
+  extapi-path: "/home/user/pingu/pingu-agent/pass/build/extapi.bc"
+  svfg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/svfg.dot"
+  icfg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/icfg.dot"
+  cg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/cg.dot"
+  func-block-table-path: "/home/user/target/pingu/generator/wolfssl/examples/client/function_block_table.json"
+  func-table-path: "/home/user/target/pingu/generator/wolfssl/examples/client/function_table.json"
+  loop-info-path: "/home/user/target/pingu/generator/wolfssl/examples/client/loops.pingu.json"
+  log-stdout: true
+  log-stderr: true
+  log-level: info
+  
+sink:
+  bin-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server"
+  root-path: "/home/user/target/pingu/consumer/wolfssl"
+  env:  
+    - LD_LIBRARY_PATH: "/home/user/pingu/target/release"
+    - FAKE_RANDOM: "1"
+    - FAKE_TIME: "2026-02-01 12:00:00"
+    - ASAN_OPTIONS: "disable_coredump=0:abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=0:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0:log_path=WORK-DIRECTORY/0/sink/tmp/asan_report"
+  arguments:
+    [
+      "-C",
+      "10",
+      "-p",
+      "4455",
+      "-c",
+      "/home/user/profuzzbench/cert/fullchain.crt",
+      "-k",
+      "/home/user/profuzzbench/cert/server.key",
+      "-L",
+      "C:h2,http/1.1",
+      "-e",
+      "-d",
+      "-V",
+      "-r"
+    ]
+  cwd: "/home/user/target/pingu/consumer/wolfssl"
+  compdb-path: "/home/user/target/pingu/consumer/wolfssl/compile_commands.json"
+  pp-json-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server.bc.pingu.pp.json"
+  ppmeta-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server.bc.pingu.ppmeta.ll"
+  extapi-path: "/home/user/pingu/pingu-agent/pass/build/extapi.bc"
+  svfg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/svfg.dot"
+  icfg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/icfg.dot"
+  cg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/cg.dot"
+  loop-info-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/loops.pingu.json"
+  func-block-table-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/function_block_table.json"
+  log-stdout: true
+  log-stderr: true
+  log-level: info
+  allow-unstable-sink: true
 
 stages:
   deterministic:
     enable: true
+    timeout-streak-threshold: 3
+    source-signaled-streak-threshold: 3
+    max-consecutive-not-interesting-per-pp: 64
   target-state:
-    beta-routing-threshold: 0.1
+    pp-reachability-routing:
+      threshold: 0.1
+      enable: false
+      lambda: 0.1
+    probabilistic:
+      llm: 0.3
     sink-cmplog:
       enable: true
     source-block:
       enable: true
+
+gcov:
+  reporter: "gcovr"
+  timeout: 5s
+  bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
+  env:
+    - LD_PRELOAD: "/home/user/libfake_random.so:/home/user/libgcov_preload.so"
+    - FAKE_RANDOM: "1"
+  src-dir: "/home/user/target/gcov/consumer/wolfssl"
 
 svf:
   llvm-path: "/usr"
@@ -42,92 +123,20 @@ solver:
   solver-py-path: "/home/user/pingu/pingu-solver/src/solver.py"
   llm:
     max-rounds: 10
+    parallel-sessions: 2
     timeout: 300s
-    openai-model: "x-ai/grok-4.1-fast"
+    openai-model: "x-ai/grok-code-fast-1"
     openai-api-base-url: "https://openrouter.ai/api/v1"
     openai-use-responses-api: false
     http-proxy: "http://172.17.0.1:9870"
     seed: 123
     env:
-      - LANGSMITH_TRACING: true
+      - LANGSMITH_TRACING: false
       - LANGSMITH_ENDPOINT: https://api.smith.langchain.com
       - LANGSMITH_PROJECT: pingu-solver
 
 scheduler:
   katz-centrality:
+    enable: true
     alpha: 0.001
     max-iter: 1000
-  proximity-weighted-alignment:
-    lambda: 0.1
-
-source:
-  bin-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client"
-  root-path: "/home/user/target/pingu/generator/wolfssl"
-  env:
-    - FAKE_RANDOM: "1"
-    - FAKE_TIME: "2026-02-01 12:00:00"
-    - ASAN_OPTIONS: "detect_leaks=0:disable_coredump=0:abort_on_error=1:print_stacktrace=1:symbolize=1"
-    - PINGU_STUB_DEBUG: "true"
-  arguments: ["-p", "4455", "-A", "/home/user/profuzzbench/cert/ca.crt", "-r"]
-  cwd: "/home/user/target/pingu/generator/wolfssl"
-  compdb-path: "/home/user/target/pingu/generator/wolfssl/compile_commands.json"
-  pp-json-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client.bc.pingu.pp.json"
-  ppmeta-path: "/home/user/target/pingu/generator/wolfssl/examples/client/client.bc.pingu.ppmeta.ll"
-  extapi-path: "/home/user/pingu/pingu-agent/pass/build/extapi.bc"
-  svfg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/svfg.dot"
-  icfg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/icfg.dot"
-  cg-path: "/home/user/target/pingu/generator/wolfssl/examples/client/cg.dot"
-  func-block-table-path: "/home/user/target/pingu/generator/wolfssl/examples/client/function_block_table.json"
-  func-table-path: "/home/user/target/pingu/generator/wolfssl/examples/client/function_table.json"
-  loop-info-path: "/home/user/target/pingu/generator/wolfssl/examples/client/loops.pingu.json"
-  log-stdout: true
-  log-stderr: true
-  log-level: trace
-
-sink:
-  bin-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server"
-  root-path: "/home/user/target/pingu/consumer/wolfssl"
-  env:
-    - PINGU_GDB: "1"
-    - FAKE_TIME: "2026-02-01 12:00:00"
-    - ASAN_OPTIONS: "disable_coredump=0:abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=0:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=0:detect_odr_violation=0:log_path=/tmp/fuzzing-output/0/sink/state"
-    - PINGU_STUB_DEBUG: "true"
-  arguments:
-    [
-      "-p",
-      "4455",
-      "-c",
-      "/home/user/profuzzbench/cert/fullchain.crt",
-      "-k",
-      "/home/user/profuzzbench/cert/server.key",
-      "-e",
-      "-r",
-      "-d",
-      "-V",
-      "-C",
-      "10"
-    ]
-  cwd: "/home/user/target/pingu/consumer/wolfssl"
-  compdb-path: "/home/user/target/pingu/consumer/wolfssl/compile_commands.json"
-  pp-json-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server.bc.pingu.pp.json"
-  ppmeta-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/server.bc.pingu.ppmeta.ll"
-  extapi-path: "/home/user/pingu/pingu-agent/pass/build/extapi.bc"
-  svfg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/svfg.dot"
-  icfg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/icfg.dot"
-  cg-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/cg.dot"
-  loop-info-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/loops.pingu.json"
-  func-block-table-path: "/home/user/target/pingu/consumer/wolfssl/examples/server/function_block_table.json"
-  log-stdout: true
-  log-stderr: true
-  log-level: trace
-  allow-unstable-sink: true
-
-gcov:
-  reporter: "gcovr"
-  timeout: 1s
-  bin-path: "/home/user/target/gcov/consumer/wolfssl/examples/server/server"
-  env:
-    - LD_PRELOAD: "/home/user/libfake_random.so:/home/user/libgcov_preload.so"
-    - FAKE_RANDOM: "1"
-    - FAKE_TIME: "2026-02-01 12:00:00"
-  src-dir: "/home/user/target/gcov/consumer/wolfssl"

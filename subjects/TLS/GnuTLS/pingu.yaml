@@ -1,0 +1,55 @@
+work-directory: "WORK-DIRECTORY"
+input-directory: "/home/user/profuzzbench/no-inputs"
+jail-uid: UID
+jail-gid: GID
+timeout: 1s
+target-port: 5555
+target: gnutls
+
+source:
+  bin-path: "/home/user/target/pingu/generator/gnutls/src/gnutls-cli"
+  root-path: "/home/user/target/pingu/generator/gnutls"
+  arguments: ["--insecure", "--x509cafile", "/home/user/profuzzbench/cert/ca.crt", "-p", "5555", "localhost"]
+  env:
+    - LD_PRELOAD: "libfake_random.so"
+    - FAKE_RANDOM: "1"
+  cwd: "/home/user/target/pingu/generator/gnutls"
+  input-type: stdin
+  output-type: socket
+  log-stdout: true
+  log-stderr: true
+
+sink:
+  bin-path: "/home/user/target/pingu/consumer/gnutls/src/gnutls-serv"
+  root-path: "/home/user/target/pingu/consumer/gnutls"
+  arguments:
+    [
+      "-a",
+      "-d",
+      "1000",
+      "--earlydata",
+      "--alpn=http/2",
+      "--x509cafile=/home/user/profuzzbench/cert/ca.crt",
+      "--x509certfile=/home/user/profuzzbench/cert/server.crt",
+      "--x509keyfile=/home/user/profuzzbench/cert/server.key",
+      "-b",
+      "-p",
+      "5555"
+    ]
+  env:
+    - LD_PRELOAD: "libfake_random.so"
+    - FAKE_RANDOM: "1"
+    - ASAN_OPTIONS: "detect_leaks=0:disable_coredump=0:abort_on_error=1:print_stacktrace=1:symbolize=1"
+  cwd: "/home/user/target/pingu/consumer/gnutls"
+  input-type: socket
+  output-type: stdout
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+
+gcov:
+  bin-path: "/home/user/target/gcov/consumer/gnutls/src/gnutls-serv"
+  env:
+    - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
+    - FAKE_RANDOM: "1"
+  src-dir: "/home/user/target/gcov/consumer/gnutls"

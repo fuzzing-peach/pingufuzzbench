@@ -2,6 +2,7 @@
 
 OPENSSL_ECH_BRANCH="feature/ech"
 OPENSSL_ECH_BASELINE="d01cd520e52ab8bcdad27496209a27022679d970"
+OPENSSL_REDUCED_FEATURE_FLAGS="no-legacy no-deprecated no-ct no-nextprotoneg no-srp no-ts no-cmp no-cms"
 
 function get_ech_config_list {
     ech_pem="$1"
@@ -18,20 +19,27 @@ function get_ech_config_list {
 
 function checkout {
     target_ref="${1:-$OPENSSL_ECH_BASELINE}"
+    cache_repo=".git-cache/openssl"
+    work_repo="repo/openssl"
 
-    if [ ! -d ".git-cache/openssl" ]; then
-        git clone --no-single-branch https://github.com/openssl/openssl.git .git-cache/openssl
+    if [ ! -d "${cache_repo}/.git" ]; then
+        git clone --no-single-branch https://github.com/openssl/openssl.git "${cache_repo}"
     fi
 
+    pushd "${cache_repo}" >/dev/null
+    git fetch --prune origin "${OPENSSL_ECH_BRANCH}"
+    git reset --hard
+    git clean -fdx
+    popd >/dev/null
+
     mkdir -p repo
-    rm -rf repo/openssl
-    cp -r .git-cache/openssl repo/openssl
+    rm -rf "${work_repo}"
+    git clone --no-hardlinks "${cache_repo}" "${work_repo}"
 
-    pushd repo/openssl >/dev/null
+    pushd "${work_repo}" >/dev/null
 
-    git fetch origin "${OPENSSL_ECH_BRANCH}"
     git checkout "${OPENSSL_ECH_BASELINE}"
-    git apply ${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch || return 1
+    git apply "${HOME}/profuzzbench/subjects/TLS/OpenSSL/ft-openssl.patch"
     git add .
     git commit -m "apply fuzzing patch"
     patch_commit=$(git rev-parse HEAD)
@@ -80,7 +88,7 @@ function build_aflnet {
     export CFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
 
-    ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
@@ -149,7 +157,7 @@ function build_stateafl {
     export CFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-O3 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
 
-    ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async enable-asan
+    ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async enable-asan ${OPENSSL_REDUCED_FEATURE_FLAGS}
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
@@ -219,7 +227,7 @@ function build_sgfuzz {
 
     python3 $HOME/sgfuzz/sanitizer/State_machine_instrument.py .
 
-    ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom -d no-shared no-threads no-tests no-asm enable-asan no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     sed -i 's@CC=$(CROSS_COMPILE)gcc.*@CC=clang@g' Makefile
     sed -i 's@CXX=$(CROSS_COMPILE)g++.*@CXX=clang++@g' Makefile
     sed -i 's/CFLAGS=.*/CFLAGS=-O3 -g -DFT_FUZZING -DFT_CONSUMER -DSGFUZZ -fsanitize=address -fsanitize=fuzzer-no-link -Wno-int-conversion/g' Makefile
@@ -370,7 +378,7 @@ function build_ft_generator {
     export GENERATOR_AGENT_SO_DIR="${HOME}/fuzztruction-net/target/release/"
     export LLVM_PASS_SO="${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-llvm-pass.so"
 
-    ./config --with-rand-seed=devrandom no-shared no-tests no-threads no-asm no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom no-shared no-tests no-threads no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     LDCMD=${HOME}/fuzztruction-net/generator/pass/fuzztruction-source-clang-fast bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
@@ -393,7 +401,7 @@ function build_ft_consumer {
     export CFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
     export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
 
-    ./config --with-rand-seed=devrandom enable-asan no-shared no-tests no-threads no-asm no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom enable-asan no-shared no-tests no-threads no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
@@ -441,18 +449,45 @@ function build_pingu_generator {
     cp -r repo/openssl target/pingu/generator/openssl
     pushd target/pingu/generator/openssl >/dev/null
 
-    export FT_HOOK_INS=load,store
-    export CC=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast
-    export CXX=${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-clang-fast++
-    export CFLAGS="-O2"
-    export CXXFLAGS="-O2"
-    export GENERATOR_AGENT_SO_DIR="${HOME}/pingu/fuzztruction/target/debug/"
-    export LLVM_PASS_SO="${HOME}/pingu/fuzztruction/generator/pass/fuzztruction-source-llvm-pass.so"
+    local source_pass_so="${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so"
+    local extapi_bc="${HOME}/pingu/pingu-agent/pass/build/extapi.bc"
+    if [ ! -f "${source_pass_so}" ] || [ ! -f "${extapi_bc}" ]; then
+        echo "[!] Missing pingu source pass dependencies: ${source_pass_so}, ${extapi_bc}"
+        return 1
+    fi
 
-    ./config --with-rand-seed=devrandom no-shared no-tests no-threads no-asm no-cached-fetch no-async
-    make ${MAKE_OPT}
+    # Build OpenSSL with wllvm so we can extract whole-program bitcode.
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CCAS=wllvm
+    export CFLAGS="-O3 -g -fno-discard-value-names"
+    export CXXFLAGS="-O3 -g -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
 
-    # rm -rf fuzz test .git doc
+    ./config --with-rand-seed=devrandom -d no-shared no-tests no-threads no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make ${MAKE_OPT}
+
+    cd apps
+    extract-bc openssl
+
+    # Instrument generator (source role) at bitcode level.
+    opt -load-pass-plugin="${source_pass_so}" \
+        -passes="function(mem2reg,instcombine),pingu-source" -debug-pass-manager \
+        -ins=load,store,call,memcpy,trampoline,ret,icmp,memcmp -role=source -svf=1 -dump-svf=0 \
+        -extapi-path="${extapi_bc}" \
+        openssl.bc -o openssl_opt.bc
+
+    llvm-dis openssl_opt.bc -o openssl_opt.ll
+    sed -i 's/optnone //g' openssl_opt.ll
+
+    clang -O0 -L"${HOME}/pingu/target/release" -Wl,-rpath,"${HOME}/pingu/target/release" \
+        -lpingu_agent -fsanitize=address \
+        openssl_opt.ll -o openssl \
+        -lssl -lcrypto -ldl -lz -lstdc++
+
+    rm -rf fuzz test .git doc
 
     popd >/dev/null
 }
@@ -467,66 +502,96 @@ function build_pingu_consumer {
     cp -r repo/openssl target/pingu/consumer/openssl
     pushd target/pingu/consumer/openssl >/dev/null
 
-    export CC="${HOME}/pingu/target/debug/libafl_cc"
-    export CXX="${HOME}/pingu/target/debug/libafl_cxx"
-    export CFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
-    export CXXFLAGS="-O3 -g -DFT_FUZZING -DFT_CONSUMER"
+    local source_pass_so="${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so"
+    local afl_pass_so="${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so"
+    local extapi_bc="${HOME}/pingu/pingu-agent/pass/build/extapi.bc"
+    if [ ! -f "${source_pass_so}" ] || [ ! -f "${afl_pass_so}" ] || [ ! -f "${extapi_bc}" ]; then
+        echo "[!] Missing pingu consumer pass dependencies: ${source_pass_so}, ${afl_pass_so}, ${extapi_bc}"
+        return 1
+    fi
 
-    ./config --with-rand-seed=devrandom enable-asan no-shared no-tests no-threads no-asm no-cached-fetch no-async
-    make ${MAKE_OPT}
+    # Build OpenSSL with wllvm so sink can be instrumented from bitcode.
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CCAS=wllvm
+    export CFLAGS="-O3 -g -fno-discard-value-names"
+    export CXXFLAGS="-O3 -g -fno-discard-value-names"
+    export LLVM_BITCODE_GENERATION_FLAGS=""
 
-    # rm -rf fuzz test .git doc
+    ./config --with-rand-seed=devrandom -d no-shared no-tests no-threads no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
+    rm -f compile_commands.json
+    bear --output compile_commands.json -- make ${MAKE_OPT}
+
+    cd apps
+    extract-bc openssl
+
+    # Instrument consumer (sink role) and inject AFL-style coverage.
+    opt -load-pass-plugin="${source_pass_so}" \
+        -load-pass-plugin="${afl_pass_so}" \
+        -passes="function(mem2reg,instcombine),pingu-source,afl-coverage" -debug-pass-manager \
+        -ins=load,store,call,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
+        -extapi-path="${extapi_bc}" \
+        openssl.bc -o openssl_opt.bc
+
+    llvm-dis openssl_opt.bc -o openssl_opt.ll
+    sed -i 's/optnone //g' openssl_opt.ll
+
+    clang -O0 -L"${HOME}/pingu/target/release" -Wl,-rpath,"${HOME}/pingu/target/release" \
+        -lpingu_agent -fsanitize=address \
+        openssl_opt.ll -o openssl \
+        -lssl -lcrypto -ldl -lz -lstdc++
+
+    rm -rf fuzz test .git doc
 
     popd >/dev/null
 }
 
 function run_pingu {
-    consumer="OpenSSL"
-    replay_step=${1:-1}
-    gcov_step=${2:-1}
-    timeout=${3:-300}
-    if [ "${4:-}" = "--" ]; then
-        generator=${5:-$consumer}
-    else
-        generator=${4:-$consumer}
-    fi
+    local replay_step="${1:-1}"
+    local gcov_step="${2:-1}"
+    local timeout="${3:-300}"
+    local consumer="OpenSSL"
+    local work_dir=/tmp/fuzzing-output
+    local pingu_bin=${HOME}/pingu/target/release/pingu
 
-    work_dir=/tmp/fuzzing-output
+    if ! [[ "${replay_step}" =~ ^[0-9]+$ ]] || ! [[ "${gcov_step}" =~ ^[0-9]+$ ]] || ! [[ "${timeout}" =~ ^[0-9]+$ ]]; then
+        echo "[!] run_pingu expects: replay_step gcov_step timeout"
+        return 1
+    fi
+    if [ ! -x "${pingu_bin}" ]; then
+        echo "[!] Missing pingu binary: ${pingu_bin}"
+        return 1
+    fi
     pushd ${HOME}/target/pingu/ >/dev/null
 
-    # synthesize the pingu configuration yaml
-    # according to the targeted fuzzer and generated
-    temp_file=$(mktemp)
-    sed -e "s|WORK-DIRECTORY|$work_dir|g" -e "s|UID|$(id -u)|g" -e "s|GID|$(id -g)|g" ${HOME}/profuzzbench/pingu.yaml >"$temp_file"
-    cat "$temp_file" >pingu.yaml
-    printf "\n" >>pingu.yaml
-    rm "$temp_file"
-    cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
-    cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
+    # Use merged target-local template directly.
+    local pingu_cfg_template=${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu.yaml
+    if [ ! -f "${pingu_cfg_template}" ]; then
+        echo "[!] Missing merged pingu config: ${pingu_cfg_template}"
+        return 1
+    fi
+    if ! grep -q '^[[:space:]]*target:' "${pingu_cfg_template}"; then
+        echo "[!] Invalid pingu config (missing required 'target' field): ${pingu_cfg_template}"
+        return 1
+    fi
+    sed -e "s|WORK-DIRECTORY|${work_dir}|g" \
+        -e "s|UID|$(id -u)|g" \
+        -e "s|GID|$(id -g)|g" \
+        "${pingu_cfg_template}" >pingu.yaml
 
     # running pingu
-    sudo timeout "${timeout}s" ${HOME}/pingu/target/debug/pingu pingu.yaml -v --purge fuzz
+    sudo -E timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz
 
-    # Collect coverage with replay/gcov steps.
-    replay_dir=""
-    for d in "${work_dir}/replayable-queue" "${work_dir}/queue" "${work_dir}/pcap" "${work_dir}/pcaps"; do
-        if [ -d "${d}" ]; then
-            replay_dir="${d}"
-            break
-        fi
-    done
-    if [ -n "${replay_dir}" ]; then
-        list_cmd="find ${replay_dir} -maxdepth 1 -type f | sort | awk 'NR % ${replay_step} == 0' | tr '\n' ' ' | sed 's/ $//'"
-    else
-        list_cmd="echo ''"
-    fi
+    # replay_step / gcov_step are accepted for dispatcher compatibility.
+    # pingu gcov handles replay and coverage collection.
+    sudo -E "${pingu_bin}" pingu.yaml -vvv gcov --purge
 
-    sudo chmod -R 755 $work_dir
-    sudo chown -R $(id -u):$(id -g) $work_dir
+    sudo -E chmod -R 755 $work_dir
+    sudo -E chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/openssl
-    cov_cmd="sudo ${HOME}/pingu/target/debug/pingu pingu.yaml -v gcov --pcap >/dev/null 2>&1 || true; gcovr -r . -s | grep '[lb][a-z]*:'"
-    compute_coverage true "$list_cmd" "${gcov_step}" "${work_dir}/coverage.csv" "$cov_cmd"
-    grcov --branch --threads 2 -s . -t html -o ${work_dir}/cov_html .
+    mkdir -p ${work_dir}/cov_html
+    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
 
     popd >/dev/null
 }
@@ -540,7 +605,7 @@ function build_gcov {
     export CFLAGS="-fprofile-arcs -ftest-coverage -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fprofile-arcs -ftest-coverage"
 
-    ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom no-shared no-threads no-tests no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc
@@ -575,7 +640,7 @@ function build_asan {
     export CXXFLAGS="-O0 -g -fsanitize=address -DFT_FUZZING -DFT_CONSUMER"
     export LDFLAGS="-fsanitize=address"
 
-    ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async
+    ./config --with-rand-seed=devrandom enable-asan no-shared no-threads no-tests no-asm no-cached-fetch no-async ${OPENSSL_REDUCED_FEATURE_FLAGS}
     bear -- make ${MAKE_OPT}
 
     rm -rf fuzz test .git doc

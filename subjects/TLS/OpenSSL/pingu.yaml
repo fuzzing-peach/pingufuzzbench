@@ -1,0 +1,60 @@
+work-directory: "WORK-DIRECTORY"
+input-directory: "/home/user/profuzzbench/no-inputs"
+jail-uid: UID
+jail-gid: GID
+timeout: 1s
+target-port: 4433
+target: openssl
+
+monitor:
+  url: "http://124.222.154.81:8086"
+  org: "None"
+  bucket: "pingu"
+  token: "<REDACTED>"
+  http-proxy: "http://202.112.23.167:8080"
+
+source:
+  bin-path: "/home/user/target/pingu/generator/openssl/apps/openssl"
+  root-path: "/home/user/target/pingu/generator/openssl"
+  arguments: ["s_client", "-connect", "localhost:4433", "-4", "-CAfile", "/home/user/profuzzbench/cert/ca.crt"]
+  env:
+    - LD_PRELOAD: "libfake_random.so"
+    - FAKE_RANDOM: "1"
+  cwd: "/home/user/target/pingu/generator/openssl"
+  input-type: stdin
+  output-type: socket
+  log-stdout: true
+  log-stderr: true
+
+sink:
+  bin-path: "/home/user/target/pingu/consumer/openssl/apps/openssl"
+  root-path: "/home/user/target/pingu/consumer/openssl"
+  arguments:
+    [
+      "s_server",
+      "-key",
+      "/home/user/profuzzbench/cert/server.key",
+      "-cert",
+      "/home/user/profuzzbench/cert/server.crt",
+      "-accept",
+      "4433",
+      "-naccept",
+      "1",
+      "-4"
+    ]
+  env:
+    - LD_PRELOAD: "libfake_random.so"
+    - FAKE_RANDOM: "1"
+  cwd: "/home/user/target/pingu/consumer/openssl"
+  input-type: socket
+  output-type: stdout
+  log-stdout: true
+  log-stderr: true
+  allow-unstable-sink: true
+
+gcov:
+  bin-path: "/home/user/target/gcov/consumer/openssl/apps/openssl"
+  env:
+    - LD_PRELOAD: "libfake_random.so:libgcov_preload.so"
+    - FAKE_RANDOM: "1"
+  src-dir: "/home/user/target/gcov/consumer/openssl"

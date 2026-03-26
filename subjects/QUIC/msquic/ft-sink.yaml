@@ -1,5 +1,5 @@
 sink:
-  bin-path: "/home/user/profuzzbench/target/ft/consumer/msquic/build/bin/Release/quicsample"
+  bin-path: "/home/user/target/ft/consumer/msquic/build/bin/Release/quicsample"
   env:
     - LD_LIBRARY_PATH: "/home/user/fuzztruction-net/target/release:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib"
     - AFL_MAP_SIZE: "262144"
@@ -11,7 +11,7 @@ sink:
     - "-key_file:/home/user/profuzzbench/cert/server.key"
     - "-listen:0.0.0.0"
     - "-port:4567"
-  working-dir: "/home/user/profuzzbench/target/ft/consumer/msquic"
+  working-dir: "/home/user/target/ft/consumer/msquic"
   input-type: Udp
   output-type: Udp
   is-server: true
@@ -24,14 +24,14 @@ sink:
   persistent-server: true
 
 gcov:
-  bin-path: "/home/user/profuzzbench/target/gcov/msquic/build/bin/Release/quicsample"
-  cwd: "/home/user/profuzzbench/target/gcov/msquic/build"
+  bin-path: "/home/user/target/gcov/msquic/build/bin/Release/quicsample"
+  cwd: "/home/user/target/gcov/msquic/build"
   env:
     - LD_LIBRARY_PATH: "/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/lib:/usr/lib"
     - LD_PRELOAD: "libgcov_preload.so"
     - FAKE_RANDOM: "1"
     - FAKE_TIME: "2026-02-01 12:00:00"
-  src-dir: "/home/user/profuzzbench/target/gcov/msquic"
+  src-dir: "/home/user/target/gcov/msquic"
   reporter: "gcovr"
   gcovr-args:
     - "--gcov-ignore-parse-errors=negative_hits.warn"
