@@ -21,8 +21,8 @@ ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 # Change the Ubuntu package mirror
 RUN apt update && apt install -y apt-transport-https ca-certificates
 RUN if [ "${ZH_CN}" = "true" ]; then \
-        sed -i 's@//.*archive.ubuntu.com@//mirrors.nju.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
-        sed -i 's/security.ubuntu.com/mirrors.nju.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i 's/security.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/ubuntu.sources && \
         apt clean; \
     fi
 

@@ -60,10 +60,10 @@ function replay {
 }
 
 function build_aflnet {
-    rm -rf ${HOME}/target/aflnet
-    mkdir -p ${HOME}/target/aflnet
-    cp -r repo/wolfssl ${HOME}/target/aflnet/
-    pushd ${HOME}/target/aflnet/wolfssl >/dev/null
+    mkdir -p target/aflnet
+    rm -rf target/aflnet/*
+    cp -r repo/wolfssl target/aflnet/
+    pushd target/aflnet/wolfssl >/dev/null
 
     export CC=$HOME/aflnet/afl-clang-fast
     export AFL_USE_ASAN=1
@@ -117,10 +117,10 @@ function run_aflnet {
 }
 
 function build_stateafl {
-    rm -rf ${HOME}/target/stateafl
-    mkdir -p ${HOME}/target/stateafl
-    cp -r repo/wolfssl ${HOME}/target/stateafl/wolfssl
-    pushd ${HOME}/target/stateafl/wolfssl >/dev/null
+    mkdir -p target/stateafl
+    rm -rf target/stateafl/*
+    cp -r repo/wolfssl target/stateafl/wolfssl
+    pushd target/stateafl/wolfssl >/dev/null
 
     export CC=$HOME/stateafl/afl-clang-fast
     export AFL_USE_ASAN=1
@@ -176,10 +176,10 @@ function run_stateafl {
 }
 
 function build_sgfuzz {
-    rm -rf ${HOME}/target/sgfuzz
-    mkdir -p ${HOME}/target/sgfuzz
-    cp -r repo/wolfssl ${HOME}/target/sgfuzz/wolfssl
-    pushd ${HOME}/target/sgfuzz/wolfssl >/dev/null
+    mkdir -p target/sgfuzz
+    rm -rf target/sgfuzz/*
+    cp -r repo/wolfssl target/sgfuzz/wolfssl
+    pushd target/sgfuzz/wolfssl >/dev/null
 
     export LLVM_COMPILER=clang
     export CC=wllvm
@@ -230,10 +230,10 @@ function run_sgfuzz {
     indir=${HOME}/profuzzbench/subjects/TLS/OpenSSL/in-tls
     pushd ${HOME}/target/sgfuzz/wolfssl >/dev/null
 
-    rm -rf $outdir/replayable-queue
     mkdir -p $outdir/replayable-queue
-    rm -rf $outdir/crashes
+    rm -rf $outdir/replayable-queue/*
     mkdir -p $outdir/crashes
+    rm -rf $outdir/crashes/*
 
     export ASAN_OPTIONS="abort_on_error=1:symbolize=1:detect_leaks=0:handle_abort=2:handle_segv=2:handle_sigbus=2:handle_sigill=2:detect_stack_use_after_return=1:detect_odr_violation=0:detect_container_overflow=0:poison_array_cookie=0"
     export HFND_TCP_PORT=4433
@@ -298,10 +298,10 @@ function run_sgfuzz {
 }
 
 function build_ft_generator {
-    rm -rf ${HOME}/target/ft/generator
-    mkdir -p ${HOME}/target/ft/generator
-    cp -r repo/wolfssl ${HOME}/target/ft/generator/wolfssl
-    pushd ${HOME}/target/ft/generator/wolfssl >/dev/null
+    mkdir -p target/ft/generator
+    rm -rf target/ft/generator/*
+    cp -r repo/wolfssl target/ft/generator/wolfssl
+    pushd target/ft/generator/wolfssl >/dev/null
 
     export FT_CALL_INJECTION=1
     export FT_HOOK_INS=branch,load,store,select,switch
@@ -324,10 +324,10 @@ function build_ft_consumer {
     sudo cp ${HOME}/profuzzbench/scripts/ld.so.conf/ft-net.conf /etc/ld.so.conf.d/
     sudo ldconfig
 
-    rm -rf ${HOME}/target/ft/consumer
-    mkdir -p ${HOME}/target/ft/consumer
-    cp -r repo/wolfssl ${HOME}/target/ft/consumer/wolfssl
-    pushd ${HOME}/target/ft/consumer/wolfssl >/dev/null
+    mkdir -p target/ft/consumer
+    rm -rf target/ft/consumer/*
+    cp -r repo/wolfssl target/ft/consumer/wolfssl
+    pushd target/ft/consumer/wolfssl >/dev/null
 
     export AFL_PATH=${HOME}/fuzztruction-net/consumer/aflpp-consumer
     export CC=${AFL_PATH}/afl-clang-fast
@@ -392,10 +392,10 @@ function build_asan {
 
     popd >/dev/null
 
-    rm -rf ${HOME}/target/asan
-    mkdir -p ${HOME}/target/asan
-    cp -r repo/wolfssl-raw ${HOME}/target/asan/wolfssl
-    pushd ${HOME}/target/asan/wolfssl >/dev/null
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/wolfssl-raw target/asan/wolfssl
+    pushd target/asan/wolfssl >/dev/null
 
     export CC=clang
     export CXX=clang++
@@ -414,21 +414,20 @@ function build_asan {
 }
 
 function build_pingu_generator {
-    rm -rf ${HOME}/target/pingu/generator/wolfssl
-    mkdir -p ${HOME}/target/pingu/generator
-    cp -r repo/wolfssl ${HOME}/target/pingu/generator/wolfssl
-    pushd ${HOME}/target/pingu/generator/wolfssl >/dev/null
+    mkdir -p target/pingu/generator
+    rm -rf target/pingu/generator/wolfssl
+    cp -r repo/wolfssl target/pingu/generator/wolfssl
+    pushd target/pingu/generator/wolfssl >/dev/null
 
     # get the whole program bitcode
     # build the whole program using wllvm
     export LLVM_COMPILER=clang
     export CC=wllvm
     export CCAS=wllvm
-    export CXX=wllvm++
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
-    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     rm -f compile_commands.json
     bear --output compile_commands.json -- make examples/client/client ${MAKE_OPT}
     cd examples/client
@@ -438,9 +437,10 @@ function build_pingu_generator {
     # instrument the whole program bitcode
     # Removed opt: -svf-slice=backward -svf-slice-sources=send:1 \
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
-        -passes="function(instcombine),pingu-source" -debug-pass-manager \
-        -ins=load,store,call,memcpy,trampoline,ret,icmp,memcmp -role=source \
-        -patchpoint-blacklist=wolfcrypt \
+        -passes="pingu-source" -debug-pass-manager \
+        -ins=load,store,call,memcpy,trampoline,ret,icmp,memcmp -role=source -svf=1 -dump-svf=0 \
+        -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
+        -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         client.bc -o client_opt.bc
 
     llvm-dis client_opt.bc -o client_opt.ll
@@ -456,10 +456,10 @@ function build_pingu_generator {
 }
 
 function build_pingu_consumer {
-    rm -rf ${HOME}/target/pingu/consumer/wolfssl
-    mkdir -p ${HOME}/target/pingu/consumer
-    cp -r repo/wolfssl ${HOME}/target/pingu/consumer/wolfssl
-    pushd ${HOME}/target/pingu/consumer/wolfssl >/dev/null
+    mkdir -p target/pingu/consumer
+    rm -rf target/pingu/consumer/wolfssl
+    cp -r repo/wolfssl target/pingu/consumer/wolfssl
+    pushd target/pingu/consumer/wolfssl >/dev/null
 
     # get the whole program bitcode
     # build the whole program using wllvm
@@ -470,7 +470,7 @@ function build_pingu_consumer {
     export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
     export LLVM_BITCODE_GENERATION_FLAGS=""
-    ./configure --enable-static --enable-shared=no --enable-tls13 --enable-session-ticket --enable-opensslextra --enable-alpn --enable-ocsp --enable-ocspstapling --enable-ocspstapling2 --enable-crl --enable-crl-monitor --enable-ech --enable-earlydata --enable-psk
+    ./configure --enable-debug --enable-static --enable-shared=no --enable-session-ticket --enable-tls13 --enable-opensslextra --enable-tlsv12=no
     rm -f compile_commands.json
     bear --output compile_commands.json -- make examples/server/server ${MAKE_OPT}
     cd examples/server
@@ -480,9 +480,10 @@ function build_pingu_consumer {
     # instrument the whole program bitcode
     opt -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so \
         -load-pass-plugin=${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so \
-        -passes="function(instcombine),pingu-source,afl-coverage" -debug-pass-manager \
-        -ins=load,store,call,memcpy,icmp,memcmp,ret -role=sink \
-        -patchpoint-blacklist=wolfcrypt \
+        -passes="pingu-source,afl-coverage" -debug-pass-manager \
+        -extapi-path=/home/user/pingu/pingu-agent/pass/build/extapi.bc \
+        -ins=load,store,call,memcpy,icmp,memcmp,ret -role=sink -svf=1 -dump-svf=0 \
+        -patchpoint-blacklist=wolfcrypt/src/poly1305.c,wolfcrypt/src/misc.c \
         server.bc -o server_opt.bc
 
     llvm-dis server_opt.bc -o server_opt.ll
@@ -498,7 +499,6 @@ function build_pingu_consumer {
 
 function run_pingu {
     local timeout
-    local SUDO="sudo -E"
     consumer="WolfSSL"
     local replay_step="${1:-1}"
     local gcov_step="${2:-1}"
@@ -518,36 +518,42 @@ function run_pingu {
     fi
     pushd ${HOME}/target/pingu/ >/dev/null
 
-    # synthesize the pingu configuration yaml from a merged target-local template
-    local pingu_cfg_template=${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu.yaml
-    if [ ! -f "${pingu_cfg_template}" ]; then
-        log_error "[!] Missing merged pingu config: ${pingu_cfg_template}"
-        return 1
+    # synthesize the pingu configuration yaml
+    # according to the targeted fuzzer and generated
+    temp_file=$(mktemp)
+    local pingu_common_cfg=${HOME}/profuzzbench/pingu-common.yaml
+    if [ ! -f "${pingu_common_cfg}" ]; then
+        pingu_common_cfg=${HOME}/profuzzbench/pingu.yaml
     fi
     sed -e "s|WORK-DIRECTORY|$work_dir|g" \
         -e "s|UID|$(id -u)|g" \
         -e "s|GID|$(id -g)|g" \
-        "${pingu_cfg_template}" >pingu.yaml
+        -e "s|TIMEOUT|${timeout}s|g" \
+        "${pingu_common_cfg}" >"$temp_file"
+    cat "$temp_file" >pingu.yaml
+    printf "\n" >>pingu.yaml
+    rm "$temp_file"
+    cat ${HOME}/profuzzbench/subjects/TLS/${generator}/pingu-source.yaml >>pingu.yaml
+    cat ${HOME}/profuzzbench/subjects/TLS/${consumer}/pingu-sink.yaml >>pingu.yaml
 
     # running pingu (campaign duration is controlled externally)
-    ${SUDO} timeout "${timeout}s" "${pingu_bin}" pingu.yaml -v --purge fuzz
+    sudo timeout "${timeout}s" "${pingu_bin}" pingu.yaml -vvv --purge fuzz || true
 
     # collecting coverage results
-    ${SUDO} "${pingu_bin}" pingu.yaml -vvv gcov --purge
-    ${SUDO} chmod -R 755 $work_dir
-    ${SUDO} chown -R $(id -u):$(id -g) $work_dir
+    sudo "${pingu_bin}" pingu.yaml -vvv gcov --pcap --purge
+    sudo chmod -R 755 $work_dir
+    sudo chown -R $(id -u):$(id -g) $work_dir
     cd ${HOME}/target/gcov/consumer/wolfssl
-    mkdir -p ${work_dir}/cov_html
-    gcovr -r . --html --html-details -o ${work_dir}/cov_html/index.html
+    grcov --branch --threads 2 -s . -t html -o ${work_dir}/cov_html .
 
     popd >/dev/null
 }
 
 function build_gcov {
-    rm -rf ${HOME}/target/gcov/consumer
-    mkdir -p ${HOME}/target/gcov/consumer
-    cp -r repo/wolfssl ${HOME}/target/gcov/consumer/wolfssl
-    pushd ${HOME}/target/gcov/consumer/wolfssl >/dev/null
+    mkdir -p target/gcov/consumer
+    rm -rf target/gcov/consumer/*
+    cp -r repo/wolfssl target/gcov/consumer/wolfssl
+    pushd target/gcov/consumer/wolfssl >/dev/null
 
     export CFLAGS="-fprofile-arcs -ftest-coverage"
     export CXXFLAGS="-fprofile-arcs -ftest-coverage"
@@ -564,10 +570,10 @@ function build_gcov {
 }
 
 function build_asan {
-    rm -rf ${HOME}/target/asan
-    mkdir -p ${HOME}/target/asan
-    cp -r repo/wolfssl ${HOME}/target/asan/wolfssl
-    pushd ${HOME}/target/asan/wolfssl >/dev/null
+    mkdir -p target/asan
+    rm -rf target/asan/*
+    cp -r repo/wolfssl target/asan/wolfssl
+    pushd target/asan/wolfssl >/dev/null
 
     export CC=clang
     export CXX=clang++
