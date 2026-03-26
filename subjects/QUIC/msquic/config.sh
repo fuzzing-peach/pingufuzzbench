@@ -207,7 +207,7 @@ function _configure_and_build_msquic {
         -DQUIC_BUILD_TEST=OFF \
         -DQUIC_BUILD_PERF=OFF \
         -DQUIC_TLS_LIB=quictls \
-        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_BUILD_TYPE=Debug \
         "${src_dir}" || return 1
     cmake --build . --target quicsample ${MAKE_OPT} || return 1
 
@@ -572,6 +572,144 @@ function build_ft_consumer {
         "${target_root}/ft/consumer/msquic/build" || return 1
 }
 
+function _build_pingu_msquic_variant {
+    local variant="$1"
+    local role="$2"
+    local ins_list="$3"
+    local pass_pipeline="$4"
+    local patchpoint_blacklist="$5"
+
+    _ensure_msquic_repo || return 1
+
+    local target_root
+    target_root=$(_target_root)
+    local variant_root="${target_root}/pingu/${variant}"
+    local msquic_dir="${variant_root}/msquic"
+    local build_dir="${msquic_dir}/build"
+
+    mkdir -p "${variant_root}"
+    cp -r repo/msquic "${msquic_dir}"
+
+    pushd "${msquic_dir}" >/dev/null
+    export LLVM_COMPILER=clang
+    export CC=wllvm
+    export CXX=wllvm++
+    export CFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export CXXFLAGS="-O0 -g -fno-inline-functions -fno-inline -fno-discard-value-names"
+    export LDFLAGS=""
+
+    _configure_and_build_msquic "${CC}" "${CXX}" "${CFLAGS}" "${CXXFLAGS}" "${LDFLAGS}" "${msquic_dir}" "${build_dir}" || return 1
+
+    local bin
+    bin=$(_resolve_quicsample "${build_dir}" || true)
+    if [ -z "${bin}" ]; then
+        echo "[!] build_pingu_${variant} failed: quicsample not found"
+        popd >/dev/null
+        return 1
+    fi
+
+    pushd "$(dirname "${bin}")" >/dev/null
+    extract-bc ./quicsample || return 1
+
+    local src_root_dir="${variant_root}/msquic"
+
+    opt \
+        -load-pass-plugin="${HOME}/pingu/pingu-agent/pass/build/pingu-source-pass.so" \
+        -load-pass-plugin="${HOME}/pingu/pingu-agent/pass/build/afl-llvm-pass.so" \
+        -passes="${pass_pipeline}" \
+        -src-root-dir="${src_root_dir}" \
+        -ins="${ins_list}" \
+        -role="${role}" \
+        -patchpoint-blacklist="${patchpoint_blacklist}" \
+        quicsample.bc -o quicsample_opt.bc || return 1
+
+    llvm-dis quicsample_opt.bc -o quicsample_opt.ll || return 1
+    sed -i 's/optnone //g;s/optnone//g' quicsample_opt.ll
+
+    local msquic_a
+    local platform_a
+    local ssl_a
+    local crypto_a
+    msquic_a=$(find "${build_dir}" -type f -name "libmsquic.a" | head -n 1 || true)
+    platform_a=$(find "${build_dir}" -type f -name "libmsquic_platform.a" | head -n 1 || true)
+    if [ -z "${platform_a}" ]; then
+        platform_a=$(find "${build_dir}" -type f -name "libplatform.a" | head -n 1 || true)
+    fi
+    ssl_a=$(find "${build_dir}" -type f -name "libssl.a" | head -n 1 || true)
+    crypto_a=$(find "${build_dir}" -type f -name "libcrypto.a" | head -n 1 || true)
+    if [ -z "${msquic_a}" ] || [ -z "${platform_a}" ] || [ -z "${ssl_a}" ] || [ -z "${crypto_a}" ]; then
+        echo "[!] build_pingu_${variant} failed: required static libs not found"
+        popd >/dev/null
+        popd >/dev/null
+        return 1
+    fi
+
+    clang quicsample_opt.ll -o quicsample \
+        -L"${HOME}/pingu/target/release" \
+        -Wl,-rpath,"${HOME}/pingu/target/release" \
+        -lpingu_agent \
+        -fsanitize=address \
+        "${msquic_a}" \
+        "${platform_a}" \
+        "${ssl_a}" \
+        "${crypto_a}" \
+        -ldl -latomic -lnuma -lpthread -lrt -lm -lresolv -lstdc++ || return 1
+
+    popd >/dev/null
+    popd >/dev/null
+}
+
+function build_pingu_generator {
+    rm -rf "${HOME}/target/pingu/generator/msquic"
+    _build_pingu_msquic_variant \
+        "generator" \
+        "source" \
+        "load,store,call,memcpy,trampoline,ret,icmp,memcmp" \
+        "pingu-source" \
+        "submodules/quictls/crypto,submodules/quictls/include/crypto"
+}
+
+function build_pingu_consumer {
+    rm -rf "${HOME}/target/pingu/consumer/msquic"
+    _build_pingu_msquic_variant \
+        "consumer" \
+        "sink" \
+        "load,store,call,memcpy,trampoline,ret,icmp,memcmp" \
+        "pingu-source,afl-coverage" \
+        "submodules/quictls/crypto,submodules/quictls/include/crypto"
+}
+
+function run_pingu {
+    local timeout
+    if [[ "${1:-}" =~ ^[0-9]+$ ]] && [[ "${2:-}" =~ ^[0-9]+$ ]] && [[ "${3:-}" =~ ^[0-9]+$ ]]; then
+        timeout="$3"
+    else
+        timeout="${1:-300}"
+    fi
+
+    local pingu_bin="${HOME}/pingu/target/debug/pingu"
+    if [ ! -x "${pingu_bin}" ]; then
+        pingu_bin="${HOME}/pingu/target/release/pingu"
+    fi
+
+    local pingu_yaml="/home/user/pingu/evaluation/pingu-msquic.yaml"
+    if [ ! -f "${pingu_yaml}" ]; then
+        pingu_yaml="${MSQUIC_SUBJECT_DIR}/pingu.yaml"
+    fi
+    if [ ! -f "${pingu_yaml}" ]; then
+        echo "[!] run_pingu failed: missing /home/user/pingu/evaluation/pingu-msquic.yaml and ${MSQUIC_SUBJECT_DIR}/pingu.yaml"
+        return 1
+    fi
+
+    local work_dir="/tmp/fuzzing-output"
+    pushd "${HOME}/target/pingu" >/dev/null
+    sudo -E timeout "${timeout}s" "${pingu_bin}" "${pingu_yaml}" --log4rs-config "/home/user/pingu/log4rs.yml" -vvv --purge fuzz || true
+    sudo -E "${pingu_bin}" "${pingu_yaml}" --log4rs-config "/home/user/pingu/log4rs.yml" -vvv gcov --purge
+    sudo chmod -R 755 "${work_dir}"
+    sudo chown -R "$(id -u):$(id -g)" "${work_dir}"
+    popd >/dev/null
+}
+
 function run_ft {
     local replay_step="${1:-1}"
     local gcov_step="${2:-1}"
@@ -651,6 +789,8 @@ function build_gcov {
 }
 
 function install_dependencies {
+    export http_proxy="${HTTP_PROXY:-${http_proxy:-}}"
+    export https_proxy="${HTTPS_PROXY:-${https_proxy:-${http_proxy:-}}}"
     sudo -E mkdir -p /var/lib/apt/lists/partial
     sudo -E apt-get update
     sudo -E DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
