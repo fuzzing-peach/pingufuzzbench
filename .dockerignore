@@ -13,4 +13,8 @@ target
 temp
 exp-archive
 old-archive
+exp-archieve
+old-archieve
 .trees
+**/.git-cache
+**/repo

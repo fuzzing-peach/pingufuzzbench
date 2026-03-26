@@ -2,8 +2,10 @@ results-*
 output
 archive
 exp-archive
+exp-archieve
 exp-results
 old-archive
+old-archieve
 **/shortcut.sh
 **/__pycache__*
 **/.ipynb_checkpoints*
@@ -16,3 +18,4 @@ vul
 temp
 target
 .env
+.trees
